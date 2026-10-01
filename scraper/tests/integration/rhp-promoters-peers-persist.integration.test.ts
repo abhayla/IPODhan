@@ -24,6 +24,9 @@ import { BrlmTrackRecordRepository } from '../../../packages/shared/src/reposito
 import { FinancialDataRepository } from '../../../packages/shared/src/repositories/financial-data-repository';
 import { ListingPerformanceRepository } from '../../../packages/shared/src/repositories/listing-performance-repository';
 import { PeerCompanyRepository } from '../../src/repositories/peer-company-repository.js';
+import { findOrphanPeerSourceKeys, retireOrphanPeerSources, PRE_OD157_ORPHAN_REASON } from '../../src/services/orphan-peer-sources.js';
+// The nightly floor's own SQL text (r_child_provenance_orphan), run here against ipodhan_test.
+import { CHILD_PROVENANCE_ORPHAN_SQL } from '../../../scripts/lib/detection-floor-checks.mjs';
 import type {
   FilingExtraction,
   FilingPersisterDeps,
@@ -174,6 +177,7 @@ async function cleanup() {
   if (!pool) return;
   await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
   await db.delete(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
+  await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO_ID));
   await db.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO_ID));
   await db.delete(schema.promoters).where(eq(schema.promoters.ipoId, IPO_ID));
   await db.delete(schema.documents).where(eq(schema.documents.id, DOC_ID));
@@ -269,7 +273,7 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
       promoters: new PromotersRepository(db as never, redis as never),
       intermediaries: new IpoIntermediariesRepository(db as never, redis as never),
       brlmTrackRecord: new BrlmTrackRecordRepository(db as never, redis as never),
-      peerCompanies: new PeerCompanyRepository(db as never),
+      peerCompanies: new PeerCompanyRepository(db as never, redis as never),
       financialData: new FinancialDataRepository(db as never, redis as never),
       fieldSources,
       ipoDetailsWriter,
@@ -288,6 +292,7 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
     if (!pool) return;
     await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
     await db.delete(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
+    await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO_ID));
     await db.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO_ID));
     await db.delete(schema.promoters).where(eq(schema.promoters.ipoId, IPO_ID));
     if (redis) {
@@ -646,6 +651,120 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
     } as never);
     await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'PROSPECTUS', documentId: DOC_ID, apply: true }, deps);
     expect((await storedPeers()).map((r) => r.companyName)).toContain('S1166 Legacy Document Peer Ltd');
+  });
+  // ------------------------------------------- OD-156 / OD-157 round 2 (#1166, Tier A findings)
+  it('§9.2 item 19: an admin-held value on a DRHP peer survives an RHP names-only list that drops the peer', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(drhpJson) as FilingExtraction, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const held = 'Shyam Metallics and Energy Ltd.';
+    const heldKey = rowKeyForName(held) as string;
+    // The admin edited ONE value on this row: a row hold, not a list hold (the list stays scraper-owned).
+    await db.update(schema.peerCompanies).set({ peRatio: '22.50' }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, heldKey)));
+    await db.insert(schema.fieldProtectionMetadata).values({ ipoId: IPO_ID, tableName: `peer_companies:${heldKey}`, fieldName: 'peRatio', isProtected: true } as never);
+
+    const rhp = loadExtraction();
+    (rhp.fields.peer_companies as unknown as PeerList).value = peersOf(rhp).filter((p) => p.name !== held);
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const row = (await storedPeers()).find((r) => r.normalizedName === heldKey);
+    expect(row, 'the held row survives').toBeDefined();
+    expect(row!.peRatio).toBe('22.50');
+    expect(await retiredFor(heldKey)).toHaveLength(0);
+  });
+
+  /** The Chittorgarh path: createPeerCompanies -> replaceForIpo with no document type. */
+  async function chittorgarhList(peers: Array<{ companyName: string; peRatio?: number; eps?: number }>, repo = deps.peerCompanies as PeerCompanyRepository) {
+    const { createPeerCompanies } = await import('../../src/services/data-persister.js');
+    return createPeerCompanies(repo, IPO_ID, peers.map((p) => ({ ...p, isListed: true, dataSource: 'CHITTORGARH' })) as never);
+  }
+
+  it('§1.7 / OD-156: a Chittorgarh whole-list replace keeps every document peer, its figures and its stamp; it only adds peers and fills empty cells', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const before = await storedPeers();
+    expect(before).toHaveLength(5);
+    // One empty figure cell on a document row (the gap rank 2 may fill).
+    const gapKey = rowKeyForName('Kamdhenu Limited') as string;
+    await db.update(schema.peerCompanies).set({ peRatio: null }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, gapKey)));
+    const docSourcesBefore = CHILD_CONSOLIDATION
+      ? (await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')))).length
+      : 0;
+
+    // Chittorgarh names two document peers (one with a conflicting EPS, one filling the gap) and one new peer.
+    await chittorgarhList([
+      { companyName: 'Beekay Steel Industries Ltd', eps: 999 },
+      { companyName: 'Kamdhenu Limited', peRatio: 31.5 },
+      { companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 },
+    ]);
+
+    const after = await storedPeers();
+    const byKey = new Map(after.map((r) => [r.normalizedName, r]));
+    for (const docRow of before) {
+      const row = byKey.get(docRow.normalizedName);
+      expect(row, docRow.companyName).toBeDefined();
+      expect(row!.dataSource, docRow.companyName).toBe('DRHP');
+      expect(row!.sourceDocumentType, docRow.companyName).toBe('RHP');
+      for (const col of ['eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'] as const) expect(row![col], `${docRow.companyName}.${col}`).toBe(docRow[col]);
+    }
+    expect(Number(byKey.get(rowKeyForName('Beekay Steel Industries Ltd') as string)!.eps)).toBeCloseTo(18.94, 2);
+    expect(Number(byKey.get(gapKey)!.peRatio)).toBeCloseTo(31.5, 2);
+    expect(after.find((r) => r.companyName === 'S1166 Chittorgarh New Peer Ltd')?.dataSource).toBe('CHITTORGARH');
+    expect(after).toHaveLength(6);
+    const retired = await db.select().from(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
+    expect(retired).toHaveLength(0);
+    if (CHILD_CONSOLIDATION) {
+      const docSourcesAfter = (await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')))).length;
+      expect(docSourcesAfter).toBe(docSourcesBefore);
+    }
+  });
+
+  it('OD-157: a Chittorgarh list that drops its own peer retires the source records and drops their cache keys', async () => {
+    await seedNonDocumentPeers();
+    const cgKey = rowKeyForName(CG_ONLY) as string;
+    await db.insert(schema.fieldSources).values({ ipoId: IPO_ID, tableName: 'peer_companies', rowKey: cgKey, fieldName: 'peRatio', source: 'CHITTORGARH', confidence: 80 } as never);
+    const cached = [`field-source:${IPO_ID}:peer_companies:${cgKey}:peRatio`, `field-sources:table:${IPO_ID}:peer_companies`, `field-sources:ipo:${IPO_ID}:all`];
+    for (const k of cached) await redis.set(k, '"stale"');
+
+    await chittorgarhList([{ companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 }], new PeerCompanyRepository(db as never, redis as never));
+
+    expect((await storedPeers()).map((r) => r.companyName)).not.toContain(CG_ONLY);
+    expect(await liveSourcesFor(cgKey)).toHaveLength(0);
+    const retired = await retiredFor(cgKey);
+    expect(retired).toHaveLength(1);
+    expect(retired[0].retiredReason).toMatch(/^replaced by /);
+    for (const k of cached) expect(await redis.exists(k), k).toBe(0);
+  });
+
+  it('OD-156: a document list WITH figures from an OLDER type keeps the newer stamp on the rows it rewrites', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'PROSPECTUS', documentId: DOC_ID, apply: true }, deps);
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const rows = await storedPeers();
+    expect(rows).toHaveLength(5);
+    for (const r of rows) expect(r.sourceDocumentType, r.companyName).toBe('PROSPECTUS');
+  });
+
+  it('r_child_provenance_orphan: the nightly SQL flags a seeded orphan on ipodhan_test, passes it once the row exists, and the repair retires only orphans', async () => {
+    const orphanKey = 's1166 orphan probe';
+    await db.insert(schema.fieldSources).values({ ipoId: IPO_ID, tableName: 'peer_companies', rowKey: orphanKey, fieldName: 'peRatio', source: 'CHITTORGARH', confidence: 80 } as never);
+    const run = async () => (await pool.query(CHILD_PROVENANCE_ORPHAN_SQL)).rows.filter((r: { ipoId: string }) => r.ipoId === IPO_ID);
+    expect((await run()).map((r: { rowKey: string; records: number }) => [r.rowKey, r.records])).toEqual([[orphanKey, 1]]);
+
+    // The repair finds exactly that key (scoped to this IPO) and retires it with the pre-OD-157 reason.
+    const found = await findOrphanPeerSourceKeys(db as never, [IPO_ID]);
+    expect(found).toEqual([{ ipoId: IPO_ID, rowKey: orphanKey, records: 1 }]);
+    const [result] = await retireOrphanPeerSources(db as never, found);
+    expect(result.retiredKeys).toEqual([orphanKey]);
+    expect(await liveSourcesFor(orphanKey)).toHaveLength(0);
+    expect((await retiredFor(orphanKey)).map((r) => r.retiredReason)).toEqual([PRE_OD157_ORPHAN_REASON]);
+    expect(await run()).toEqual([]);
+
+    // A clean IPO: a record whose row exists is never flagged, and the repair leaves it live.
+    await db.insert(schema.peerCompanies).values({ ipoId: IPO_ID, companyName: 'S1166 Orphan Probe', normalizedName: orphanKey, isListed: true, dataSource: 'CHITTORGARH', lastUpdated: new Date() } as never);
+    await db.insert(schema.fieldSources).values({ ipoId: IPO_ID, tableName: 'peer_companies', rowKey: orphanKey, fieldName: 'eps', source: 'CHITTORGARH', confidence: 80 } as never);
+    expect(await run()).toEqual([]);
+    expect(await findOrphanPeerSourceKeys(db as never, [IPO_ID])).toEqual([]);
+    // A stale scan never retires a key that gained a row: the repair re-reads under the lock.
+    const [stale] = await retireOrphanPeerSources(db as never, [{ ipoId: IPO_ID, rowKey: orphanKey, records: 1 }]);
+    expect(stale.retiredKeys).toEqual([]);
+    expect(await liveSourcesFor(orphanKey)).toHaveLength(1);
   });
   }
 );

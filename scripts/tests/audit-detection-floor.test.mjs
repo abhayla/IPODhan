@@ -66,6 +66,8 @@ import {
   DIGEST_MAX_ROWS,
   computeSummaryCounts,
   evaluateSourceKeyConflicts,
+  evaluateChildProvenanceOrphans,
+  CHILD_PROVENANCE_ORPHAN_SQL,
 } from '../lib/detection-floor-checks.mjs';
 import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake, evaluatePullNoblank } from '../lib/pull-noblank-checks.mjs';
 
@@ -2598,3 +2600,31 @@ test('(upcoming_source_drift) mutation guard: inverting the diff>tolerance check
 import './zip-member-rows.test.mjs';
 import './hidden-ipo-child-writes.test.mjs';
 import './create-provenance-checks.test.mjs';
+
+// ---- r_child_provenance_orphan (OD-157, #1166 round 2): positive control -----------------------
+// The verdict the nightly floor records, driven through the same q(sql) path. The SQL itself is run
+// against ipodhan_test by rhp-promoters-peers-persist.integration.test.ts (seeded orphan + clean IPO).
+test('(r_child_provenance_orphan) a seeded orphan row key FAILS, named by IPO, slug and key', async () => {
+  const seen = [];
+  const q = async (sql) => {
+    seen.push(sql);
+    return [{ ipoId: 'ipo-1', companyName: 'Acme Ltd', slug: 'acme-ltd', rowKey: 'gone peer', records: 3 }];
+  };
+  const out = await evaluateChildProvenanceOrphans(q);
+  assert.equal(out.status, 'FAIL');
+  assert.deepEqual(out.lines, ["Acme Ltd (acme-ltd): 'gone peer' 3 record(s)"]);
+  assert.deepEqual(seen, [CHILD_PROVENANCE_ORPHAN_SQL]);
+});
+
+test('(r_child_provenance_orphan) a clean database PASSES', async () => {
+  const out = await evaluateChildProvenanceOrphans(async () => []);
+  assert.equal(out.status, 'PASS');
+  assert.deepEqual(out.lines, []);
+});
+
+test('(r_child_provenance_orphan) the SQL reads live field_sources only, peer row keys only, by row-key absence', () => {
+  assert.match(CHILD_PROVENANCE_ORPHAN_SQL, /FROM field_sources fs/);
+  assert.doesNotMatch(CHILD_PROVENANCE_ORPHAN_SQL, /field_sources_retired/);
+  assert.match(CHILD_PROVENANCE_ORPHAN_SQL, /fs\.table_name = 'peer_companies' AND fs\.row_key <> ''/);
+  assert.match(CHILD_PROVENANCE_ORPHAN_SQL, /NOT EXISTS \(SELECT 1 FROM peer_companies p WHERE p\.ipo_id = fs\.ipo_id AND p\.normalized_name = fs\.row_key\)/);
+});

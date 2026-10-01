@@ -25,13 +25,21 @@ export interface RetireChildRowSourcesInput {
   at?: Date;
 }
 
+/** One retired record's address: what a caller needs to drop its provenance cache keys after commit. */
+export interface RetiredSourceRef {
+  tableName: string;
+  rowKey: string;
+  fieldName: string;
+}
+
+/** Returns the retired records' addresses (empty when nothing was retired). */
 export async function retireChildRowSources(
   tx: NodePgDatabase<typeof schema>,
   input: RetireChildRowSourcesInput
-): Promise<number> {
+): Promise<RetiredSourceRef[]> {
   // '' is the singleton sentinel (one row per IPO): never a deleted child row's key.
   const keys = [...new Set(input.rowKeys)].filter((k) => k !== '');
-  if (keys.length === 0) return 0;
+  if (keys.length === 0) return [];
   const records = await tx
     .select()
     .from(schema.fieldSources)
@@ -43,7 +51,7 @@ export async function retireChildRowSources(
         inArray(schema.fieldSources.rowKey, keys)
       )
     );
-  if (records.length === 0) return 0;
+  if (records.length === 0) return [];
   const at = input.at ?? new Date();
   await tx.insert(schema.fieldSourcesRetired).values(
     records.map((r) => ({
@@ -63,5 +71,5 @@ export async function retireChildRowSources(
       records.map((r) => r.id)
     )
   );
-  return records.length;
+  return records.map((r) => ({ tableName: r.tableName, rowKey: r.rowKey, fieldName: r.fieldName }));
 }

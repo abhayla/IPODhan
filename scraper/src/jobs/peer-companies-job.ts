@@ -6,7 +6,7 @@
  * Duration: ~30-60 minutes for all IPOs
  */
 
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
 import { logger } from '../utils/logger.js';
 import { scrapePeerCompanies } from '../scrapers/peer-companies-scraper.js';
 import { createPeerCompanies } from '../services/data-persister.js';
@@ -27,7 +27,8 @@ export async function runPeerCompaniesJob(options: PeerCompaniesJobOptions = {})
 
   try {
     // db is already imported from @ipodhan/shared
-    const peerCompanyRepository = new PeerCompanyRepository(db);
+    // OD-157: the shared client drops the provenance cache keys of retired source records.
+    const peerCompanyRepository = new PeerCompanyRepository(db, getRedisClient());
 
     // Step 1: Get IPOs that need peer company data
     const ipos = await getIPOsForPeerScraping(db, options);

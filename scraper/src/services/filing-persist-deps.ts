@@ -175,7 +175,8 @@ export function buildFilingPersistDeps(
     promoters: new PromotersRepository(db, redis),
     intermediaries: new IpoIntermediariesRepository(db, redis),
     brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
-    peerCompanies: new PeerCompanyRepository(db),
+    // OD-157: drops the provenance cache keys of the source records a replace retires.
+    peerCompanies: new PeerCompanyRepository(db, redis),
     // #545 (C): an attempted-but-empty promoters/peers section records its reason here (OD-62).
     fieldExtractionFailures,
     financialData: new FinancialDataRepository(db, redis),
