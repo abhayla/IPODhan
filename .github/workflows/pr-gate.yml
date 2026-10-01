@@ -1388,6 +1388,8 @@ jobs:
           tests/integration/repair-bse-subscription-ist-shift.integration.test.ts
           tests/integration/rhp-promoters-peers-persist.integration.test.ts
           tests/integration/phase-1-e2e.test.ts
+          tests/integration/create-provenance-atomic-1196.integration.test.ts
+          tests/integration/repair-create-provenance-1196.integration.test.ts
           tests/integration/prospectus-ratio-reason-ledger.integration.test.ts
           tests/integration/repair-ledger-written-rows.integration.test.ts
           tests/integration/repair-ledger-guarded-requeue.integration.test.ts

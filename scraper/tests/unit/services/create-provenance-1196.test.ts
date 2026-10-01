@@ -35,12 +35,20 @@ const inert = () =>
 
 describe('#1196: the live create door writes provenance for every column it sets', () => {
   it('a Chittorgarh discovery create tracks companyName (and every other set column) under CHITTORGARH', async () => {
+    const tx = { tag: 'the-create-transaction' };
+    const bulk = vi.fn(async (_id: string, _t: string, f: unknown[]) => f.length);
+    const withDb = vi.fn((_tx: unknown) => ({ bulkTrackFieldUpdates: bulk }));
     const ipoRepository = {
-      create: vi.fn(async (data: Record<string, unknown>) => ({ id: '00000000-0000-4000-8000-000000001196', ...data })),
+      // The real repository runs `inTx` inside its create transaction; the fake does the same with a tag.
+      create: vi.fn(async (data: Record<string, unknown>, options?: { inTx?: (tx: unknown, c: { id: string }) => Promise<void> }) => {
+        const created = { id: '00000000-0000-4000-8000-000000001196', ...data };
+        await options?.inTx?.(tx, created);
+        return created;
+      }),
       bindSourceKeys: vi.fn(async () => undefined),
     };
     const fieldSources = new Proxy(
-      { bulkTrackFieldUpdates: vi.fn(async (_id: string, _t: string, f: unknown[]) => f.length) } as Record<string, unknown>,
+      { withDb } as Record<string, unknown>,
       { get: (t, p) => (p in t ? t[p as string] : p === 'then' ? undefined : vi.fn(async () => (String(p) === 'findByField' ? null : []))) }
     ) as any;
     const orchestrator = new DataConsolidationOrchestrator(ipoRepository as any, fieldSources, inert(), null);
@@ -51,7 +59,8 @@ describe('#1196: the live create door writes provenance for every column it sets
       null
     );
     expect(ipoRepository.create).toHaveBeenCalledTimes(1);
-    const calls = (fieldSources.bulkTrackFieldUpdates as ReturnType<typeof vi.fn>).mock.calls;
+    expect(withDb, 'provenance must be bound to the create transaction').toHaveBeenCalledWith(tx);
+    const calls = bulk.mock.calls;
     expect(calls.length, 'the create must write provenance').toBe(1);
     const [ipoId, table, fields] = calls[0] as [string, string, Array<{ fieldName: string; source: string }>];
     expect(ipoId).toBe('00000000-0000-4000-8000-000000001196');

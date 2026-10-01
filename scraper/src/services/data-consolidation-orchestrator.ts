@@ -455,39 +455,31 @@ export class DataConsolidationOrchestrator {
       // `data-persister.ts` `upsertIPO`).
       if (isNew) {
         // Create new IPO
+        // #1196 (OD-88): consolidation ran with ipoId 'new', where provenance is skipped, so the create
+        // writes a field_sources row for every column it set - INSIDE the create's own transaction. A
+        // failed provenance write rolls the row back and fails the call (cause logged by the caller),
+        // so a row with no provenance can never be committed by this door.
+        const provenanceFields = FEATURE_FLAGS.ENABLE_SOURCE_TRACKING
+          ? createProvenanceFields(consolidatedIPOData as Record<string, unknown>, source)
+          : [];
         const newIPO = await this.ipoRepository.create({
           ...consolidatedIPOData,
           slug,
           createdAt: new Date(),
           updatedAt: new Date(),
-        } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
+        } as IPOInsert, {
+          sourceKeys: (scrapedIPO as any).sourceKeys ?? null,
+          boundBy: `scraper:${source}`,
+          ...(provenanceFields.length > 0
+            ? {
+                inTx: async (tx: unknown, created: { id: string }) => {
+                  await this.fieldSourcesRepository.withDb(tx).bulkTrackFieldUpdates(created.id, 'ipos', provenanceFields);
+                },
+              }
+            : {}),
+        });
 
         ipoId = newIPO.id;
-
-        // #1196 (OD-88): consolidation ran with ipoId 'new', where provenance is skipped, so the
-        // create writes a field_sources row for every column it set. Before this, a column no later
-        // writer touched (companyName on 47 of 396 staging IPOs) never had one. Logged with its
-        // cause on failure; the row itself is already committed.
-        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-          const fields = createProvenanceFields(consolidatedIPOData as Record<string, unknown>, source);
-          if (fields.length > 0) {
-            try {
-              await this.fieldSourcesRepository.bulkTrackFieldUpdates(ipoId, 'ipos', fields);
-            } catch (provenanceError) {
-              const cause = provenanceError instanceof Error ? provenanceError.cause : undefined;
-              logger.error(
-                {
-                  ipoId,
-                  source,
-                  fields: fields.map((f) => f.fieldName),
-                  error: provenanceError instanceof Error ? provenanceError.message : String(provenanceError),
-                  ...(cause !== undefined ? { cause: cause instanceof Error ? cause.message : String(cause) } : {}),
-                },
-                '[DataConsolidation] create provenance write failed (#1196)'
-              );
-            }
-          }
-        }
 
         logger.info(
           { slug, source, ipoId },

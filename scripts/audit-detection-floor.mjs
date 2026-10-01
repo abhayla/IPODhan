@@ -39,6 +39,7 @@ import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
+import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { runCheckAgainstIds } from './lib/run-check.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
@@ -2786,6 +2787,42 @@ async function checkR_publishedWithoutProvenance() {
       : `${offenders.length} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
 }
 
+// ---- (U) #1196 / OD-88: every set sourced column on EVERY ipos row has a field_sources row --------
+//
+// RCA (#1196): the live create door (DataConsolidationOrchestrator.consolidatedUpsertIPO) consolidated
+// with ipoId 'new' (provenance is skipped for 'new') and created the row without tracking, so a column no
+// later writer touched (companyName on 47 of 396 staging IPOs) never had a provenance row. Fixed in the
+// same PR (the create and its provenance are one transaction). r_published_without_provenance only
+// covers 7 date/price columns of offering_type=IPO rows; it could not see companyName. This check is the
+// standing detector for the whole create-door column list (scripts/lib/create-provenance-checks.mjs), all
+// statuses, segments and offering types. Rows created before the fix FAIL until
+// scraper/scripts/repair-create-provenance-1196.ts has run; a row created after it means the class recurred.
+const CREATE_COLUMN_PROVENANCE_NAME =
+  `every set column in the create door's list (${CREATE_PROVENANCE_COLUMNS.length} ipos columns) carries a field_sources row, on every ipos row`;
+
+async function checkU_createColumnWithoutProvenance() {
+  let rows;
+  try {
+    rows = await q(buildUnprovenancedColumnsSql());
+  } catch (e) {
+    const applied =
+      e.code === '42703' || e.code === '42P01' ? await isMigrationApplied(FIELD_SOURCES_ROW_KEY_MIGRATION) : null;
+    const outcome = classifyRowKeyProbeError(e, applied);
+    record('u_create_column_without_provenance', CREATE_COLUMN_PROVENANCE_NAME, outcome.status,
+      outcome.reason === 'migration-not-applied'
+        ? `not applicable — migration ${FIELD_SOURCES_ROW_KEY_MIGRATION} (field_sources.row_key) not applied on this database`
+        : outcome.reason);
+    return;
+  }
+  const verdict = evaluateUnprovenancedColumns(rows, MAX_OFFENDERS);
+  for (const o of verdict.offenders) {
+    notify('u_create_column_without_provenance', 'P2', `${o.slug}:${o.fields.join(',')}`.slice(0, 120),
+      'an ipos row holds a sourced value with no field_sources row naming its source (the create door did not track it)',
+      `${o.slug} [${o.status}/${o.offeringType}] ${o.fields.join(',')}`);
+  }
+  record('u_create_column_without_provenance', CREATE_COLUMN_PROVENANCE_NAME, verdict.status, verdict.detail);
+}
+
 // ---- (S) item 3 slice S6: PULL-POLICY / PULL-WRITE-POLICY / PULL-PLAN-RANK --
 //
 // Three checks that compare what the pull-model system actually did against
@@ -4054,6 +4091,7 @@ async function main() {
   await runCheck(checkQ_rowKeyCoverage, ['q_field_sources_row_key_coverage']);
   await runCheck(checkR_provenanceParentNotNull, ['r_provenance_parent_not_null']);
   await runCheck(checkR_publishedWithoutProvenance, ['r_published_without_provenance']);
+  await runCheck(checkU_createColumnWithoutProvenance, ['u_create_column_without_provenance']);
   await runCheck(checkNotApplicableDocuments, ['not_applicable_documents_named']);
   await runCheck(checkS_pullPolicy, ['pull_policy']);
   await runCheck(checkS_pullWritePolicy, ['pull_write_policy']);

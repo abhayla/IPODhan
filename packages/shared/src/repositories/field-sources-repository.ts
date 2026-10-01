@@ -123,6 +123,14 @@ export class FieldSourcesRepository extends BaseRepository {
   }
 
   /**
+   * #1196: this repository bound to an open transaction, so provenance commits or rolls back with the
+   * row write that owns it. The cache keys it clears are per-ipo and harmless to clear early.
+   */
+  withDb(tx: unknown): FieldSourcesRepository {
+    return new FieldSourcesRepository(tx as NodePgDatabase<typeof schema>, this.redis);
+  }
+
+  /**
    * Get field source for a specific field
    */
   async findByField(

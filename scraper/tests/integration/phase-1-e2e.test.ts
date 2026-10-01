@@ -30,6 +30,7 @@ import { IPORepository } from '../../../packages/shared/src/repositories/ipo-rep
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
 import { DataConsolidationOrchestrator } from '../../src/services/data-consolidation-orchestrator';
+import { SOURCE_CHANGED_OWN_VALUE } from '../../../packages/shared/src/utils/conflict-reasons';
 import { FEATURE_FLAGS } from '../../src/config/feature-flags';
 import type { ScrapedIPO } from '../../src/utils/validators';
 
@@ -143,20 +144,9 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     expect(savedIPO?.companyName).toBe(nseIPOData.companyName);
     expect(Number(savedIPO?.issueSize)).toBe(nseIPOData.issueSize);
 
-    // #575 / T-299: a brand-new IPO's ipoId is the literal sentinel 'new' while
-    // consolidateIPOData runs, and trackFieldSource is a documented no-op for
-    // that sentinel (real lineage on create is seeded by data-persister.ts's
-    // upsertIPO, a different write path) — so `field_sources` is EMPTY right
-    // after THIS door creates a row, for every field. Round-1 review (Tier B):
-    // asserting that as correct pins a gap OD-88 says should not exist (every
-    // written column carries a field_sources row); staging read confirmed it
-    // (companyName lacks lineage on 47/396 IPOs, #1196). Deliberately NOT
-    // asserted either way here — see the todo below and #1196. Provenance
-    // tracking on THIS write path is exercised in test 2 (its second, update
-    // write has a real uuid and does track).
+    // #1196: provenance for every column the create sets, and its rollback on a failed write, are
+    // asserted in create-provenance-atomic-1196.integration.test.ts.
   }, 10000);
-
-  it.todo('create path records field_sources for every written column (#1196, OD-88)');
 
   it('2: NSE vs BSE conflict detection (dual-source, 10% issue-size gap -> WARNING)', async () => {
     const created = await orchestrator!.consolidatedUpsertIPO(nseIPOData, 'NSE', 95);
@@ -220,6 +210,16 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     // rule applies to the second write. lotSize refreshes from DRHP only (sameSourceRefreshSources), so
     // NSE's 130 does not replace the tracked NSE 100. The test's claim is one row, updated in place.
     expect(savedIPO?.lotSize).toBe(100);
+
+    // OD-75: the page keeps the old value (OD-73) and NSE's change of its own value is recorded for
+    // the admin under its own named reason, INFO severity, never a cross-source dispute.
+    const conflicts = await dataConflictsRepository!.findByIPOId(first.ipoId);
+    const selfChange = conflicts.find((c) => c.fieldName === 'lotSize');
+    expect(selfChange, 'NSE changing its own lotSize must be recorded as a conflict row').toBeDefined();
+    expect(selfChange?.resolutionReason).toBe(SOURCE_CHANGED_OWN_VALUE);
+    expect(selfChange?.source1).toBe('NSE');
+    expect(selfChange?.source2).toBe('NSE');
+    expect(String(selfChange?.value2)).toBe('150');
   }, 10000);
 
   it('5: consolidates multiple IPOs efficiently (< 500ms per IPO)', async () => {
