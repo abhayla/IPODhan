@@ -214,7 +214,7 @@ export const REMOTE_WRITERS = /(^|[/\\])(deploy-and-watch|deploy-linux|db-tunnel
 const GLOB_CHARS = /[{}*?~]/;
 
 // ---- allowed program forms ----------------------------------------------------
-const NPM_SCRIPTS = new Set(['lint:ci', 'test:unit', 'type-check:scripts', 'test:tzcase', 'build']);
+export const NPM_SCRIPTS = new Set(['lint:ci', 'test:unit', 'type-check:scripts', 'test:tzcase', 'build']);
 const NPX_TOOLS = new Set(['tsc', 'vitest', 'eslint', 'tsx']);
 const GIT_READONLY = new Set(['diff', 'rev-parse', 'log', 'show', 'status', 'ls-files', 'merge-base', 'cat-file', 'rev-list', 'ls-tree', 'describe']);
 // node flags allowed BEFORE the script (an explicit list: --import=, --require=,

@@ -12,9 +12,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   WORKFLOW, STEP_TABLE, JOB_TABLE, LINUX_ONLY, loadSteps, classify, buildPlan as rawBuildPlan, ciWouldRun, childEnv, main as gateMain,
-  safeWorkdir, CHANGED_REASON,
+  safeWorkdir, CHANGED_REASON, gateFileChanges, GATE_FILES, PACKAGE_JSONS,
 } from '../ci/local-pr-gate.mjs';
-import { unclassifiedCommands } from '../ci/local-gate-shell-allowlist.mjs';
+import { unclassifiedCommands, NPM_SCRIPTS } from '../ci/local-gate-shell-allowlist.mjs';
 
 const CTX = { base: 'b'.repeat(40), head: 'h'.repeat(40), prNumber: '' };
 // Mapping tests treat the given workflow as already merged (main == branch).
@@ -444,4 +444,91 @@ test('safeWorkdir: repo-relative only', () => {
 test("real workflow: main's own steps all pass the round-3 checks (none newly refused)", () => {
   const { plan } = buildPlan({ files: ['package.json'], ctx: CTX });
   assert.deepEqual(plan.filter((x) => x.action === 'error').map((x) => `${x.key}: ${x.problem}`), []);
+});
+
+// --- gate-defining files: compared with origin/main (fixture diff vs a fake main) ---
+// readMain stands in for `git show origin/main:<path>`; the branch reads disk.
+const NL = String.fromCharCode(10);
+const diskText = (p) => lf(join(WORKFLOW, '..', '..', '..', p));
+const fakeMain = (over = {}) => (p) => (p in over ? over[p] : diskText(p));
+function runGate(branchOver, mainOver = {}) {
+  const logs = [];
+  const { log } = console;
+  console.log = (m) => logs.push(String(m));
+  let code;
+  try {
+    code = gateMain(['--plan', '--files', 'web/app/page.tsx,scripts/ops/x.mjs'], {
+      readTrusted: () => lf(WORKFLOW),
+      readMain: fakeMain(mainOver),
+      readBranch: (p) => (p in branchOver ? branchOver[p] : diskText(p)),
+    });
+  } finally {
+    console.log = log;
+  }
+  return { code, out: logs.join(NL) };
+}
+const assertAllCiOnly = (r, file) => {
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.out.includes(`gate-defining file(s): ${file} (`), `message does not name ${file}: ${r.out}`);
+  assert.match(r.out, /run here: 0 /);
+  assert.ok(!r.out.includes('[run]'), 'a step was planned to run');
+};
+
+test('gate files: a branch that changes local-pr-gate.mjs makes every step CI-only (exit 0, names the file)', () => {
+  const src = diskText('scripts/ci/local-pr-gate.mjs');
+  assertAllCiOnly(runGate({ 'scripts/ci/local-pr-gate.mjs': `${src}${NL}// cmd: node scripts/x.mjs${NL}` }), 'scripts/ci/local-pr-gate.mjs');
+});
+
+test('gate files: a branch that changes the allow-list file makes every step CI-only', () => {
+  const src = diskText('scripts/ci/local-gate-shell-allowlist.mjs');
+  assertAllCiOnly(runGate({ 'scripts/ci/local-gate-shell-allowlist.mjs': `${src}${NL}// x${NL}` }), 'scripts/ci/local-gate-shell-allowlist.mjs');
+});
+
+test('gate files: a branch that changes .husky/pre-push makes every step CI-only', () => {
+  assertAllCiOnly(runGate({ '.husky/pre-push': `${diskText('.husky/pre-push')}${NL}# x${NL}` }), '.husky/pre-push');
+});
+
+test('gate files: changing the body of an allow-listed npm script is CI-only, in root and per-package', () => {
+  let checked = 0;
+  for (const pj of PACKAGE_JSONS) {
+    const o = JSON.parse(diskText(pj));
+    const name = [...NPM_SCRIPTS].find((n) => o.scripts && n in o.scripts);
+    if (!name) continue;
+    o.scripts[name] = `${o.scripts[name]} && node scripts/evil.mjs`;
+    const r = runGate({ [pj]: JSON.stringify(o, null, 2) });
+    assertAllCiOnly(r, pj);
+    assert.ok(r.out.includes(name), `message does not name script ${name}`);
+    checked++;
+  }
+  assert.ok(checked >= 2, 'expected at least root and one package to carry an allow-listed script');
+});
+
+test('gate files: a non-allow-listed npm script change runs normally', () => {
+  const o = JSON.parse(diskText('package.json'));
+  o.scripts['some-unlisted-script'] = 'echo hi';
+  const r = runGate({ 'package.json': JSON.stringify(o, null, 2) });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(!r.out.includes('gate-defining file'));
+  assert.ok(r.out.includes('[run]'), 'nothing planned to run');
+});
+
+test('gate files: CRLF vs LF of the same gate file is not a change', () => {
+  const src = diskText('scripts/ci/local-pr-gate.mjs');
+  const r = runGate({ 'scripts/ci/local-pr-gate.mjs': src.split(NL).join(`\r${NL}`) });
+  assert.ok(!r.out.includes('gate-defining file'));
+});
+
+test('gate files: a path missing on main but present on the branch is a change; unreadable main refuses (exit 2)', () => {
+  const ch = gateFileChanges({ readMain: (p) => (GATE_FILES.includes(p) ? diskText(p) : null), readBranch: diskText });
+  assert.ok(ch.some((c) => c.path === 'web/package.json'));
+  assert.throws(() => gateFileChanges({ readMain: () => { throw new Error('fatal: bad object'); }, readBranch: diskText }), /bad object/);
+  const errs = [];
+  const { error } = console;
+  console.error = (m) => errs.push(String(m));
+  let code;
+  try {
+    code = gateMain(['--plan', '--files', 'web/app/page.tsx'], { readTrusted: () => lf(WORKFLOW), readMain: () => { throw new Error('fatal: bad object'); } });
+  } finally { console.error = error; }
+  assert.equal(code, 2);
+  assert.ok(errs.join(NL).includes('REFUSED - cannot read the gate files'));
 });

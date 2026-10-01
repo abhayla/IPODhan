@@ -14,8 +14,11 @@
 // (`git show refs/remotes/origin/main:...`, after a bounded fetch), never from
 // the branch's working copy. A step the branch adds, changes or removes (run,
 // env, working-directory, if, or the job/workflow settings that reach it) is
-// listed "changed in this branch: CI-only" and not run, so a branch can never get
-// a new command run on this machine; origin/main unreadable = refuse. The
+// listed "changed in this branch: CI-only" and not run. A branch cannot get a new
+// command run through pr-gate.yml, the gate files or the allow-listed npm
+// scripts: when it changes any of those, the whole run is CI-only. A branch's own
+// repo scripts called by main's steps do run (that is the gate's purpose).
+// origin/main unreadable = refuse. The
 // allow-list below is the second layer, against honest mistakes in main's steps.
 //
 // HOW (structural, not a hand-copied list): the steps are READ FROM pr-gate.yml
@@ -47,7 +50,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { unclassifiedCommands, envProblem } from './local-gate-shell-allowlist.mjs';
+import { unclassifiedCommands, envProblem, NPM_SCRIPTS } from './local-gate-shell-allowlist.mjs';
 
 const require = createRequire(import.meta.url);
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -296,9 +299,10 @@ export function ciWouldRun(files, wf) {
 // Round 3 trust model: the steps that RUN come from the reviewed workflow on
 // origin/main (`trustedText`), never from the branch's working copy. A step the
 // branch adds, changes or removes (any part of it, or the job/workflow settings
-// that reach it) is LISTED as changed and not run: a branch can never get a new
-// command run on this machine. The branch's own scripts still run through main's
-// unchanged steps, which is what the gate is for.
+// that reach it) is LISTED as changed and not run. The gate files and the
+// allow-listed npm scripts are compared with origin/main the same way (see
+// gateFileChanges); any difference makes every step CI-only. A branch's own repo
+// scripts called by main's unchanged steps do run (that is the gate's purpose).
 const stepKey = (s) => `${s.jobId} :: ${s.name}`;
 function keyed(steps) {
   const seen = new Map();
@@ -313,7 +317,37 @@ function keyed(steps) {
 }
 export const CHANGED_REASON = 'changed in this branch: CI-only (not run locally)';
 
-export function buildPlan({ files, ctx, trustedText, workflowPath = WORKFLOW, full = false }) {
+// Branch-owned files that decide what the local gate runs. Each is compared with
+// origin/main; a difference means the branch could steer what runs here.
+export const GATE_FILES = ['scripts/ci/local-pr-gate.mjs', 'scripts/ci/local-gate-shell-allowlist.mjs', '.husky/pre-push'];
+export const PACKAGE_JSONS = ['package.json', 'web/package.json', 'scraper/package.json', 'packages/shared/package.json'];
+const toLf = (t) => (typeof t === 'string' ? t.split(String.fromCharCode(13, 10)).join(String.fromCharCode(10)) : t);
+const scriptsOf = (text) => {
+  try { return JSON.parse(text).scripts || {}; } catch { return null; }
+};
+// readMain(path) -> text, or null when the path does not exist on main; it throws
+// when main is unreadable (the caller refuses). readBranch(path) -> text or null.
+export function gateFileChanges({ readMain, readBranch }) {
+  const out = [];
+  for (const path of GATE_FILES) {
+    const m = readMain(path);
+    const b = readBranch(path);
+    if (toLf(m) !== toLf(b)) out.push({ path, why: 'differs from origin/main' });
+  }
+  for (const path of PACKAGE_JSONS) {
+    const mt = readMain(path);
+    const bt = readBranch(path);
+    if (mt === null && bt === null) continue;
+    const ms = mt === null ? null : scriptsOf(mt);
+    const bs = bt === null ? null : scriptsOf(bt);
+    if (!ms || !bs) { out.push({ path, why: 'added, removed or unparseable vs origin/main' }); continue; }
+    const diff = [...NPM_SCRIPTS].filter((n) => ms[n] !== bs[n]);
+    if (diff.length) out.push({ path, why: `allow-listed npm script(s) differ from origin/main: ${diff.join(', ')}` });
+  }
+  return out;
+}
+
+export function buildPlan({ files, ctx, trustedText, workflowPath = WORKFLOW, full = false, gateChanged = [] }) {
   if (typeof trustedText !== 'string' || !trustedText.trim()) {
     throw new Error('local-pr-gate: no trusted (origin/main) pr-gate.yml text; refusing to plan from the branch copy');
   }
@@ -322,6 +356,12 @@ export function buildPlan({ files, ctx, trustedText, workflowPath = WORKFLOW, fu
   const main = keyed(mainSteps);
   const runs = ciWouldRun(files, wf);
   const plan = [];
+  if (gateChanged.length) {
+    const named = gateChanged.map((g) => `${g.path} (${g.why})`).join('; ');
+    const reason = `gate-defining file changed in this branch: ${named}; CI-only (not run locally)`;
+    for (const k of new Set([...branch.keys(), ...main.keys()])) plan.push({ key: k, mode: 'gate-changed', action: 'ci-only', reason });
+    return { plan, ciRuns: runs, gateChanged };
+  }
   const seen = new Set();
   for (const k of branch.keys()) {
     if (!main.has(k)) plan.push({ key: k, mode: 'changed', action: 'ci-only', reason: `${CHANGED_REASON} (new step)` });
@@ -406,7 +446,17 @@ export function readTrustedWorkflow() {
 
 function fmtSecs(ms) { return `${(ms / 1000).toFixed(1)}s`; }
 
-export function main(argv = process.argv.slice(2), { readTrusted = readTrustedWorkflow } = {}) {
+function readMainPath(path) {
+  try { return git(['show', `${TRUSTED_REF}:${path}`]); } catch (e) {
+    if (/exists on disk, but not in|does not exist in|path .* does not exist/i.test(String(e.stderr || e.message))) return null;
+    throw e;
+  }
+}
+function readBranchPath(path) {
+  try { return readFileSync(join(REPO_ROOT, path), 'utf8'); } catch { return null; }
+}
+
+export function main(argv = process.argv.slice(2), { readTrusted = readTrustedWorkflow, readMain = readMainPath, readBranch = readBranchPath } = {}) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log('usage: node scripts/ci/local-pr-gate.mjs [--plan] [--full] [--keep-going] [--base <ref>] [--files a,b] [--only <regex>]');
@@ -437,7 +487,15 @@ export function main(argv = process.argv.slice(2), { readTrusted = readTrustedWo
     console.error(`local-pr-gate: REFUSED - cannot read pr-gate.yml from ${TRUSTED_REF} (${String(e.message || e).split(/\r?\n/)[0]}). The gate runs only reviewed, merged steps; run 'git fetch origin main'.`);
     return 2;
   }
-  const { plan, ciRuns } = buildPlan({ files, ctx, trustedText, full: args.full });
+  let gateChanged;
+  try {
+    gateChanged = gateFileChanges({ readMain, readBranch });
+  } catch (e) {
+    console.error(`local-pr-gate: REFUSED - cannot read the gate files from ${TRUSTED_REF} (${String(e.message || e).split(/\r?\n/)[0]}). Run 'git fetch origin main'.`);
+    return 2;
+  }
+  if (gateChanged.length) console.log(`local-pr-gate: this branch changes gate-defining file(s): ${gateChanged.map((g) => `${g.path} (${g.why})`).join('; ')}. A branch cannot steer what runs here, so every step is CI-only; CI runs them on the PR.`);
+  const { plan, ciRuns } = buildPlan({ files, ctx, trustedText, full: args.full, gateChanged });
 
   console.log(`local-pr-gate: ${files.length} changed file(s) in ${base.slice(0, 8)}..${head.slice(0, 8)} (runs the steps of pr-gate.yml as merged on origin/main)`);
   if (!ciRuns) console.log('local-pr-gate: every changed path is excluded by pr-gate.yml `paths:` (docs-only); CI will not run it either.');
