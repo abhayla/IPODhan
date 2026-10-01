@@ -8,28 +8,37 @@
 -- fractional GMP written to it.
 --
 -- Safe on every slot:
---   * Guarded: a column is altered only while it is still integer. A slot that
---     already had B2 hand-applied (staging: numeric(10,2), measured
---     2026-10-01) is a no-op - no table rewrite.
+--   * Fail fast: SET LOCAL lock_timeout = '5s'. A blocked deploy errors out and
+--     rolls back instead of queueing every gmp_records read behind the ALTER.
+--   * Guarded: a column is altered only while its type is smallint, integer or
+--     bigint (read from pg_attribute + format_type, which unlike
+--     information_schema also sees columns the role has no privileges on).
+--     A slot that already had B2 hand-applied (staging: numeric(10,2),
+--     measured 2026-10-01) is a no-op - no table rewrite.
+--   * One rewrite: every column that needs it goes into ONE ALTER TABLE, so the
+--     table is rewritten once, not once per column.
 --   * Lossless widening: every integer with |v| < 100,000,000 fits
 --     numeric(10,2) exactly. A larger value makes the ALTER fail with
 --     "numeric field overflow" and the migration (and deploy) stops; nothing is
 --     rounded or truncated silently.
 --   * Not destructive: no column, row or value is dropped.
+SET LOCAL lock_timeout = '5s';
+--> statement-breakpoint
 DO $$
 DECLARE
-  col text;
+  clauses text;
 BEGIN
-  FOREACH col IN ARRAY ARRAY['gmp', 'expected_listing_price', 'subject_rate', 'kostak_rate'] LOOP
-    IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'gmp_records'
-        AND column_name = col AND data_type = 'integer'
-    ) THEN
-      EXECUTE format(
-        'ALTER TABLE "gmp_records" ALTER COLUMN %I TYPE numeric(10, 2) USING %I::numeric(10, 2)',
-        col, col
-      );
-    END IF;
-  END LOOP;
+  SELECT string_agg(
+           format('ALTER COLUMN %I TYPE numeric(10, 2) USING %I::numeric(10, 2)', a.attname, a.attname),
+           ', ' ORDER BY a.attnum)
+    INTO clauses
+    FROM pg_attribute a
+   WHERE a.attrelid = to_regclass('public.gmp_records')
+     AND a.attname IN ('gmp', 'expected_listing_price', 'subject_rate', 'kostak_rate')
+     AND NOT a.attisdropped
+     AND a.attnum > 0
+     AND format_type(a.atttypid, a.atttypmod) IN ('smallint', 'integer', 'bigint');
+  IF clauses IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE "gmp_records" ' || clauses;
+  END IF;
 END $$;
