@@ -228,6 +228,8 @@ export function uncheckableUniqueIndexRefusal(idx: {
  */
 export interface ChildRowDelta {
   table: string;
+  /** The table's PRIMARY KEY columns (pg_constraint), in key order: how its rows are identified. */
+  pk: string[];
   /** Rows the step removed, whole, as they stood before it. */
   deleted: string[];
   /** Rows the step created, whole, as it left them. */
@@ -241,21 +243,45 @@ export interface ChildRowCapture {
   finish: () => Promise<ChildRowDelta[]>;
 }
 
-async function readChildRows(tx: Exec, ipoId: string, tables: { table: string; col: string }[]) {
+/** Every public table's PRIMARY KEY columns, in key order, read from the live catalog. */
+export async function readPrimaryKeys(tx: Exec): Promise<Map<string, string[]>> {
+  const r = rowsOf<{ tbl: string; cols: string[] | string }>(
+    await tx.execute(sql`
+      select c.conrelid::regclass::text as tbl,
+             array(select a.attname::text from unnest(c.conkey) with ordinality k(attnum, ord)
+                   join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum order by k.ord) as cols
+      from pg_constraint c
+      where c.contype = 'p' and c.connamespace = 'public'::regnamespace
+    `)
+  );
+  return new Map(
+    r.map((x) => [x.tbl.replace(/^"?public"?\./, '').replace(/^"|"$/g, ''), Array.isArray(x.cols) ? x.cols : String(x.cols).replace(/^{|}$/g, '').split(',').filter(Boolean)])
+  );
+}
+
+/** SQL text of a row's identity: its primary-key values joined by commas (one value for a one-column key). */
+export const pkIdentitySql = (rowExpr: ReturnType<typeof sql>, pk: string[]) =>
+  sql`concat_ws(',', ${sql.join(pk.map((c) => sql`${rowExpr} ->> ${c}::text`), sql`, `)})`;
+
+/** `t.c = r.c and ...` over the primary key: typed, so the table's key index is usable. */
+export const pkMatchSql = (t: ReturnType<typeof sql>, r: ReturnType<typeof sql>, pk: string[]) =>
+  sql.join(pk.map((c) => sql`${t}.${sql.identifier(c)} = ${r}.${sql.identifier(c)}`), sql` and `);
+
+async function readChildRows(tx: Exec, ipoId: string, tables: { table: string; col: string }[], pks: Map<string, string[]>) {
   const out = new Map<string, Map<string, string>>();
   for (const { table, col } of tables) {
-    const r = rowsOf<{ id: string | null; row: string }>(
+    const pk = pks.get(table);
+    if (!pk?.length) throw new Error(`merge capture: ${table} has no primary key, so a change to its rows cannot be logged — refusing`);
+    const r = rowsOf<{ row: string }>(
       await tx.execute(sql`
-        select to_jsonb(t.*) ->> 'id' as id, to_jsonb(t.*)::text as row from ${sql.identifier(table)} t
+        select to_jsonb(t.*)::text as row from ${sql.identifier(table)} t
         where t.${sql.identifier(col)} = ${ipoId}
       `)
     );
     const m = new Map<string, string>();
     for (const x of r) {
-      if (x.id === null || x.id === undefined) {
-        throw new Error(`merge capture: ${table} has no id column, so a change to its rows cannot be logged — refusing`);
-      }
-      m.set(x.id, x.row);
+      const parsed = JSON.parse(x.row) as Record<string, unknown>;
+      m.set(JSON.stringify(pk.map((c) => parsed[c])), x.row);
     }
     out.set(table, m);
   }
@@ -272,15 +298,16 @@ export async function beginChildRowCapture(
   ipoId: string,
   tables: { table: string; col: string }[]
 ): Promise<ChildRowCapture> {
-  const before = await readChildRows(tx, ipoId, tables);
+  const pks = await readPrimaryKeys(tx);
+  const before = await readChildRows(tx, ipoId, tables, pks);
   return {
     finish: async () => {
-      const after = await readChildRows(tx, ipoId, tables);
+      const after = await readChildRows(tx, ipoId, tables, pks);
       const delta: ChildRowDelta[] = [];
       for (const { table } of tables) {
         const b = before.get(table)!;
         const a = after.get(table)!;
-        const d: ChildRowDelta = { table, deleted: [], inserted: [], updated: [] };
+        const d: ChildRowDelta = { table, pk: pks.get(table)!, deleted: [], inserted: [], updated: [] };
         for (const [id, row] of b) {
           const now = a.get(id);
           if (now === undefined) d.deleted.push(row);
@@ -310,7 +337,7 @@ export function childRowDeltaJson(delta: ChildRowDelta[]): string {
   return arr(
     delta.map(
       (d) =>
-        `{"table":${JSON.stringify(d.table)},"deleted":${arr(d.deleted)},"inserted":${arr(d.inserted)},` +
+        `{"table":${JSON.stringify(d.table)},"pk":${JSON.stringify(d.pk)},"deleted":${arr(d.deleted)},"inserted":${arr(d.inserted)},` +
         `"updated":${arr(d.updated.map((u) => `{"before":${u.before},"after":${u.after}}`))}}`
     )
   );

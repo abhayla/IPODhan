@@ -56,6 +56,9 @@ import {
   beginChildRowCapture,
   captureMergeDeletions,
   childRowDeltaJson,
+  pkIdentitySql,
+  pkMatchSql,
+  readPrimaryKeys,
   missingForUnmerge,
   type ChildRowDelta,
   uncheckableUniqueIndexRefusal,
@@ -2738,7 +2741,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         supersededKeyIds: string[];
         keepRowAfter: Record<string, unknown> | null;
         redirectId: string | null;
-        relaunchDelta?: { table: string; deleted: Record<string, unknown>[]; inserted: Record<string, unknown>[]; updated: { before: Record<string, unknown>; after: Record<string, unknown> }[] }[];
+        relaunchDelta?: { table: string; pk?: string[]; deleted: Record<string, unknown>[]; inserted: Record<string, unknown>[]; updated: { before: Record<string, unknown>; after: Record<string, unknown> }[] }[];
       };
       const patchFields = (sp.patch ?? []).map((p) => p.column);
       const fieldNames = patchFields.map(columnToCamelCase);
@@ -2757,13 +2760,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const keepAfterExpr = logExpr(sql`restore_data->'keepRowAfter'`);
       // #1298 round 2: the survivor's child rows the merge's relaunch clear changed (ipo-merge-restore.ts
       // beginChildRowCapture). Each part is read out of the log inside the database.
-      const deltaParts = (rd?.relaunchDelta ?? []).map((d, i) => ({
+      const pkByTable = await readPrimaryKeys(tx);
+      const deltaParts = (rd?.relaunchDelta ?? []).map((d, i) => {
+        const pk = d.pk?.length ? d.pk : ['id'];
+        const idOf = (row: Record<string, unknown>) => pk.map((c) => String(row[c])).join(',');
+        return {
         table: d.table,
+        pk,
         del: logExpr(sql`restore_data->'relaunchDelta'->${i}::int->'deleted'`),
         ins: logExpr(sql`restore_data->'relaunchDelta'->${i}::int->'inserted'`),
         upd: logExpr(sql`restore_data->'relaunchDelta'->${i}::int->'updated'`),
-        forceable: [...d.inserted.map((r) => r.id), ...d.updated.map((u) => u.after.id)].map((id) => `relaunch:${d.table}:${String(id)}`),
-      }));
+        forceable: [...d.inserted.map(idOf), ...d.updated.map((u) => idOf(u.after))].map((id) => `relaunch:${d.table}:${id}`),
+        };
+      });
 
       // --- drift, over the CARRIED columns only (OD-92) -----------------------------------------
       // The merge changed the survivor only in the carried columns (and updated_at). Every other
@@ -2814,11 +2823,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const t = sql.identifier(d.table);
         const changed = rows<{ id: string }>(
           await tx.execute(sql`
-            select e->>'id' as id from jsonb_array_elements(${d.ins}) e
-            where (select to_jsonb(t.*) from ${t} t where (to_jsonb(t.*) ->> 'id') = e->>'id') is distinct from e
+            select ${pkIdentitySql(sql`e`, d.pk)} as id from jsonb_array_elements(${d.ins}) e,
+              lateral jsonb_populate_record(null::${t}, e) r
+            where (select to_jsonb(t.*) from ${t} t where ${pkMatchSql(sql`t`, sql`r`, d.pk)}) is distinct from e
             union all
-            select e->'after'->>'id' from jsonb_array_elements(${d.upd}) e
-            where (select to_jsonb(t.*) from ${t} t where (to_jsonb(t.*) ->> 'id') = e->'after'->>'id') is distinct from e->'after'
+            select ${pkIdentitySql(sql`(e->'after')`, d.pk)} from jsonb_array_elements(${d.upd}) e,
+              lateral jsonb_populate_record(null::${t}, e->'after') r
+            where (select to_jsonb(t.*) from ${t} t where ${pkMatchSql(sql`t`, sql`r`, d.pk)}) is distinct from e->'after'
           `)
         );
         deltaDrift.push(...changed.map((r) => `relaunch:${d.table}:${r.id}`));
@@ -2859,8 +2870,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       for (const d of deltaParts) {
         const back = rows<{ id: string }>(
           await tx.execute(sql`
-            select e->>'id' as id from jsonb_array_elements(${d.del}) e
-            where exists (select 1 from ${sql.identifier(d.table)} t where (to_jsonb(t.*) ->> 'id') = e->>'id')
+            select ${pkIdentitySql(sql`e`, d.pk)} as id from jsonb_array_elements(${d.del}) e,
+              lateral jsonb_populate_record(null::${sql.identifier(d.table)}, e) r
+            where exists (select 1 from ${sql.identifier(d.table)} t where ${pkMatchSql(sql`t`, sql`r`, d.pk)})
           `)
         );
         for (const b of back) collisions.push(`refused: ${d.table} row ${b.id}, deleted by the merge's relaunch clear, exists again`);
@@ -2894,12 +2906,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             cols.map((c) => sql`t.${sql.identifier(c)} = r.${sql.identifier(c)}`),
             sql` and `
           );
+          const setPk = pkByTable.get(set.table) ?? ['id'];
           const clash = rows<{ id: string }>(
             await tx.execute(sql`
-              select distinct to_jsonb(t.*) ->> 'id' as id
+              select distinct ${pkIdentitySql(sql`to_jsonb(t.*)`, setPk)} as id
               from jsonb_populate_recordset(null::${sql.identifier(set.table)}, ${set.rowsExpr}) r
               join ${sql.identifier(set.table)} t on ${match}
-              where (to_jsonb(t.*) ->> 'id') is distinct from (to_jsonb(r.*) ->> 'id')
+              where ${pkIdentitySql(sql`to_jsonb(t.*)`, setPk)} is distinct from ${pkIdentitySql(sql`to_jsonb(r.*)`, setPk)}
             `)
           );
           for (const c of clash) collisions.push(`refused: ${set.table} ${u.name} collides with survivor row ${c.id}`);
@@ -3021,34 +3034,33 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       for (const d of deltaParts) {
         const t = sql.identifier(d.table);
         await tx.execute(sql`
-          delete from ${t} t where (to_jsonb(t.*) ->> 'id') = any(array(select e->>'id' from jsonb_array_elements(${d.ins}) e))
+          delete from ${t} t using jsonb_array_elements(${d.ins}) e, lateral jsonb_populate_record(null::${t}, e) r
+          where ${pkMatchSql(sql`t`, sql`r`, d.pk)}
         `);
         const cols = rows<{ c: string }>(
           await tx.execute(sql`
             select column_name::text as c from information_schema.columns
-            where table_schema = 'public' and table_name = ${d.table} and column_name <> 'id'
+            where table_schema = 'public' and table_name = ${d.table}
             order by ordinal_position
           `)
-        ).map((r) => r.c);
+        ).map((r) => r.c).filter((c) => !d.pk.includes(c));
         if (cols.length) {
           await tx.execute(sql`
             update ${t} t set (${sql.join(cols.map((c) => sql.identifier(c)), sql`, `)}) =
               (select ${sql.join(cols.map((c) => sql`r.${sql.identifier(c)}`), sql`, `)}
                from jsonb_populate_record(null::${t}, e->'before') r)
-            from jsonb_array_elements(${d.upd}) e
-            where (to_jsonb(t.*) ->> 'id') = e->'before'->>'id'
+            from jsonb_array_elements(${d.upd}) e, lateral jsonb_populate_record(null::${t}, e->'before') k
+            where ${pkMatchSql(sql`t`, sql`k`, d.pk)}
           `);
         }
         await tx.execute(sql`insert into ${t} select * from jsonb_populate_recordset(null::${t}, ${d.del})`);
         const off = rows<{ id: string }>(
           await tx.execute(sql`
-            select s.x->>'id' as id
+            select ${pkIdentitySql(sql`s.x`, d.pk)} as id
             from (select e as x from jsonb_array_elements(${d.del}) e
-                  union all select e->'before' from jsonb_array_elements(${d.upd}) e) s
-            where (select to_jsonb(t.*) from ${t} t where (to_jsonb(t.*) ->> 'id') = s.x->>'id') is distinct from s.x
-            union all
-            select e->>'id' from jsonb_array_elements(${d.ins}) e
-            where exists (select 1 from ${t} t where (to_jsonb(t.*) ->> 'id') = e->>'id')
+                  union all select e->'before' from jsonb_array_elements(${d.upd}) e) s,
+              lateral jsonb_populate_record(null::${t}, s.x) r
+            where (select to_jsonb(t.*) from ${t} t where ${pkMatchSql(sql`t`, sql`r`, d.pk)}) is distinct from s.x
           `)
         ).map((r) => r.id);
         if (off.length) {
