@@ -80,6 +80,41 @@ import { resolveIpoTypeKey } from './field-plan-generator.js';
 /**
  * Result of field consolidation
  */
+/**
+ * #1368: input of `DataConsolidationService.runPreRankChecks`. Everything the checks read is passed in,
+ * so the fallback door can run them with no consolidation call in flight.
+ */
+export interface PreRankCheckInput {
+  ipoId: string;
+  tableName: string;
+  rowKey?: string;
+  fieldName: string;
+  incomingValue: any;
+  incomingSource: ScraperSource;
+  incomingDocType?: string;
+  existingSource?: ScraperSource;
+  /** The stored value (tracked or not); returned untouched on a refusal. */
+  storedValue: any;
+  segment?: string | null;
+  heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+  incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+  scrapedAt?: Date;
+  /** Manifest ipoType for the incapable-source policy; MAINBOARD when omitted. */
+  ipoType?: string;
+  /** OD-21 row context. */
+  offeringType: string;
+  documentId: string | null;
+  documentSha256: string | null;
+  /** Shadow mode records no data_conflicts row. */
+  shadowMode: boolean;
+}
+
+/** PASS = write; NO_INCOMING_VALUE = nothing usable came in; REFUSED = keep the stored value (or empty). */
+export type PreRankCheckOutcome =
+  | { status: 'PASS' }
+  | { status: 'NO_INCOMING_VALUE' }
+  | { status: 'REFUSED'; reason: string; result: FieldConsolidationResult };
+
 export interface FieldConsolidationResult {
   fieldName: string;
   finalValue: any;
@@ -898,6 +933,293 @@ export function collectImplausibleIssueSizeFields(
 }
 
 /**
+ * #1368: what `runPreRankChecks` needs beyond its input. The OD-21 gate runs only when
+ * `fieldExtractionFailuresRepository` is given (unchanged rule: a gate that cannot record a failure does
+ * not drop values); `validationRules` may throw, which the fallback door treats as "cannot check" (fail closed).
+ */
+export interface PreRankCheckDeps {
+  fieldExtractionFailuresRepository?: {
+    recordFailure(input: Record<string, any>): Promise<any>;
+    markResolved(ipoId: string, tableName: string, fieldName: string, rowKey?: string): Promise<number>;
+  };
+  validationRules: () => ValidationRule[];
+  tradingHolidays?: ReadonlySet<string>;
+  dataConflictsRepository: { upsertConflict(input: Record<string, any>): Promise<unknown> };
+}
+
+/**
+ * #1368: the per-field checks that run BEFORE any ranking, as ONE method both `ipos` write doors
+ * run: `consolidateField` (the consolidation door) and the persister's IPO_WRITE_GUARDS entry
+ * `pre-rank-field-checks` (the fallback door, which runs when consolidation throws). In order:
+ *   1. the OD-21 per-field validation gate (item 4; flag ENABLE_FIELD_EXTRACTION_VALIDATION and a
+ *      wired failures repository, exactly as before);
+ *   2. value normalization (`normalize`: the matrix's currency / date / company-name rules); an
+ *      incoming value that normalizes to nothing is NO_INCOMING_VALUE (the caller keeps the stored value);
+ *   3. the field matrix validation bounds (`validateValue` on the normalized value): VALIDATION_FAILED;
+ *   4. the incapable-source refusal (spec section 2.3.5, item 3 slice S1c): REJECTED_INCAPABLE_SOURCE.
+ * The written value is never the normalized one: both doors write the source's value as given
+ * (normalization only decides comparison and validation), so the fallback door matches the primary.
+ * Every input is passed explicitly; nothing is read from the per-call instance state, because the
+ * service is a shared singleton and the fallback door runs after another call's state was set.
+ */
+export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCheckDeps): Promise<PreRankCheckOutcome> {
+  const {
+    ipoId,
+    tableName,
+    fieldName,
+    incomingValue,
+    incomingSource,
+    existingSource,
+    storedValue,
+  } = input;
+  const rowKey = input.rowKey ?? '';
+  const ipoType = input.ipoType ?? 'MAINBOARD';
+  const rules = getFieldRules(fieldName);
+
+  // ==================== Item 4 (OD-21): per-field validation gate ====================
+  // Runs on the INCOMING value only: the stored value already passed this
+  // same gate on a previous cycle, or predates the gate. No all-at-once
+  // backfill sweep is in scope for this item.
+  //
+  // Three outcomes, and only ONE of them drops anything:
+  //   FAIL            -> this field alone is dropped and recorded with its
+  //                      cause; every other field on the same document is
+  //                      untouched, because this function runs per field.
+  //   NO_RULE_APPLIES -> KEPT. A value the current rule set was never
+  //                      written to judge is not a failed value.
+  //   PASS            -> falls through unchanged.
+  if (
+    FEATURE_FLAGS.ENABLE_FIELD_EXTRACTION_VALIDATION &&
+    deps.fieldExtractionFailuresRepository
+  ) {
+    const columnName = toColumnName(fieldName);
+    const outcome = validateFieldValue({
+      table: tableName,
+      column: columnName,
+      value: incomingValue,
+      offeringType: input.offeringType,
+      segment: input.segment ?? null,
+      // The row's OWN relevant date, never "today" — this is what makes a
+      // 2022 backlog row judged by the 2022-era rule. For a date field it is
+      // the value under test itself (a listing date decides which T+n regime
+      // governs its own gap check); otherwise the row's listing/open date.
+      asOfDate: resolveAsOfDate(columnName, incomingValue, input),
+      rules: deps.validationRules(),
+      row: {
+        open_date: input.incomingDates?.openDate ?? input.heldDates?.openDate ?? null,
+        close_date: input.incomingDates?.closeDate ?? input.heldDates?.closeDate ?? null,
+        listing_date: input.incomingDates?.listingDate ?? input.heldDates?.listingDate ?? null,
+      },
+      holidays: deps.tradingHolidays ?? null,
+    });
+
+    if (outcome.status === 'FAIL') {
+      try {
+        await deps.fieldExtractionFailuresRepository.recordFailure({
+          ipoId,
+          tableName,
+          fieldName,
+          rowKey,
+          documentId: input.documentId,
+          documentSha256: input.documentSha256,
+          ruleId: outcome.ruleId,
+          rankAttempted: incomingSource,
+          extractedValue: String(incomingValue).slice(0, 2000),
+          cause: outcome.cause,
+        });
+      } catch (error) {
+        // Recording is best-effort; a logging failure must not turn a
+        // dropped field into a written bad value OR abort the document.
+        logger.error(
+          {
+            ipoId,
+            tableName,
+            fieldName,
+            ruleId: outcome.ruleId,
+            cause: outcome.cause,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          '[DataConsolidation] item 4: could not record a field-extraction failure'
+        );
+      }
+
+      return {
+        status: 'REFUSED',
+        reason: `VALIDATION_RULE_FAILED:${outcome.ruleId}`,
+        result: {
+          fieldName,
+          finalValue: storedValue ?? null,
+          chosenSource: existingSource || incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: `VALIDATION_RULE_FAILED:${outcome.ruleId}`,
+            },
+          ],
+        },
+      };
+    }
+
+    if (outcome.status === 'PASS') {
+      // A later rank finally produced a value this rule accepts — close the
+      // open failure rows for this exact field so the unresolved index is a
+      // list of things still wrong, not a history of everything ever tried.
+      try {
+        await deps.fieldExtractionFailuresRepository.markResolved(ipoId, tableName, fieldName, rowKey);
+      } catch {
+        // non-fatal; the row simply stays open until the next passing write
+      }
+    }
+  }
+
+  const normalizedIncoming = normalize(fieldName, incomingValue, rules);
+  if (normalizedIncoming === null || normalizedIncoming === undefined) {
+    return { status: 'NO_INCOMING_VALUE' };
+  }
+
+  // Validate incoming value. #1368: a value the field's normalizer could not parse comes back as NaN
+  // (`normalizeCurrency` / `normalizeNumber`), and NaN passes every numeric bound (`NaN < min` and
+  // `NaN > max` are both false), so the raw unparseable text used to reach the write. Refused here.
+  if (
+    (typeof normalizedIncoming === 'number' && Number.isNaN(normalizedIncoming)) ||
+    !validateValue(normalizedIncoming, rules)
+  ) {
+    // Stage 1 round 3 (signal-ownership.md R6): a matrix-level refusal was
+    // previously silent — the field was dropped with no log line, so a
+    // valid write (e.g. a legal lot under the old min:10 floor) vanished
+    // with no trace in the run log. Make the skip visible.
+    //
+    // Review round 8: this call was lost in round 6's edit to this same
+    // file (a working-copy mixup while isolating an unrelated TS2484
+    // diagnosis in round 7 restored a stale intermediate version of this
+    // file that predated stage 1 round 3's addition, then only the
+    // narrowly-scoped normalizeChosen export was manually reapplied on
+    // top — this block was not). Restored verbatim from commit 98fcc55c.
+    logger.warn(
+      {
+        ipoId,
+        tableName,
+        fieldName,
+        value: normalizedIncoming,
+        source: incomingSource,
+        rule: rules.validation,
+      },
+      '[DataConsolidation] matrix validation refused a field value - field skipped'
+    );
+
+    return {
+      status: 'REFUSED',
+      reason: 'VALIDATION_FAILED',
+      result: {
+        fieldName,
+        finalValue: storedValue, // Keep existing
+        chosenSource: existingSource || incomingSource,
+        hadConflict: false,
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'VALIDATION_FAILED',
+          },
+        ],
+      },
+    };
+  }
+
+  // ==================== Item 3 slice S1c: an INCAPABLE source is refused ====================
+  // The manifest marks some (field, source) pairs `capability.<SRC>.capable === false`: the
+  // source structurally CANNOT produce a correct value for that field (BSE's issue size
+  // measured 41-76% below the printed total on 6/6 live mainboard IPOs, #728; NSE's computed
+  // offer value excludes the OFS portion; no filing document carries a live intra-bid
+  // subscription figure). This is strictly stronger than "not ranked": an unranked-but-capable
+  // source merely loses a priority contest and still WINS an empty slot, because Case 1 below
+  // accepts whoever arrives first. #728 reached the live page through exactly that door, so
+  // the refusal must sit ABOVE Case 1, the untracked-value rule and the priority decision --
+  // not inside them. There is no "rank last" fallback: an incapable source is never written.
+  //
+  // Gated by the same flag+flip condition as every other S1b resolver decision
+  // (`policyGoverns`), so an unflipped field's behaviour is byte-identical to today's.
+  // The lookup key is the MANIFEST code, via `writerSourceToManifestCode` -- the writer stores
+  // `DRHP` for every filing document while the manifest says `DOC`/`RHP`/`PRICE_BAND_AD`, so a
+  // raw-string comparison would silently miss every document-sourced refusal.
+  if (policyGoverns(fieldName, tableName)) {
+    const policy = resolveFieldSourcePolicy({
+      table: tableName,
+      column: fieldNameToColumn(fieldName),
+      ipoType: ipoType as IpoTypeKey,
+    });
+    const manifestCode = writerSourceToManifestCode(incomingSource, input.incomingDocType);
+    const incapableReason = policy.incapable[manifestCode];
+
+    if (incapableReason !== undefined) {
+      logger.warn(
+        {
+          ipoId,
+          tableName,
+          fieldName,
+          incomingSource,
+          manifestCode,
+          incomingValue,
+          storedValue,
+          reason: incapableReason,
+        },
+        '[DataConsolidation] REJECTED_INCAPABLE_SOURCE - the manifest marks this source incapable of this field; value refused'
+      );
+
+      if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !input.shadowMode) {
+        try {
+          await deps.dataConflictsRepository.upsertConflict({
+            ipoId,
+            tableName,
+            rowKey,
+            fieldName,
+            source1: existingSource ?? incomingSource,
+            value1: storedValue === null || storedValue === undefined ? null : String(storedValue),
+            source2: incomingSource,
+            value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+            resolvedSource: existingSource ?? incomingSource,
+            resolutionReason: 'REJECTED_INCAPABLE_SOURCE',
+            severity: 'WARNING',
+          });
+        } catch (error) {
+          console.error(
+            '[DataConsolidation] Failed to record REJECTED_INCAPABLE_SOURCE conflict (non-fatal):',
+            error
+          );
+        }
+      }
+
+      // The stored value is returned untouched -- including `undefined`/`null` for an empty
+      // slot, which is the whole point of the guard. No `trackFieldSource` call: an incapable
+      // source never earns provenance on this field.
+      return {
+        status: 'REFUSED',
+        reason: 'REJECTED_INCAPABLE_SOURCE',
+        result: {
+          fieldName,
+          finalValue: storedValue ?? null,
+          chosenSource: existingSource ?? incomingSource,
+          hadConflict: true,
+          conflictSeverity: 'WARNING',
+          conflictReason: 'REJECTED_INCAPABLE_SOURCE',
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: 'REJECTED_INCAPABLE_SOURCE',
+            },
+          ],
+        },
+      };
+    }
+  }
+
+  return { status: 'PASS' };
+}
+
+/**
  * Data Consolidation Service
  * Main orchestrator for intelligent data merging
  */
@@ -1473,6 +1795,16 @@ export class DataConsolidationService {
    * Consolidate a single field
    * Core conflict detection and resolution logic
    */
+  /** #1368: `runPreRankChecks` with this service's own dependencies (the consolidation door). */
+  runPreRankChecks(input: PreRankCheckInput): Promise<PreRankCheckOutcome> {
+    return runPreRankChecks(input, {
+      fieldExtractionFailuresRepository: this.fieldExtractionFailuresRepository,
+      validationRules: () => this.getValidationRules(),
+      tradingHolidays: this.tradingHolidays,
+      dataConflictsRepository: this.dataConflictsRepository,
+    });
+  }
+
   private async consolidateField(params: {
     /** OD-144: see `ConsolidateIPODataInput.planRankWinnerFields`. */
     planRankWins?: boolean;
@@ -1540,99 +1872,31 @@ export class DataConsolidationService {
     // `field_sources` row to prove where it came from.
     const storedValue = existingValue ?? params.existingRowValue;
 
-    // ==================== Item 4 (OD-21): per-field validation gate ====================
-    // Runs on the INCOMING value only: the stored value already passed this
-    // same gate on a previous cycle, or predates the gate. No all-at-once
-    // backfill sweep is in scope for this item.
-    //
-    // Three outcomes, and only ONE of them drops anything:
-    //   FAIL            -> this field alone is dropped and recorded with its
-    //                      cause; every other field on the same document is
-    //                      untouched, because this function runs per field.
-    //   NO_RULE_APPLIES -> KEPT. A value the current rule set was never
-    //                      written to judge is not a failed value.
-    //   PASS            -> falls through unchanged.
-    if (
-      FEATURE_FLAGS.ENABLE_FIELD_EXTRACTION_VALIDATION &&
-      this.fieldExtractionFailuresRepository
-    ) {
-      const columnName = toColumnName(fieldName);
-      const outcome = validateFieldValue({
-        table: tableName,
-        column: columnName,
-        value: incomingValue,
-        offeringType: this.currentValidationContext.offeringType,
-        segment: params.segment ?? params.incomingDates?.segment ?? params.heldDates?.segment ?? null,
-        // The row's OWN relevant date, never "today" — this is what makes a
-        // 2022 backlog row judged by the 2022-era rule. For a date field it is
-        // the value under test itself (a listing date decides which T+n regime
-        // governs its own gap check); otherwise the row's listing/open date.
-        asOfDate: resolveAsOfDate(columnName, incomingValue, params),
-        rules: this.getValidationRules(),
-        row: {
-          open_date: params.incomingDates?.openDate ?? params.heldDates?.openDate ?? null,
-          close_date: params.incomingDates?.closeDate ?? params.heldDates?.closeDate ?? null,
-          listing_date: params.incomingDates?.listingDate ?? params.heldDates?.listingDate ?? null,
-        },
-        holidays: this.tradingHolidays ?? null,
-      });
-
-      if (outcome.status === 'FAIL') {
-        try {
-          await this.fieldExtractionFailuresRepository.recordFailure({
-            ipoId,
-            tableName,
-            fieldName,
-            rowKey,
-            documentId: this.currentValidationContext.documentId,
-            documentSha256: this.currentValidationContext.documentSha256,
-            ruleId: outcome.ruleId,
-            rankAttempted: incomingSource,
-            extractedValue: String(incomingValue).slice(0, 2000),
-            cause: outcome.cause,
-          });
-        } catch (error) {
-          // Recording is best-effort; a logging failure must not turn a
-          // dropped field into a written bad value OR abort the document.
-          logger.error(
-            {
-              ipoId,
-              tableName,
-              fieldName,
-              ruleId: outcome.ruleId,
-              cause: outcome.cause,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            '[DataConsolidation] item 4: could not record a field-extraction failure'
-          );
-        }
-
-        return {
-          fieldName,
-          finalValue: storedValue ?? null,
-          chosenSource: existingSource || incomingSource,
-          hadConflict: false,
-          rejectedSources: [
-            {
-              source: incomingSource,
-              value: incomingValue,
-              reason: `VALIDATION_RULE_FAILED:${outcome.ruleId}`,
-            },
-          ],
-        };
-      }
-
-      if (outcome.status === 'PASS') {
-        // A later rank finally produced a value this rule accepts — close the
-        // open failure rows for this exact field so the unresolved index is a
-        // list of things still wrong, not a history of everything ever tried.
-        try {
-          await this.fieldExtractionFailuresRepository.markResolved(ipoId, tableName, fieldName, rowKey);
-        } catch {
-          // non-fatal; the row simply stays open until the next passing write
-        }
-      }
-    }
+    // #1368: the per-field pre-rank checks (OD-21 validation gate, matrix validation bounds, the
+    // incapable-source refusal) live in ONE method, `runPreRankChecks`, which the persister's fallback
+    // door runs too (IPO_WRITE_GUARDS). Order and behaviour on this door are unchanged: the method
+    // stops at "no incoming value", and the two empty-incoming returns below still decide that case.
+    const preRank = await this.runPreRankChecks({
+      ipoId,
+      tableName,
+      rowKey,
+      fieldName,
+      incomingValue,
+      incomingSource,
+      incomingDocType: params.incomingDocType,
+      existingSource,
+      storedValue,
+      segment: params.segment ?? params.incomingDates?.segment ?? params.heldDates?.segment ?? null,
+      heldDates: params.heldDates,
+      incomingDates: params.incomingDates,
+      scrapedAt: params.scrapedAt,
+      ipoType,
+      offeringType: this.currentValidationContext.offeringType,
+      documentId: this.currentValidationContext.documentId,
+      documentSha256: this.currentValidationContext.documentSha256,
+      shadowMode: this.currentShadowMode,
+    });
+    if (preRank.status === 'REFUSED') return preRank.result;
 
     // Normalize both values for comparison
     const normalizedIncoming = normalize(fieldName, incomingValue, rules);
@@ -1729,130 +1993,6 @@ export class DataConsolidationService {
           },
         ],
       };
-    }
-
-    // Validate incoming value
-    if (!validateValue(normalizedIncoming, rules)) {
-      // Stage 1 round 3 (signal-ownership.md R6): a matrix-level refusal was
-      // previously silent — the field was dropped with no log line, so a
-      // valid write (e.g. a legal lot under the old min:10 floor) vanished
-      // with no trace in the run log. Make the skip visible.
-      //
-      // Review round 8: this call was lost in round 6's edit to this same
-      // file (a working-copy mixup while isolating an unrelated TS2484
-      // diagnosis in round 7 restored a stale intermediate version of this
-      // file that predated stage 1 round 3's addition, then only the
-      // narrowly-scoped normalizeChosen export was manually reapplied on
-      // top — this block was not). Restored verbatim from commit 98fcc55c.
-      logger.warn(
-        {
-          ipoId,
-          tableName,
-          fieldName,
-          value: normalizedIncoming,
-          source: incomingSource,
-          rule: rules.validation,
-        },
-        '[DataConsolidation] matrix validation refused a field value - field skipped'
-      );
-
-      return {
-        fieldName,
-        finalValue: storedValue, // Keep existing
-        chosenSource: existingSource || incomingSource,
-        hadConflict: false,
-        rejectedSources: [
-          {
-            source: incomingSource,
-            value: incomingValue,
-            reason: 'VALIDATION_FAILED',
-          },
-        ],
-      };
-    }
-
-    // ==================== Item 3 slice S1c: an INCAPABLE source is refused ====================
-    // The manifest marks some (field, source) pairs `capability.<SRC>.capable === false`: the
-    // source structurally CANNOT produce a correct value for that field (BSE's issue size
-    // measured 41-76% below the printed total on 6/6 live mainboard IPOs, #728; NSE's computed
-    // offer value excludes the OFS portion; no filing document carries a live intra-bid
-    // subscription figure). This is strictly stronger than "not ranked": an unranked-but-capable
-    // source merely loses a priority contest and still WINS an empty slot, because Case 1 below
-    // accepts whoever arrives first. #728 reached the live page through exactly that door, so
-    // the refusal must sit ABOVE Case 1, the untracked-value rule and the priority decision --
-    // not inside them. There is no "rank last" fallback: an incapable source is never written.
-    //
-    // Gated by the same flag+flip condition as every other S1b resolver decision
-    // (`policyGoverns`), so an unflipped field's behaviour is byte-identical to today's.
-    // The lookup key is the MANIFEST code, via `writerSourceToManifestCode` -- the writer stores
-    // `DRHP` for every filing document while the manifest says `DOC`/`RHP`/`PRICE_BAND_AD`, so a
-    // raw-string comparison would silently miss every document-sourced refusal.
-    if (policyGoverns(fieldName, tableName)) {
-      const policy = resolveFieldSourcePolicy({
-        table: tableName,
-        column: fieldNameToColumn(fieldName),
-        ipoType: ipoType as IpoTypeKey,
-      });
-      const manifestCode = writerSourceToManifestCode(incomingSource, params.incomingDocType);
-      const incapableReason = policy.incapable[manifestCode];
-
-      if (incapableReason !== undefined) {
-        logger.warn(
-          {
-            ipoId,
-            tableName,
-            fieldName,
-            incomingSource,
-            manifestCode,
-            incomingValue,
-            storedValue,
-            reason: incapableReason,
-          },
-          '[DataConsolidation] REJECTED_INCAPABLE_SOURCE - the manifest marks this source incapable of this field; value refused'
-        );
-
-        if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
-          try {
-            await this.dataConflictsRepository.upsertConflict({
-              ipoId,
-              tableName,
-              rowKey,
-              fieldName,
-              source1: existingSource ?? incomingSource,
-              value1: storedValue === null || storedValue === undefined ? null : String(storedValue),
-              source2: incomingSource,
-              value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
-              resolvedSource: existingSource ?? incomingSource,
-              resolutionReason: 'REJECTED_INCAPABLE_SOURCE',
-              severity: 'WARNING',
-            });
-          } catch (error) {
-            console.error(
-              '[DataConsolidation] Failed to record REJECTED_INCAPABLE_SOURCE conflict (non-fatal):',
-              error
-            );
-          }
-        }
-
-        // The stored value is returned untouched -- including `undefined`/`null` for an empty
-        // slot, which is the whole point of the guard. No `trackFieldSource` call: an incapable
-        // source never earns provenance on this field.
-        return {
-          fieldName,
-          finalValue: storedValue ?? null,
-          chosenSource: existingSource ?? incomingSource,
-          hadConflict: true,
-          conflictSeverity: 'WARNING',
-          conflictReason: 'REJECTED_INCAPABLE_SOURCE',
-          rejectedSources: [
-            {
-              source: incomingSource,
-              value: incomingValue,
-              reason: 'REJECTED_INCAPABLE_SOURCE',
-            },
-          ],
-        };
-      }
     }
 
     // M-1 (round-2 review): a stored value with NO `field_sources` row is still

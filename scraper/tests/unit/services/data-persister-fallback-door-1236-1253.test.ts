@@ -440,6 +440,7 @@ describe('#1236 round 3: one guard list, run by both doors', () => {
 
   it('the guard list is the full primary guard set, in order', () => {
     expect(IPO_WRITE_GUARDS.map((g: { name: string }) => g.name)).toEqual([
+      'pre-rank-field-checks',
       'source-precedence',
       'offering-type-keeps-classification',
       'sme-offering-type-fpo',

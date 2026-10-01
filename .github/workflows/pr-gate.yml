@@ -1298,6 +1298,7 @@ jobs:
           tests/integration/data-conflicts-repository-hold.integration.test.ts
           tests/integration/od142-type-correction-values.integration.test.ts
           tests/integration/provenance-lookup-failed-keeps-stored-value.integration.test.ts
+          tests/integration/fallback-door-prerank-checks-1368.integration.test.ts
           tests/integration/od144-plan-rank-write.integration.test.ts
           tests/integration/od73-settled-field.integration.test.ts
           tests/integration/db-timezone.integration.test.ts
