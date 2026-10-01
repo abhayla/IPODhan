@@ -58,6 +58,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
+import type { FieldDocumentRef } from '../../config/document-field-order.mjs';
 import { OUTCOME_CODE, outcomeCategoryOf, outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import {
   SOURCE_CHANGED_OWN_VALUE,
@@ -257,6 +258,12 @@ export interface ConsolidateIPODataInput {
    * price-band advertisement's band purely by being written later.
    */
   docType?: string;
+  /**
+   * #1364: reads `documents.filing_date` for the named document ids, so two documents of equal rank
+   * are ordered by filing date (OD-30) instead of write time. Optional: absent (tests, callers without
+   * a database) leaves equal-rank documents to the newest-write rule, as before.
+   */
+  documentFilingDates?: (documentIds: string[]) => Promise<Map<string, string | null>>;
   /**
    * Item 4 (OD-21), card fork C-2 resolved as the card recommends: offering
    * type and document identity are properties of the ROW being consolidated,
@@ -1373,7 +1380,7 @@ export class DataConsolidationService {
       // Convert to map for quick lookup
       const existingSourceMap = new Map<
         string,
-        { value: any; source: ScraperSource; updatedAt?: Date; docType?: string }
+        { value: any; source: ScraperSource; updatedAt?: Date; docType?: string; documentId?: string }
       >();
       for (const fieldSource of existingFieldSources) {
         // s4: provenance is per ROW, not per table. Without the row-key match a second
@@ -1392,6 +1399,7 @@ export class DataConsolidationService {
             // T-520 round 2: the document this value came from, so a
             // DRHP-vs-DRHP refresh is ordered by document authority.
             docType: (fieldSource.dataLineage as { docType?: string } | null | undefined)?.docType,
+            documentId: (fieldSource.dataLineage as { documentId?: string } | null | undefined)?.documentId ?? undefined,
           });
         }
       }
@@ -1632,6 +1640,38 @@ export class DataConsolidationService {
       // still reached the caller's identity/slug logic — it just stops here.
       const contextFields = new Set(input.contextFields ?? []);
 
+      // #1364: the incoming document, for ranking two documents. The filing persister's lineage names
+      // it ({docType, documentId}) on every write, but `upsertIPO` passed no `docType`, so the
+      // DRHP-vs-DRHP refresh ranked by write time. Taken from the lineage here, at the one place every
+      // caller reaches; used ONLY for the document ranking (not for the manifest source code).
+      const lineageDoc = (input.incomingLineage ?? null) as { docType?: unknown; documentId?: unknown } | null;
+      const rankDocType = input.docType ?? (typeof lineageDoc?.docType === 'string' ? lineageDoc.docType : undefined);
+      const incomingDocumentId = typeof lineageDoc?.documentId === 'string' ? lineageDoc.documentId : null;
+      let filingDates = new Map<string, string | null>();
+      if (rankDocType && input.documentFilingDates) {
+        const ids = [...new Set([incomingDocumentId, ...[...existingSourceMap.values()].map((e) => e.documentId)].filter((x): x is string => !!x))];
+        if (ids.length > 0) {
+          try {
+            filingDates = await input.documentFilingDates(ids);
+          } catch (readError) {
+            // Without dates, equal-rank documents fall back to the newest write (unchanged behaviour).
+            logger.warn(
+              { ipoId: input.ipoId, error: readError instanceof Error ? readError.message : String(readError) },
+              '#1364 document filing-date read failed; equal-rank documents use the newest write'
+            );
+          }
+        }
+      }
+      const incomingDocRef = rankDocType
+        ? { docType: rankDocType, documentId: incomingDocumentId, filingDate: incomingDocumentId ? filingDates.get(incomingDocumentId) ?? null : null }
+        : undefined;
+      const storedDocRef = (fieldName: string) => {
+        const e = existingSourceMap.get(fieldName);
+        return e?.docType
+          ? { docType: e.docType, documentId: e.documentId ?? null, filingDate: e.documentId ? filingDates.get(e.documentId) ?? null : null }
+          : undefined;
+      };
+
       // Process each field in incoming data
       for (const [fieldName, incomingValue] of Object.entries(
         input.incomingData
@@ -1681,6 +1721,8 @@ export class DataConsolidationService {
             existingUpdatedAt: existingSourceMap.get(fieldName)?.updatedAt,
             existingDocType: existingSourceMap.get(fieldName)?.docType,
             incomingDocType: input.docType,
+            existingDocRef: storedDocRef(fieldName),
+            incomingDocRef,
             // T-328: threaded so resolveConflict can HOLD a disputed
             // HIGH_VALUE field rather than assert one side while the IPO is
             // live. `ipos.status` is already on the row passed as
@@ -1836,6 +1878,9 @@ export class DataConsolidationService {
     existingUpdatedAt?: Date;
     existingDocType?: string;
     incomingDocType?: string;
+    /** #1364: the two documents for ranking (type, id, filing date); see consolidateIPOData. */
+    existingDocRef?: FieldDocumentRef;
+    incomingDocRef?: FieldDocumentRef;
     ipoStatus?: string;
     heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
@@ -2496,6 +2541,8 @@ export class DataConsolidationService {
       existingUpdatedAt: params.existingUpdatedAt,
       existingDocType: params.existingDocType,
       incomingDocType: params.incomingDocType,
+      existingDocRef: params.existingDocRef,
+      incomingDocRef: params.incomingDocRef,
       ipoStatus: params.ipoStatus,
       heldDates: params.heldDates,
       incomingDates: params.incomingDates,
@@ -2819,6 +2866,9 @@ export class DataConsolidationService {
     existingUpdatedAt?: Date;
     existingDocType?: string;
     incomingDocType?: string;
+    /** #1364: the two documents for ranking (type, id, filing date); see consolidateIPOData. */
+    existingDocRef?: FieldDocumentRef;
+    incomingDocRef?: FieldDocumentRef;
     ipoStatus?: string;
     // W-160 round 2: the held (stored) and incoming (this cycle's full
     // payload) date triples, computed once per `consolidateIPOData` call.
@@ -2850,6 +2900,8 @@ export class DataConsolidationService {
       incomingDocType,
       ipoStatus,
     } = params;
+    const existingDocRef = params.existingDocRef ?? (existingDocType ? { docType: existingDocType } : undefined);
+    const incomingDocRef = params.incomingDocRef ?? (incomingDocType ? { docType: incomingDocType } : undefined);
     const rowKey = params.rowKey ?? '';
     const ipoType = params.ipoType ?? 'MAINBOARD';
 
@@ -3235,7 +3287,7 @@ export class DataConsolidationService {
       // either type is unknown) does the newest write win.
       const byDocument =
         incomingSource === 'DRHP' && existingSource === 'DRHP'
-          ? incomingDocumentOutranksStored(existingDocType, incomingDocType, fieldName)
+          ? incomingDocumentOutranksStored(existingDocRef, incomingDocRef, fieldName, tableName)
           : null;
 
       if (byDocument === false) {

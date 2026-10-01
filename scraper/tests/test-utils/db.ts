@@ -6,6 +6,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '@ipodhan/shared/db/schema';
+import { assertHelperTargetIsTestDatabase, resolveTestPoolTarget } from '../helpers/db-safety-guard';
 
 let testPool: Pool | null = null;
 let testDb: ReturnType<typeof drizzle> | null = null;
@@ -17,16 +18,30 @@ let testDb: ReturnType<typeof drizzle> | null = null;
 export async function getTestDb() {
   if (testDb) return testDb;
 
-  // Use test database from environment or create a separate test DB
-  const testDbConfig = {
-    host: process.env.TEST_DB_HOST || process.env.DATABASE_HOST || 'localhost',
-    port: parseInt(process.env.TEST_DB_PORT || process.env.DATABASE_PORT || '5432'),
-    database: process.env.TEST_DB_NAME || process.env.DATABASE_NAME + '_test' || 'ipodhan_test',
-    user: process.env.TEST_DB_USER || process.env.DATABASE_USER || 'postgres',
-    password: process.env.TEST_DB_PASSWORD || process.env.DATABASE_PASSWORD || '',
-  };
-
-  testPool = new Pool(testDbConfig);
+  // #1364 round 2: the target is resolved by ONE function shared with the global guard
+  // (tests/helpers/db-safety-guard.ts), and this helper refuses anything but ipodhan_test itself, before
+  // connecting and again by asking the server which database the session landed in. The global guard
+  // alone let TEST_DB_NAME=ipodhan_test + a DATABASE_URL naming another database reach that database.
+  // Every pool needs `-c timezone=UTC` (ist-timezone rule).
+  const target = resolveTestPoolTarget();
+  assertHelperTargetIsTestDatabase(target.database);
+  const pool = new Pool({
+    host: target.host,
+    port: target.port,
+    database: target.database,
+    user: target.user,
+    password: target.password,
+    max: 5,
+    options: '-c timezone=UTC',
+  });
+  try {
+    const { rows } = await pool.query('SELECT current_database() AS db');
+    assertHelperTargetIsTestDatabase(String(rows[0]?.db), 'getTestDb (connected session)');
+  } catch (err) {
+    await pool.end().catch(() => undefined);
+    throw err;
+  }
+  testPool = pool;
   testDb = drizzle(testPool, { schema });
 
   return testDb;

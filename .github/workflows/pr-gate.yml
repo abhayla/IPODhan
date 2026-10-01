@@ -1356,6 +1356,7 @@ jobs:
           tests/integration/postponed-relaunch-refill-1298.integration.test.ts
           tests/integration/document-decides-board-1233.integration.test.ts
           tests/integration/document-extraction-attempts.integration.test.ts
+          tests/integration/document-filing-dates-1364.integration.test.ts
           tests/integration/ocr-loses-disagreement.integration.test.ts
           tests/integration/settled-field-override-reopen.integration.test.ts
           tests/integration/data-conflicts-repository-hold.integration.test.ts

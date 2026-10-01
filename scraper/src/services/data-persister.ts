@@ -31,6 +31,7 @@ import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { createConsolidationService, type FieldExtractionFailuresRecorder } from './consolidation-factory.js';
 import { db, getRedisClient } from '@ipodhan/shared';
+import { readDocumentFilingDates } from './document-filing-dates.js';
 import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
 import { eq as eqOp, and as andOp, or as orOp, isNull as isNullOp } from 'drizzle-orm';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
@@ -2028,6 +2029,8 @@ async function upsertIPOInScope(
                 : contextFields,
               source: source,
               incomingLineage: lineage ?? null,
+              // #1364: two documents of equal rank are ordered by filing date (OD-30), not write time.
+              documentFilingDates: (ids) => readDocumentFilingDates(db as never, ids),
               existingData: existingIPO as any,
               shadowMode: false, // Production mode - writes to database
               scrapedAt: new Date(),
