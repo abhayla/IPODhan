@@ -58,6 +58,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
+import { OUTCOME_CODE, outcomeCategoryOf, outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import {
   SOURCE_CHANGED_OWN_VALUE,
   isBehaviourConflict,
@@ -323,7 +324,7 @@ interface ConflictInfo {
 }
 
 /** OD-144: the field-result reason when the current type's rank-1 answer replaced an OD-142 kept value. */
-export const PLAN_RANK_REPLACED_KEPT_VALUE = 'PLAN_RANK_REPLACED_KEPT_VALUE';
+export const PLAN_RANK_REPLACED_KEPT_VALUE = OUTCOME_CODE.PLAN_RANK_REPLACED_KEPT_VALUE;
 
 const PRICE_BAND_FIELDS = ['priceRangeMin', 'priceRangeMax'] as const;
 
@@ -481,74 +482,22 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
 // #983 / OD-132: DELISTED (set by the post-listing price job) is terminal too, so an ordinary
 // NSE/BSE status write cannot take it back to LISTED.
 /** #1256: a scraped `ipos.status` that would move down the ladder without an exchange relaunch. */
-export const BACKWARD_STATUS_KEPT = 'BACKWARD_STATUS_KEPT';
+export const BACKWARD_STATUS_KEPT = OUTCOME_CODE.BACKWARD_STATUS_KEPT;
 
 // #1298 (§2.9, owner 2026-09-08): POSTPONED is NOT terminal — "it comes back". It is held by its own
 // guard (`POSTPONED_KEPT_NO_RELAUNCH` below) until a relaunch filing arrives (OD-139).
 export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'DELISTED']);
 
 /** #1298: a stored POSTPONED kept because no relaunch filing has arrived since the postponement. */
-export const POSTPONED_KEPT_NO_RELAUNCH = 'POSTPONED_KEPT_NO_RELAUNCH';
+export const POSTPONED_KEPT_NO_RELAUNCH = OUTCOME_CODE.POSTPONED_KEPT_NO_RELAUNCH;
 
-// #1379 (round 2): the write-time REFUSAL reasons vs the PRIORITY-LOSS reasons, one list each, used by
-// the field-plan walk to tell "this value was refused, ask rank 2" from "a higher source holds the field".
-// The refusal codes are the constants the emit sites below use (never retyped there).
-export const VALIDATION_RULE_REFUSAL_PREFIX = 'VALIDATION_RULE_FAILED:';
-export const VALIDATION_FAILED_REASON = 'VALIDATION_FAILED';
-export const REJECTED_INCAPABLE_SOURCE_REASON = 'REJECTED_INCAPABLE_SOURCE';
-export const DEGENERATE_PRICE_BAND_REASON = 'DEGENERATE_PRICE_BAND';
-export const ISSUE_SIZE_SEGMENT_FLOOR_REASON = 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR';
-export const ISSUE_SIZE_SHARES_BAND_REASON = 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND';
-export const NO_INCOMING_VALUE_REASON = 'NO_INCOMING_VALUE';
-export const NOTHING_TO_RECORD_REASON = 'NOTHING_TO_RECORD';
+// #1379 round 3: every rejected-source code lives in ONE categorized table (consolidation-outcome-codes.ts);
+// the emit sites below use OUTCOME_CODE.<NAME>, and a static test proves every emit is a table entry.
+export { OUTCOME_CODE, outcomeCategoryOf } from './consolidation-outcome-codes.js';
 
-/** Exact refusal codes (the OD-21 rule refusal carries a `VALIDATION_RULE_FAILED:<rule>` prefix instead). */
-export const WRITE_REFUSAL_REASONS: ReadonlySet<string> = new Set<string>([
-  VALIDATION_FAILED_REASON,
-  REJECTED_INCAPABLE_SOURCE_REASON,
-  DEGENERATE_PRICE_BAND_REASON,
-  ISSUE_SIZE_SEGMENT_FLOOR_REASON,
-  ISSUE_SIZE_SHARES_BAND_REASON,
-  NO_INCOMING_VALUE_REASON,
-  NOTHING_TO_RECORD_REASON,
-]);
-
-/**
- * The reasons that mean "the stored value / a higher-ranked source legitimately holds the field": every
- * kept-value resolution the consolidator makes. A rejection of the caller's source with any OTHER reason
- * (a known refusal above, or a code nobody listed) is read as a refusal -- fail closed (#1379 round 2).
- */
-export const PRIORITY_LOSS_REASONS: ReadonlySet<string> = new Set<string>([
-  'SOURCE_PRIORITY',
-  'DEFAULT_KEEP_EXISTING',
-  'TIME_BASED_PRIORITY',
-  'TIME_BASED_PRIORITY_EXISTING_NEWER',
-  'SAME_SOURCE_REFRESH',
-  'SAME_SOURCE_REFRESH_STORED_DOCUMENT_OUTRANKS',
-  'SAME_SOURCE_REFRESH_INCOMING_DOCUMENT_OUTRANKS',
-  'SAME_SOURCE_REFRESH_EXISTING_NEWER',
-  SOURCE_CHANGED_OWN_VALUE,
-  'HELD_DISPUTED_HIGH_VALUE_LIVE',
-  'TERMINAL_STATUS_KEPT',
-  BACKWARD_STATUS_KEPT,
-  POSTPONED_KEPT_NO_RELAUNCH,
-  'UNTRACKED_EXISTING_VALUE_KEPT',
-  OD129_DOCUMENT_DISAGREES_REASON,
-  SME_SINGLE_EXCHANGE_CONFLICT_REASON,
-  'SET_MERGE_NO_NEW_MEMBERS',
-  'SET_MERGED',
-  'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE',
-  'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE',
-  'DATE_INVARIANT_OVERRIDE_HELD_VALUE',
-  PLAN_RANK_REPLACED_KEPT_VALUE,
-]);
-
-/** `SME_SINGLE_EXCHANGE_COLLAPSE_<tier>`: the SME single-exchange collapse keeps the stored listing exchange. */
-const SME_COLLAPSE_PREFIX = 'SME_SINGLE_EXCHANGE_COLLAPSE_';
-
-/** True for a genuine priority loss; false for every refusal AND every unknown code (fail closed). */
+/** True only for a KEEP code from the table; every REFUSE code AND every unknown code is false (fail closed). */
 export function isPriorityLossReason(reason: unknown): boolean {
-  return typeof reason === 'string' && (PRIORITY_LOSS_REASONS.has(reason) || reason.startsWith(SME_COLLAPSE_PREFIX));
+  return outcomeCodeNameOf(reason) !== null && outcomeCategoryOf(reason) === 'KEEP';
 }
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
@@ -740,8 +689,8 @@ export function fallbackDoorMayReplaceStoredValue(params: {
   const holderRank = getSourcePriority(fieldName, holderSource, 'ipos', ipoType, venue);
   const incomingRank = getSourcePriority(fieldName, incomingSource, 'ipos', ipoType, venue);
   if (holderRank === -1) return { allowed: false, reason: 'HOLDER_UNRANKED' };
-  if (incomingRank === -1 || incomingRank >= holderRank) return { allowed: false, reason: 'SOURCE_PRIORITY' };
-  return { allowed: true, reason: 'SOURCE_PRIORITY' };
+  if (incomingRank === -1 || incomingRank >= holderRank) return { allowed: false, reason: OUTCOME_CODE.SOURCE_PRIORITY };
+  return { allowed: true, reason: OUTCOME_CODE.SOURCE_PRIORITY };
 }
 
 /**
@@ -972,7 +921,7 @@ export function collectImplausibleIssueSizeFields(
     segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
 
   if (floor !== null && issueSize < floor) {
-    return { fields: new Set(['issueSize']), reason: ISSUE_SIZE_SEGMENT_FLOOR_REASON };
+    return { fields: new Set(['issueSize']), reason: OUTCOME_CODE.ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR };
   }
 
   if (source && ISSUE_SIZE_FILING_TOTAL_SOURCES.has(source)) return empty;
@@ -986,7 +935,7 @@ export function collectImplausibleIssueSizeFields(
     const lowerBound = netOfferAtFloor * (1 - ISSUE_SIZE_COHERENCE_TOLERANCE);
     const upperBound = fullOfferAtCap * ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER;
     if (issueSize < lowerBound || issueSize > upperBound) {
-      return { fields: new Set(['issueSize']), reason: ISSUE_SIZE_SHARES_BAND_REASON };
+      return { fields: new Set(['issueSize']), reason: OUTCOME_CODE.ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND };
     }
   }
 
@@ -1106,7 +1055,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
 
       return {
         status: 'REFUSED',
-        reason: `${VALIDATION_RULE_REFUSAL_PREFIX}${outcome.ruleId}`,
+        reason: `${OUTCOME_CODE.VALIDATION_RULE_FAILED}${outcome.ruleId}`,
         result: {
           fieldName,
           finalValue: storedValue ?? null,
@@ -1116,7 +1065,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
             {
               source: incomingSource,
               value: incomingValue,
-              reason: `${VALIDATION_RULE_REFUSAL_PREFIX}${outcome.ruleId}`,
+              reason: `${OUTCOME_CODE.VALIDATION_RULE_FAILED}${outcome.ruleId}`,
             },
           ],
         },
@@ -1172,7 +1121,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
 
     return {
       status: 'REFUSED',
-      reason: VALIDATION_FAILED_REASON,
+      reason: OUTCOME_CODE.VALIDATION_FAILED,
       result: {
         fieldName,
         finalValue: storedValue, // Keep existing
@@ -1182,7 +1131,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
           {
             source: incomingSource,
             value: incomingValue,
-            reason: VALIDATION_FAILED_REASON,
+            reason: OUTCOME_CODE.VALIDATION_FAILED,
           },
         ],
       },
@@ -1241,7 +1190,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
             source2: incomingSource,
             value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
             resolvedSource: existingSource ?? incomingSource,
-            resolutionReason: 'REJECTED_INCAPABLE_SOURCE',
+            resolutionReason: OUTCOME_CODE.REJECTED_INCAPABLE_SOURCE,
             severity: 'WARNING',
           });
         } catch (error) {
@@ -1257,7 +1206,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
       // source never earns provenance on this field.
       return {
         status: 'REFUSED',
-        reason: REJECTED_INCAPABLE_SOURCE_REASON,
+        reason: OUTCOME_CODE.REJECTED_INCAPABLE_SOURCE,
         result: {
           fieldName,
           finalValue: storedValue ?? null,
@@ -1269,7 +1218,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
             {
               source: incomingSource,
               value: incomingValue,
-              reason: REJECTED_INCAPABLE_SOURCE_REASON,
+              reason: OUTCOME_CODE.REJECTED_INCAPABLE_SOURCE,
             },
           ],
         },
@@ -1475,7 +1424,7 @@ export class DataConsolidationService {
             {
               source: input.source,
               value: input.incomingData[fieldName],
-              reason: DEGENERATE_PRICE_BAND_REASON,
+              reason: OUTCOME_CODE.DEGENERATE_PRICE_BAND,
             },
           ],
         });
@@ -2030,7 +1979,7 @@ export class DataConsolidationService {
           {
             source: incomingSource,
             value: incomingValue,
-            reason: NOTHING_TO_RECORD_REASON,
+            reason: OUTCOME_CODE.NOTHING_TO_RECORD,
           },
         ],
       };
@@ -2050,7 +1999,7 @@ export class DataConsolidationService {
           {
             source: incomingSource,
             value: incomingValue,
-            reason: NO_INCOMING_VALUE_REASON,
+            reason: OUTCOME_CODE.NO_INCOMING_VALUE,
           },
         ],
       };
@@ -2117,7 +2066,7 @@ export class DataConsolidationService {
             {
               source: incomingSource,
               value: incomingValue,
-              reason: 'UNTRACKED_EXISTING_VALUE_KEPT',
+              reason: OUTCOME_CODE.UNTRACKED_EXISTING_VALUE_KEPT,
             },
           ],
         };
@@ -2199,7 +2148,7 @@ export class DataConsolidationService {
               normalizedExisting: normalizedStored,
               normalizedIncoming,
               severity: 'WARNING',
-              reason: OD129_DOCUMENT_DISAGREES_REASON,
+              reason: OUTCOME_CODE.OD129_DOCUMENT_LISTING_DISAGREES,
               chosenSource: existingSource || incomingSource,
             });
           }
@@ -2289,12 +2238,12 @@ export class DataConsolidationService {
               finalValue: [collapsed.exchange],
               chosenSource: existingSource || incomingSource,
               hadConflict: false,
-              conflictReason: `SME_SINGLE_EXCHANGE_COLLAPSE_${collapsed.tier}`,
+              conflictReason: `${OUTCOME_CODE.SME_SINGLE_EXCHANGE_COLLAPSE}${collapsed.tier}`,
               rejectedSources: [
                 {
                   source: incomingSource,
                   value: storedValue,
-                  reason: `SME_SINGLE_EXCHANGE_COLLAPSE_${collapsed.tier}`,
+                  reason: `${OUTCOME_CODE.SME_SINGLE_EXCHANGE_COLLAPSE}${collapsed.tier}`,
                 },
               ],
             };
@@ -2316,7 +2265,7 @@ export class DataConsolidationService {
               normalizedExisting: normalizedStored,
               normalizedIncoming,
               severity: 'CRITICAL',
-              reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              reason: OUTCOME_CODE.SME_SINGLE_EXCHANGE_INVARIANT,
               chosenSource: existingSource || incomingSource,
             });
           }
@@ -2332,7 +2281,7 @@ export class DataConsolidationService {
               {
                 source: incomingSource,
                 value: incomingValue,
-                reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+                reason: OUTCOME_CODE.SME_SINGLE_EXCHANGE_INVARIANT,
               },
             ],
           };
@@ -2362,7 +2311,7 @@ export class DataConsolidationService {
             chosenSource: existingSource || incomingSource,
             hadConflict: false,
             rejectedSources: [
-              { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
+              { source: incomingSource, value: incomingValue, reason: OUTCOME_CODE.SET_MERGE_NO_NEW_MEMBERS },
             ],
           };
         }
@@ -2386,7 +2335,7 @@ export class DataConsolidationService {
               normalizedExisting: normalizedStored,
               normalizedIncoming,
               severity: 'CRITICAL',
-              reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              reason: OUTCOME_CODE.SME_SINGLE_EXCHANGE_INVARIANT,
               chosenSource: existingSource || incomingSource,
             });
           }
@@ -2402,7 +2351,7 @@ export class DataConsolidationService {
               {
                 source: incomingSource,
                 value: incomingValue,
-                reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+                reason: OUTCOME_CODE.SME_SINGLE_EXCHANGE_INVARIANT,
               },
             ],
           };
@@ -2433,7 +2382,7 @@ export class DataConsolidationService {
           chosenSource: existingSource || incomingSource,
           hadConflict: false,
           rejectedSources: [
-            { source: incomingSource, value: incomingValue, reason: 'SET_MERGED' },
+            { source: incomingSource, value: incomingValue, reason: OUTCOME_CODE.SET_MERGED },
           ],
         };
       }
@@ -2661,7 +2610,7 @@ export class DataConsolidationService {
           source2: incomingSource,
           value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
           resolvedSource: keptSource,
-          resolutionReason: BACKWARD_STATUS_KEPT,
+          resolutionReason: OUTCOME_CODE.BACKWARD_STATUS_KEPT,
           severity: 'WARNING',
         });
       } catch (error) {
@@ -2675,7 +2624,7 @@ export class DataConsolidationService {
       hadConflict: true,
       conflictSeverity: 'WARNING',
       conflictReason: BACKWARD_STATUS_KEPT,
-      rejectedSources: [{ source: incomingSource, value: incomingValue, reason: BACKWARD_STATUS_KEPT }],
+      rejectedSources: [{ source: incomingSource, value: incomingValue, reason: OUTCOME_CODE.BACKWARD_STATUS_KEPT }],
     };
   }
 
@@ -2763,7 +2712,7 @@ export class DataConsolidationService {
             try {
               await this.dataConflictsRepository.resolveConflict(priorAgreement.id, {
                 resolvedSource: incomingSource,
-                resolutionReason: 'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE',
+                resolutionReason: OUTCOME_CODE.EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE,
                 resolvedBy: 'SYSTEM',
               });
             } catch (error) {
@@ -2773,7 +2722,7 @@ export class DataConsolidationService {
           return {
             chosenValue: incomingValue,
             chosenSource: incomingSource,
-            resolutionReason: 'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE',
+            resolutionReason: OUTCOME_CODE.EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE,
           };
         }
       } catch (error) {
@@ -2824,7 +2773,7 @@ export class DataConsolidationService {
             if (ownRow) {
               await this.dataConflictsRepository.resolveConflict(ownRow.id, {
                 resolvedSource: incomingSource,
-                resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE',
+                resolutionReason: OUTCOME_CODE.DATE_INVARIANT_OVERRIDE_HELD_VALUE,
                 resolvedBy: 'SYSTEM',
               });
             }
@@ -2835,7 +2784,7 @@ export class DataConsolidationService {
         return {
           chosenValue: incomingValue,
           chosenSource: incomingSource,
-          resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE',
+          resolutionReason: OUTCOME_CODE.DATE_INVARIANT_OVERRIDE_HELD_VALUE,
         };
       }
     }
@@ -2992,7 +2941,7 @@ export class DataConsolidationService {
       if (tiebreak) {
         chosenSource = tiebreak.chosenSource;
         chosenValue = tiebreak.chosenValue;
-        resolutionReason = 'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE';
+        resolutionReason = OUTCOME_CODE.TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE;
         tiebreakResolved = true;
       } else if (holdEscape) {
         chosenSource = holdEscape.chosenSource;
@@ -3108,7 +3057,7 @@ export class DataConsolidationService {
             {
               source: incomingSource,
               value: incomingValue,
-              reason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+              reason: OUTCOME_CODE.HELD_DISPUTED_HIGH_VALUE_LIVE,
             },
           ],
         };
@@ -3144,7 +3093,7 @@ export class DataConsolidationService {
             source2: incomingSource,
             value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
             resolvedSource: existingSource,
-            resolutionReason: 'TERMINAL_STATUS_KEPT',
+            resolutionReason: OUTCOME_CODE.TERMINAL_STATUS_KEPT,
             severity: 'WARNING',
           });
         } catch (error) {
@@ -3163,7 +3112,7 @@ export class DataConsolidationService {
           {
             source: incomingSource,
             value: incomingValue,
-            reason: 'TERMINAL_STATUS_KEPT',
+            reason: OUTCOME_CODE.TERMINAL_STATUS_KEPT,
           },
         ],
       };
@@ -3202,7 +3151,7 @@ export class DataConsolidationService {
           hadConflict: true,
           conflictSeverity: 'WARNING',
           conflictReason: POSTPONED_KEPT_NO_RELAUNCH,
-          rejectedSources: [{ source: incomingSource, value: incomingValue, reason: POSTPONED_KEPT_NO_RELAUNCH }],
+          rejectedSources: [{ source: incomingSource, value: incomingValue, reason: OUTCOME_CODE.POSTPONED_KEPT_NO_RELAUNCH }],
         };
       }
     }
@@ -3228,7 +3177,7 @@ export class DataConsolidationService {
       // global matrix; the kept value's source is recorded as previousSource below.
       chosenSource = incomingSource;
       chosenValue = incomingValue;
-      resolutionReason = PLAN_RANK_REPLACED_KEPT_VALUE;
+      resolutionReason = OUTCOME_CODE.PLAN_RANK_REPLACED_KEPT_VALUE;
     } else if (existingPriority !== incomingPriority) {
       // Lower index = higher priority
       if (
@@ -3237,16 +3186,16 @@ export class DataConsolidationService {
       ) {
         chosenSource = incomingSource;
         chosenValue = incomingValue;
-        resolutionReason = 'SOURCE_PRIORITY';
+        resolutionReason = OUTCOME_CODE.SOURCE_PRIORITY;
       } else if (existingPriority !== -1) {
         chosenSource = existingSource;
         chosenValue = existingValue;
-        resolutionReason = 'SOURCE_PRIORITY';
+        resolutionReason = OUTCOME_CODE.SOURCE_PRIORITY;
       } else {
         // No priority defined, keep existing
         chosenSource = existingSource;
         chosenValue = existingValue;
-        resolutionReason = 'DEFAULT_KEEP_EXISTING';
+        resolutionReason = OUTCOME_CODE.DEFAULT_KEEP_EXISTING;
       }
     } else if (isTimeBased(fieldName, tableName)) {
       // Same source priority - use time-based resolution (newest wins)
@@ -3256,18 +3205,18 @@ export class DataConsolidationService {
           // Incoming data is newer
           chosenSource = incomingSource;
           chosenValue = incomingValue;
-          resolutionReason = 'TIME_BASED_PRIORITY';
+          resolutionReason = OUTCOME_CODE.TIME_BASED_PRIORITY;
         } else {
           // Existing data is newer, keep it
           chosenSource = existingSource;
           chosenValue = existingValue;
-          resolutionReason = 'TIME_BASED_PRIORITY_EXISTING_NEWER';
+          resolutionReason = OUTCOME_CODE.TIME_BASED_PRIORITY_EXISTING_NEWER;
         }
       } else {
         // If timestamps not available, accept incoming
         chosenSource = incomingSource;
         chosenValue = incomingValue;
-        resolutionReason = 'TIME_BASED_PRIORITY';
+        resolutionReason = OUTCOME_CODE.TIME_BASED_PRIORITY;
       }
     } else if (
       existingSource === incomingSource &&
@@ -3292,19 +3241,19 @@ export class DataConsolidationService {
       if (byDocument === false) {
         chosenSource = existingSource;
         chosenValue = existingValue;
-        resolutionReason = 'SAME_SOURCE_REFRESH_STORED_DOCUMENT_OUTRANKS';
+        resolutionReason = OUTCOME_CODE.SAME_SOURCE_REFRESH_STORED_DOCUMENT_OUTRANKS;
       } else if (byDocument === true) {
         chosenSource = incomingSource;
         chosenValue = incomingValue;
-        resolutionReason = 'SAME_SOURCE_REFRESH_INCOMING_DOCUMENT_OUTRANKS';
+        resolutionReason = OUTCOME_CODE.SAME_SOURCE_REFRESH_INCOMING_DOCUMENT_OUTRANKS;
       } else if (scrapedAt && existingUpdatedAt && scrapedAt <= existingUpdatedAt) {
         chosenSource = existingSource;
         chosenValue = existingValue;
-        resolutionReason = 'SAME_SOURCE_REFRESH_EXISTING_NEWER';
+        resolutionReason = OUTCOME_CODE.SAME_SOURCE_REFRESH_EXISTING_NEWER;
       } else {
         chosenSource = incomingSource;
         chosenValue = incomingValue;
-        resolutionReason = 'SAME_SOURCE_REFRESH';
+        resolutionReason = OUTCOME_CODE.SAME_SOURCE_REFRESH;
       }
     } else if (existingSource === incomingSource) {
       // OD-75 (owner, 2026-09-23): a source changing a value IT set earlier, where the field
@@ -3312,12 +3261,12 @@ export class DataConsolidationService {
       // value (OD-73); the change is recorded for the admin under its own reason, never alerted.
       chosenSource = existingSource;
       chosenValue = existingValue;
-      resolutionReason = SOURCE_CHANGED_OWN_VALUE;
+      resolutionReason = OUTCOME_CODE.SOURCE_CHANGED_OWN_VALUE;
     } else {
       // Same source priority, not time-based - keep existing
       chosenSource = existingSource;
       chosenValue = existingValue;
-      resolutionReason = 'DEFAULT_KEEP_EXISTING';
+      resolutionReason = OUTCOME_CODE.DEFAULT_KEEP_EXISTING;
     }
 
     // Calculate conflict severity using normalized values for comparison

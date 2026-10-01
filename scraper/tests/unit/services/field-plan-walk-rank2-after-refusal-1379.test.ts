@@ -14,12 +14,14 @@ import {
   fieldPlanValidationKeyFor,
 } from '../../../src/services/field-plan-gap-keys.js';
 import { consolidatedUpsertResultFixture, fieldResult } from '../../helpers/consolidation-result-fixture.js';
+import { isPriorityLossReason } from '../../../src/services/data-consolidation-service.js';
 import {
-  WRITE_REFUSAL_REASONS,
-  PRIORITY_LOSS_REASONS,
-  VALIDATION_RULE_REFUSAL_PREFIX,
-  isPriorityLossReason,
-} from '../../../src/services/data-consolidation-service.js';
+  OUTCOME_CODE,
+  OUTCOME_CATEGORY,
+  OUTCOME_PREFIX_NAMES,
+  type OutcomeCodeName,
+} from '../../../src/services/consolidation-outcome-codes.js';
+import { IPO_HIDDEN_SKIP_REASON } from '../../../src/services/field-plan-walk.js';
 
 const IPO_ID = '00000000-0000-4000-8000-000000001379';
 const RULE = 'face_value_equity_enum';
@@ -294,9 +296,10 @@ describe('#1379 the validation key: changes on exactly the events that justify a
     expect(fieldPlanClaimGapKeys(gapKeys('UPCOMING', [], 'r1'))['ipos.face_value']).toContain(base));
 });
 
-// Round 2 (Tier A MAJOR): EVERY write-time refusal the consolidator can return for this write's source is a
-// refusal, not a priority loss. Codes come from the consolidator's own exported constants (never retyped).
-describe('#1379 round 2: every write-time refusal code moves to rank 2; only a priority loss is LOST_TO_HIGHER_PRIORITY', () => {
+// Round 3: the codes come from the ONE categorized table (consolidation-outcome-codes.ts). The table itself is
+// proven complete against the emitter SOURCE by consolidation-outcome-codes-completeness.test.ts, so a code
+// dropped from the table goes red there even though these loops read the table.
+describe('#1379 round 3: every REFUSE code moves to rank 2; every KEEP code is LOST_TO_HIGHER_PRIORITY', () => {
   /** Rank 1 (NSE=3) comes back as the stored value 5 (source DRHP) with `reason` rejecting NSE; rank 2 (BSE=10) lands. */
   function withRank1Rejection(reason: string) {
     const ctx = setup({ answers: { NSE: supplied(3), BSE: supplied(10) } });
@@ -314,11 +317,15 @@ describe('#1379 round 2: every write-time refusal code moves to rank 2; only a p
   }
   const written = (d: any) => d.orchestrator.consolidatedUpsertIPO.mock.calls.map((c: any[]) => `${c[1]}=${c[0].faceValue}`);
 
-  const refusalCodes = [...WRITE_REFUSAL_REASONS, `${VALIDATION_RULE_REFUSAL_PREFIX}${RULE}`, 'SOME_FUTURE_REFUSAL_CODE'];
+  const emitted = (name: OutcomeCodeName): string =>
+    OUTCOME_PREFIX_NAMES.has(name) ? `${OUTCOME_CODE[name]}${name === 'VALIDATION_RULE_FAILED' ? RULE : 'TIER_A'}` : OUTCOME_CODE[name];
+  const names = Object.keys(OUTCOME_CODE) as OutcomeCodeName[];
+  const refusalCodes = [...names.filter((n) => OUTCOME_CATEGORY[n] === 'REFUSE').map(emitted), 'SOME_FUTURE_REFUSAL_CODE'];
+  const keepCodes = names.filter((n) => OUTCOME_CATEGORY[n] === 'KEEP').map(emitted);
 
-  it('the list is non-empty and includes VALIDATION_FAILED (matrix bounds, incl. the #1368 NaN case)', () => {
-    expect(WRITE_REFUSAL_REASONS.has('VALIDATION_FAILED')).toBe(true);
-    expect(WRITE_REFUSAL_REASONS.size).toBeGreaterThanOrEqual(7);
+  it('VALIDATION_FAILED (matrix bounds, incl. the #1368 NaN case) is a REFUSE; OD129_DOCUMENT_LISTING_HOLDS is a KEEP', () => {
+    expect(OUTCOME_CATEGORY.VALIDATION_FAILED).toBe('REFUSE');
+    expect(OUTCOME_CATEGORY.OD129_DOCUMENT_LISTING_HOLDS).toBe('KEEP');
   });
 
   it.each(refusalCodes)('refusal %s: rank 2 is written in the same pass (SUPPLIED from BSE)', async (reason) => {
@@ -333,7 +340,7 @@ describe('#1379 round 2: every write-time refusal code moves to rank 2; only a p
     expect(isPriorityLossReason(undefined)).toBe(false);
   });
 
-  it.each([...PRIORITY_LOSS_REASONS])('priority loss %s stays LOST_TO_HIGHER_PRIORITY, rank 2 never written', async (reason) => {
+  it.each(keepCodes)('priority loss %s stays LOST_TO_HIGHER_PRIORITY, rank 2 never written', async (reason) => {
     const { d, recorded } = withRank1Rejection(reason);
     await walkFieldPlanForIPO(IPO_ID, d, budget());
     expect(written(d)).toEqual(['NSE=3']);
@@ -350,6 +357,64 @@ describe('#1379 round 2: every write-time refusal code moves to rank 2; only a p
     );
     await walkFieldPlanForIPO(IPO_ID, d, budget());
     expect(recorded[0]).toMatchObject({ state: 'SUPPLIED', chosen: { source: 'NSE', rank: 1 } });
+  });
+});
+
+// Round 3 (the class round 2 missed): a document-held listing set and a feed naming a SUBSET of it is OD-129's
+// DOCUMENT_HOLDS -- the document's set stands, a genuine keep. Before round 3 the walk read it as a refusal,
+// wrote rank 2 and then parked the row as FAILED_VALIDATION.
+describe('#1379 round 3: a document-held listing_exchanges with a feed subset is a KEEP, not a refusal', () => {
+  it('rank 1 (NSE feed [NSE]) against a stored DRHP [BSE, NSE] ends LOST_TO_HIGHER_PRIORITY; rank 2 is never written', async () => {
+    const { d, recorded } = setup({
+      row: { fieldName: 'listing_exchanges' },
+      answers: { NSE: supplied(['NSE']), BSE: supplied(['BSE']) },
+      keys: null,
+    });
+    (d.orchestrator as any).consolidatedUpsertIPO = vi.fn(async (scraped: any, source: any) =>
+      consolidatedUpsertResultFixture({
+        ipoId: IPO_ID,
+        fieldResults: [
+          fieldResult('listingExchanges', ['BSE', 'NSE'], 'DRHP', {
+            rejectedSources: [{ source, value: scraped.listingExchanges, reason: OUTCOME_CODE.OD129_DOCUMENT_LISTING_HOLDS }],
+          }),
+        ],
+      })
+    );
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect((d.orchestrator as any).consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
+    expect(recorded[0]).toMatchObject({ state: 'CHECK_FAILED', reasonCode: 'LOST_TO_HIGHER_PRIORITY' });
+    expect(recorded[0].reasonCode).not.toBe('FAILED_VALIDATION');
+  });
+});
+
+// Round 3 (#1349, §9.2 item 23, OD-151): a HIDDEN row is neither a refusal nor a priority loss -- the scraper
+// writes nothing to it, so a rank-1 refusal never leads to a rank-2 write.
+describe('#1379 round 3: a hidden row is a dropped write, never a refusal that moves to rank 2', () => {
+  it('rank 1 refused, then the row is hidden before rank 2 -> rank 2 is NOT written; the row is left PENDING (dropped)', async () => {
+    const { d, recorded, orchestrator } = setup({ answers: { NSE: supplied(3), BSE: supplied(10) } });
+    // The admin hides the row right after rank 1's write is refused (state-based, not a call count).
+    const visible = await (d.ipoRepository as any).findById(IPO_ID);
+    let hidden = false;
+    (d.ipoRepository as any).findById = vi.fn(async () => (hidden ? { ...visible, hiddenAt: new Date('2026-10-01T00:00:00Z') } : visible));
+    const rank1Write = orchestrator.consolidatedUpsertIPO.getMockImplementation()!;
+    orchestrator.consolidatedUpsertIPO.mockImplementation(async (...args: any[]) => {
+      const r = await (rank1Write as any)(...args);
+      hidden = true;
+      return r;
+    });
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(writtenSources(orchestrator)).toEqual(['NSE=3']);
+    expect(recorded[0]).toMatchObject({ writeHappened: false, skipReason: IPO_HIDDEN_SKIP_REASON });
+    expect(recorded[0].reasonCode).toBeUndefined();
+  });
+
+  it('a row hidden from the start -> no rank is written at all', async () => {
+    const { d, recorded, orchestrator } = setup({ answers: { NSE: supplied(3), BSE: supplied(10) } });
+    const visible = await (d.ipoRepository as any).findById(IPO_ID);
+    (d.ipoRepository as any).findById = vi.fn(async () => ({ ...visible, hiddenAt: new Date('2026-10-01T00:00:00Z') }));
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(writtenSources(orchestrator)).toEqual([]);
+    expect(recorded[0]).toMatchObject({ writeHappened: false, skipReason: IPO_HIDDEN_SKIP_REASON });
   });
 });
 

@@ -50,6 +50,7 @@
 
 import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
+import { isHiddenIpo } from '@ipodhan/shared/services/scraper-write-block';
 import { normalizeChosen, isPriorityLossReason } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
@@ -1989,6 +1990,13 @@ const NO_FIELD_RESULT_REASON = 'no field result returned';
 /** #1229: the write door's merged-record date rule refused the value (stored row + this write incoherent). */
 export const DATE_REFUSED_REASON = 'date refused on the merged record (#1229)';
 
+/**
+ * #1379 round 3 (§9.2 item 23, OD-151): the write was not attempted because an admin HID the IPO. A
+ * dropped write (PENDING, attempts untouched, claim released), never a refusal: the claim query no longer
+ * offers a hidden row, so it is asked again only after the admin unhides it, and no lower rank is tried.
+ */
+export const IPO_HIDDEN_SKIP_REASON = 'IPO_HIDDEN (§9.2 item 23): the scraper writes nothing to a hidden row';
+
 
 type ConsolidatorFieldResult = {
   fieldName: string;
@@ -2080,6 +2088,9 @@ async function runWrite(
       if (!existing) {
         return { happened: false, skipReason: 'ipo row missing' };
       }
+      // #1379 round 3 (§9.2 item 23, OD-151): a row an admin HID is neither a refusal nor a priority
+      // loss -- the scraper writes nothing to it, so no rank (1, 2, ...) is written and nothing moves on.
+      if (isHiddenIpo(existing)) return { happened: false, skipReason: IPO_HIDDEN_SKIP_REASON };
       const r = await deps.orchestrator.consolidatedUpsertIPO(
         { id: ipoId, ...identityFieldsFor(existing), [camelFieldName]: answer.value },
         writerSource as any,
@@ -2108,6 +2119,10 @@ async function runWrite(
       return { happened: true, accepted: true };
     }
 
+    // #1379 round 3: the same hidden-row block for a child row (its IPO is the row an admin hid).
+    if (isHiddenIpo(await deps.ipoRepository.findById(ipoId))) {
+      return { happened: false, skipReason: IPO_HIDDEN_SKIP_REASON };
+    }
     const r = await deps.orchestrator.consolidatedUpsertChildRows(
       ipoId,
       plan.tableName as any,
