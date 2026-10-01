@@ -29,6 +29,10 @@ export const SCAN_DIRS = [
   'packages/shared/src/repositories',
   'packages/shared/src/admin',
   'web/app/api/admin',
+  // #1312: the web repositories/services and the scraper also write timestamps that are ordered
+  // against database-stamped times (e.g. field-extraction-failures-repository resolvedAt).
+  'web/lib',
+  'scraper/src',
 ];
 const EXTENSIONS = new Set(['.ts', '.tsx', '.mjs', '.js']);
 const EXCLUDE = [/\.test\.(ts|tsx|mjs|js)$/, /[\\/]tests?[\\/]/, /[\\/]node_modules[\\/]/];
@@ -36,6 +40,9 @@ const EXCLUDE = [/\.test\.(ts|tsx|mjs|js)$/, /[\\/]tests?[\\/]/, /[\\/]node_modu
 // A key ending in `At` (createdAt, detectedAt, stateChangedAt) or named `timestamp`, assigned the app clock.
 const OFFENDER_RE = /\b(\w*At|timestamp)\s*:\s*new Date\(\s*\)/g;
 const MARKER_RE = /\/\/\s*app-clock-ok:\s*\S/;
+// #1312: the app clock held in a variable (`const now = new Date(); ... resolvedAt: now`).
+const APP_CLOCK_VAR_RE = /\b(?:const|let|var)\s+(\w+)\s*=\s*new Date\(\s*\)/g;
+const TIMESTAMP_NAME_RE = /^(\w*At|timestamp)$/;
 
 function walk(dir, out) {
   if (!existsSync(dir)) return;
@@ -51,16 +58,36 @@ function walk(dir, out) {
 export function findOffenders(file, source) {
   const lines = source.split(/\r?\n/);
   const out = [];
+  const isComment = (t) => t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
+  // #1312: every identifier this file assigns the app clock to. File-wide, so a later reassignment is
+  // not resolved and any such name used as a timestamp value is flagged (fail closed).
+  const clockVars = new Set();
+  for (const raw of lines) {
+    if (isComment(raw.trim())) continue;
+    APP_CLOCK_VAR_RE.lastIndex = 0;
+    let v;
+    while ((v = APP_CLOCK_VAR_RE.exec(raw.replace(/\/\/.*$/, ''))) !== null) clockVars.add(v[1]);
+  }
+  const varUseRe =
+    clockVars.size > 0 ? new RegExp(String.raw`\b(\w*At|timestamp)\s*:\s*(?:${[...clockVars].join('|')})\b`, 'g') : null;
   lines.forEach((raw, i) => {
     const trimmed = raw.trim();
-    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return;
+    if (isComment(trimmed)) return;
     const code = raw.replace(/\/\/.*$/, '');
-    OFFENDER_RE.lastIndex = 0;
+    const marked = MARKER_RE.test(raw) || (i > 0 && MARKER_RE.test(lines[i - 1]));
+    if (marked) return;
+    const push = (column) => out.push({ file, line: i + 1, text: trimmed, column });
     let m;
-    while ((m = OFFENDER_RE.exec(code)) !== null) {
-      if (MARKER_RE.test(raw) || (i > 0 && MARKER_RE.test(lines[i - 1]))) continue;
-      out.push({ file, line: i + 1, text: trimmed, column: m[1] });
+    OFFENDER_RE.lastIndex = 0;
+    while ((m = OFFENDER_RE.exec(code)) !== null) push(m[1]);
+    if (varUseRe) {
+      varUseRe.lastIndex = 0;
+      while ((m = varUseRe.exec(code)) !== null) push(m[1]);
     }
+    // A timestamp-named variable holding the app clock (`const detectedAt = new Date()`): a shorthand
+    // `{ detectedAt }` cannot be told apart from any other use, so the declaration itself is flagged.
+    APP_CLOCK_VAR_RE.lastIndex = 0;
+    while ((m = APP_CLOCK_VAR_RE.exec(code)) !== null) if (TIMESTAMP_NAME_RE.test(m[1])) push(m[1]);
   });
   return out;
 }
@@ -117,11 +144,17 @@ function main() {
     return;
   }
   const fresh = newOffenders(offenders, baseline);
-  const present = new Set(offenders.map(keyOf));
-  const gone = baseline.filter((b) => !present.has(b.key));
-  if (gone.length > 0) {
-    console.log(`[check-app-clock-timestamps] ${gone.length} baseline entr${gone.length === 1 ? 'y is' : 'ies are'} gone (fixed) - shrink the baseline:`);
-    gone.forEach((b) => console.log(`  - ${b.key}`));
+  // #1312 item 3: the baseline is exact. An entry whose count exceeds the occurrences found (lines
+  // fixed, or the entry gone) is slack that would silently cover a future identical line, so it fails.
+  const found = new Map();
+  for (const o of offenders) found.set(keyOf(o), (found.get(keyOf(o)) ?? 0) + 1);
+  const stale = baseline.filter((b) => (b.count ?? 1) > (found.get(b.key) ?? 0));
+  if (stale.length > 0) {
+    console.error(
+      `[check-app-clock-timestamps] FAIL: ${stale.length} baseline entr${stale.length === 1 ? 'y' : 'ies'} whose count exceeds the occurrences found - shrink the baseline:`
+    );
+    stale.forEach((b) => console.error(`  - ${b.key} (baseline ${b.count ?? 1}, found ${found.get(b.key) ?? 0})`));
+    process.exitCode = 1;
   }
   if (fresh.length > 0) {
     console.error(
@@ -134,6 +167,7 @@ function main() {
     process.exitCode = 1;
     return;
   }
+  if (stale.length > 0) return;
   console.log(`[check-app-clock-timestamps] PASS: 0 new offenders (${offenders.length} baselined across ${SCAN_DIRS.length} trees)`);
 }
 

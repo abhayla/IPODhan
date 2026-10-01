@@ -60,7 +60,7 @@ test('GREEN: sql`now()`, a marked line, a comment and an unscanned tree pass', (
       'const x = { updatedAt: new Date() }; // app-clock-ok: redis score only',
       '// an example: detectedAt: new Date()',
     ].join('\n'),
-    'scraper/src/services/z.ts': 'db.insert(t).values({ detectedAt: new Date() });\n',
+    'docs/examples/z.ts': 'db.insert(t).values({ detectedAt: new Date() });\n',
   });
   try {
     const r = run(root, bl);
@@ -109,4 +109,48 @@ test('findOffenders / newOffenders units', () => {
 test('the real tree passes against the committed baseline', () => {
   const r = spawnSync(process.execPath, [SCRIPT], { cwd: REPO_ROOT, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+// #1312 item 2: the scan covers web/lib and scraper/src, and an app-clock value reached through a variable.
+for (const rel of ['web/lib/repositories/w-repository.ts', 'scraper/src/services/s.ts']) {
+  test(`RED (#1312): a planted resolvedAt: new Date() in ${rel.split('/').slice(0, 2).join('/')} fails`, () => {
+    const { root, bl } = tree({ [rel]: 'db.update(t).set({ resolvedAt: new Date() });\n' });
+    try {
+      const r = run(root, bl);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /resolvedAt/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('RED (#1312): const now = new Date(); then fooAt: now fails, and so does const fooAt = new Date()', () => {
+  const viaVar = tree({ [REPO]: 'const now = new Date();\nawait db.update(t).set({ resolvedAt: now });\n' });
+  const named = tree({ [REPO]: 'const detectedAt = new Date();\nawait db.insert(t).values({ detectedAt });\n' });
+  try {
+    const r = run(viaVar.root, viaVar.bl);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, new RegExp(`${REPO.replace(/\./g, '\.')}:2`));
+    assert.equal(run(named.root, named.bl).status, 1);
+  } finally {
+    rmSync(viaVar.root, { recursive: true, force: true });
+    rmSync(named.root, { recursive: true, force: true });
+  }
+});
+
+test('RED (#1312 item 3): a baseline count above the occurrences found fails (partial shrink and gone entries)', () => {
+  const line = 'db.update(t).set({ updatedAt: new Date() });';
+  const reason = 'bookkeeping only, no ordering consumer';
+  const partial = tree({ [REPO]: `${line}\n` }, [{ key: `${REPO} :: ${line}`, count: 2, reason }]);
+  const gone = tree({ [REPO]: 'const a = 1;\n' }, [{ key: `${REPO} :: ${line}`, count: 1, reason }]);
+  try {
+    const r = run(partial.root, partial.bl);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /exceeds/);
+    assert.equal(run(gone.root, gone.bl).status, 1);
+  } finally {
+    rmSync(partial.root, { recursive: true, force: true });
+    rmSync(gone.root, { recursive: true, force: true });
+  }
 });
