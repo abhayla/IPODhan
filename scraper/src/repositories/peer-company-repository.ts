@@ -9,7 +9,7 @@ import { lockAndReadRowHolds, applyRowHolds, type HoldExecutor } from '@ipodhan/
 import { lockAndReadListOwnership, recordListSuggestion } from '@ipodhan/shared/services/admin-list-hold';
 import { logger } from '../utils/logger';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { retireChildRowSources, type RetiredSourceRef } from '@ipodhan/shared/repositories/field-sources-retirement';
 import { fieldSourceCacheKeys } from '@ipodhan/shared/repositories/field-sources-repository';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -278,7 +278,13 @@ export class PeerCompanyRepository {
           if (!prior) return row;
           const incomingType = (row.sourceDocumentType as string | null | undefined) ?? null;
           const kept = keptDocumentType(prior.sourceDocumentType, incomingType);
-          return kept === incomingType ? row : { ...row, sourceDocumentType: kept };
+          if (kept === incomingType) return row;
+          // The stored figures belong to a NEWER document: the older list only fills cells it left empty.
+          const figures: Record<string, unknown> = { ...row, sourceDocumentType: kept };
+          for (const col of PEER_VALUE_COLUMNS) {
+            if (prior[col] !== null && prior[col] !== undefined) figures[col] = prior[col];
+          }
+          return figures as PeerCompanyInsert;
         });
         // OD-156: rewrite the rows the set names (and held rows), remove only the document peers of
         // the same or an older type it no longer names; every other stored row stays as it is.
@@ -300,6 +306,10 @@ export class PeerCompanyRepository {
         // cells (rank 2 fills a gap). A held cell keeps its stored value (rowsToWrite carries it).
         const documentRows = stored.filter(isDocumentPeerRow);
         const documentKeys = new Set(documentRows.map((row) => row.normalizedName));
+        // Fail closed (round 3): an admin-written row (data_source 'ADMIN') with no list hold is never
+        // deleted, rewritten or filled by Chittorgarh's list either; it is simply kept as stored.
+        const adminKeys = new Set(stored.filter((row) => row.dataSource === 'ADMIN').map((row) => row.normalizedName));
+        const keptKeys = new Set([...documentKeys, ...adminKeys]);
         const offeredByKey = new Map(rowsToWrite.map((row) => [row.normalizedName, row as Record<string, unknown>]));
         for (const docRow of documentRows) {
           const offered = offeredByKey.get(docRow.normalizedName);
@@ -308,16 +318,38 @@ export class PeerCompanyRepository {
           for (const col of PEER_VALUE_COLUMNS) {
             if (docRow[col] === null && offered[col] !== null && offered[col] !== undefined) fill[col] = offered[col];
           }
-          if (Object.keys(fill).length === 0) continue;
+          const filledCols = Object.keys(fill);
+          if (filledCols.length === 0) continue;
           await tx.update(schema.peerCompanies).set(fill).where(eq(schema.peerCompanies.id, docRow.id));
+          // Round 3: the row keeps its document label, so each filled cell gets its OWN source record
+          // naming Chittorgarh. Without it the cell would read as the document's own figure, and the
+          // next document re-read would carry it forward under the document label.
+          for (const col of filledCols) {
+            await tx
+              .insert(schema.fieldSources)
+              .values({
+                ipoId,
+                tableName: 'peer_companies',
+                rowKey: docRow.normalizedName,
+                fieldName: col,
+                source: 'CHITTORGARH',
+                confidence: 80,
+                updatedBy: 'SYSTEM',
+              })
+              .onConflictDoUpdate({
+                target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.rowKey, schema.fieldSources.fieldName],
+                set: { source: 'CHITTORGARH', confidence: 80, updatedBy: 'SYSTEM', updatedAt: sql`now()` },
+              });
+            retired.push({ tableName: 'peer_companies', rowKey: docRow.normalizedName, fieldName: col });
+          }
         }
-        const replaceable = stored.map((row) => row.normalizedName).filter((key) => !documentKeys.has(key));
+        const replaceable = stored.map((row) => row.normalizedName).filter((key) => !keptKeys.has(key));
         if (replaceable.length > 0) {
           await tx
             .delete(schema.peerCompanies)
             .where(and(eq(schema.peerCompanies.ipoId, ipoId), inArray(schema.peerCompanies.normalizedName, replaceable)));
         }
-        rowsToWrite = rowsToWrite.filter((row) => !documentKeys.has(row.normalizedName));
+        rowsToWrite = rowsToWrite.filter((row) => !keptKeys.has(row.normalizedName));
         // OD-157: the whole-list replace deleted every non-document stored row it did not write again.
         retired.push(
           ...(await retireChildRowSources(tx as unknown as NodePgDatabase<typeof schema>, {
@@ -335,7 +367,7 @@ export class PeerCompanyRepository {
     return result;
   }
 
-  /** OD-157 (round 2): after commit, drop the provenance cache keys of every retired record. */
+  /** OD-157 (round 2): after commit, drop the provenance cache keys of every retired or newly written record. */
   private async dropRetiredProvenanceCache(ipoId: string, retired: readonly RetiredSourceRef[]): Promise<void> {
     if (!this.redis || retired.length === 0) return;
     const keys = [...new Set(retired.flatMap((r) => fieldSourceCacheKeys(ipoId, r.tableName, r.fieldName, r.rowKey)))];

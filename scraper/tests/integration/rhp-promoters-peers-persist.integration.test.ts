@@ -710,10 +710,81 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
     expect(after).toHaveLength(6);
     const retired = await db.select().from(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
     expect(retired).toHaveLength(0);
+    // Round 3: the filled cell is recorded as Chittorgarh's; every other document cell keeps its document record.
+    const cellSources = await liveSourcesFor(gapKey);
+    expect(cellSources.find((r) => r.fieldName === 'peRatio')?.source).toBe('CHITTORGARH');
     if (CHILD_CONSOLIDATION) {
-      const docSourcesAfter = (await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')))).length;
-      expect(docSourcesAfter).toBe(docSourcesBefore);
+      const all = await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')));
+      expect(all.filter((r) => r.source === 'CHITTORGARH').map((r) => `${r.rowKey}.${r.fieldName}`)).toEqual([`${gapKey}.peRatio`]);
+      expect(all.length).toBeGreaterThanOrEqual(docSourcesBefore);
     }
+  });
+
+  /** A document row with one empty cell that Chittorgarh then fills (kamdhenu.peRatio = 31.5). */
+  async function seedChittorgarhFilledCell() {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const key = rowKeyForName('Kamdhenu Limited') as string;
+    await db.update(schema.peerCompanies).set({ peRatio: null }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, key)));
+    await db.delete(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.rowKey, key), eq(schema.fieldSources.fieldName, 'peRatio')));
+    await chittorgarhList([{ companyName: 'Kamdhenu Limited', peRatio: 31.5 }]);
+    return key;
+  }
+  const cellOf = async (key: string, col: string) => (await liveSourcesFor(key)).find((r) => r.fieldName === col);
+  const kamdhenuIn = (e: FilingExtraction) => peersOf(e).find((p) => p.name === 'Kamdhenu Limited')!;
+
+  it('round 3: a Chittorgarh-filled cell on a document row is recorded as Chittorgarh and its cache keys are dropped', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const key = rowKeyForName('Kamdhenu Limited') as string;
+    await db.update(schema.peerCompanies).set({ peRatio: null }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, key)));
+    const cacheKey = `field-source:${IPO_ID}:peer_companies:${key}:peRatio`;
+    await redis.set(cacheKey, '"stale"');
+    await chittorgarhList([{ companyName: 'Kamdhenu Limited', peRatio: 31.5 }], new PeerCompanyRepository(db as never, redis as never));
+    expect((await cellOf(key, 'peRatio'))?.source).toBe('CHITTORGARH');
+    expect(await redis.exists(cacheKey)).toBe(0);
+    const row = (await storedPeers()).find((r) => r.normalizedName === key)!;
+    expect(row.dataSource).toBe('DRHP');
+  });
+
+  it('round 3: a later document read that PRINTS the cell replaces the Chittorgarh value and its record', async () => {
+    const key = await seedChittorgarhFilledCell();
+    const rhp = JSON.parse(germanGreenJson) as FilingExtraction;
+    kamdhenuIn(rhp).pe = '25.50';
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const row = (await storedPeers()).find((r) => r.normalizedName === key)!;
+    expect(Number(row.peRatio)).toBeCloseTo(25.5, 2);
+    if (CHILD_CONSOLIDATION) expect((await cellOf(key, 'peRatio'))?.source).toBe('DRHP');
+  });
+
+  it('round 3: a later document read that prints NOTHING in the cell keeps the Chittorgarh value under its Chittorgarh record', async () => {
+    const key = await seedChittorgarhFilledCell();
+    const rhp = JSON.parse(germanGreenJson) as FilingExtraction;
+    for (const k of ['pe', 'pe_basic']) kamdhenuIn(rhp)[k] = null;
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const row = (await storedPeers()).find((r) => r.normalizedName === key)!;
+    expect(Number(row.peRatio)).toBeCloseTo(31.5, 2);
+    expect((await cellOf(key, 'peRatio'))?.source).toBe('CHITTORGARH');
+  });
+
+  it('round 3: an ADMIN peer row with no list hold survives a Chittorgarh list, named or not', async () => {
+    await seedNonDocumentPeers();
+    const adminKey = rowKeyForName(ADMIN_ADDED) as string;
+    await chittorgarhList([{ companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 }]);
+    let admin = (await storedPeers()).find((r) => r.normalizedName === adminKey);
+    expect(admin?.dataSource).toBe('ADMIN');
+    await chittorgarhList([{ companyName: ADMIN_ADDED, peRatio: 5 }, { companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 }]);
+    admin = (await storedPeers()).find((r) => r.normalizedName === adminKey);
+    expect(admin?.dataSource).toBe('ADMIN');
+    expect(admin?.peRatio).toBeNull();
+  });
+
+  it('round 3: an OLDER document list with DIFFERENT figures never overwrites a newer document figure', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'PROSPECTUS', documentId: DOC_ID, apply: true }, deps);
+    const drhp = JSON.parse(germanGreenJson) as FilingExtraction;
+    peersOf(drhp).find((p) => p.name === 'Beekay Steel Industries Ltd')!.eps_basic = '20.00';
+    await persistFilingExtraction(IPO_ID, drhp, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const row = (await storedPeers()).find((r) => r.companyName === 'Beekay Steel Industries Ltd')!;
+    expect(Number(row.eps)).toBeCloseTo(18.94, 2);
+    expect(row.sourceDocumentType).toBe('PROSPECTUS');
   });
 
   it('OD-157: a Chittorgarh list that drops its own peer retires the source records and drops their cache keys', async () => {

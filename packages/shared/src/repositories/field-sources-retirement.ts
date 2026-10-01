@@ -9,7 +9,7 @@
  * Call it inside the SAME transaction as the delete, so a rolled-back replace never retires the
  * records of a row that still exists.
  */
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 
@@ -21,8 +21,6 @@ export interface RetireChildRowSourcesInput {
   rowKeys: readonly string[];
   /** Which set replaced the row, e.g. "OD-156: dropped by the RHP peer list (document <id>)". */
   reason: string;
-  /** Defaults to now. */
-  at?: Date;
 }
 
 /** One retired record's address: what a caller needs to drop its provenance cache keys after commit. */
@@ -52,7 +50,6 @@ export async function retireChildRowSources(
       )
     );
   if (records.length === 0) return [];
-  const at = input.at ?? new Date();
   await tx.insert(schema.fieldSourcesRetired).values(
     records.map((r) => ({
       ipoId: r.ipoId,
@@ -61,7 +58,7 @@ export async function retireChildRowSources(
       fieldName: r.fieldName,
       source: r.source,
       record: r as unknown as Record<string, unknown>,
-      retiredAt: at,
+      retiredAt: sql`now()`,
       retiredReason: input.reason,
     }))
   );
