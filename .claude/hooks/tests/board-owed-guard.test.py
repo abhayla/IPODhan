@@ -21,6 +21,14 @@ BOARD_URL = "https://claude.ai/artifact/NohBg52m7AUjS8kTDMxxKM"
 def git(args, cwd):
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, check=True)
 
+STUB_MERGED_SOON = """
+import json, datetime
+t = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=5)
+print(json.dumps([{'number': 1356, 'mergedAt': t.strftime('%Y-%m-%dT%H:%M:%SZ')}]))
+"""
+STUB_NONE = "print('[]')"
+STUB_FAIL = "import sys; sys.exit(1)"
+
 
 class BoardOwedGuardTest(unittest.TestCase):
     @classmethod
@@ -516,6 +524,85 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.write_marker([{"pr": "1", "session_id": "me"}])
         p = self.run_stop("me", stop_hook_active=True)
         self.assertEqual(p.returncode, 0, "rc=%s" % p.returncode)
+
+    # ---- #1365: a merge that is only QUEUED (background) or did not happen records nothing ----
+    def _gh_stub(self, body):
+        path = os.path.join(self.tmp, "gh-stub-%s.py" % self._testMethodName)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(body)
+        return {"BOARD_OWED_GH_ARGV": json.dumps([sys.executable, path])}
+
+    def _bg_payload(self, cmd, session="me"):
+        payload = self.bash_payload(cmd, self.ipodhan)
+        payload["session_id"] = session
+        payload["tool_input"]["run_in_background"] = True
+        payload["tool_response"] = {"backgroundTaskId": "bx1", "stdout": ""}
+        return payload
+
+    def test_q1_background_merge_records_nothing(self):
+        cmd = "gh pr " + "merge 1349 --squash"
+        p = self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(os.path.exists(self.marker), "a queued background merge armed the marker")
+
+    def test_q2_background_marker_by_response_shape_only(self):
+        cmd = "gh pr " + "merge 1350 --squash"
+        payload = self.bash_payload(cmd, self.ipodhan)
+        payload["tool_response"] = {"backgroundTaskId": "bx2"}
+        self.run_hook("PostToolUseBash", payload)
+        self.assertFalse(os.path.exists(self.marker), "a backgroundTaskId response armed the marker")
+
+    def test_q3_foreground_unresolvable_pr_records_nothing(self):
+        cmd = "gh pr " + "merge 99999 --squash"
+        payload = self.bash_payload(cmd, self.ipodhan)
+        payload["tool_response"] = {"stderr": "GraphQL: Could not resolve to a PullRequest with the number of 99999."}
+        self.run_hook("PostToolUseBash", payload)
+        self.assertFalse(os.path.exists(self.marker), "a merge of a nonexistent PR armed the marker")
+
+    def test_q4_foreground_policy_refusal_records_nothing(self):
+        cmd = "gh pr " + "merge 1355 --squash"
+        payload = self.bash_payload(cmd, self.ipodhan)
+        payload["tool_response"] = {"stderr": "X Pull request #1355 was not merged: the base branch policy prohibits the merge"}
+        self.run_hook("PostToolUseBash", payload)
+        self.assertFalse(os.path.exists(self.marker), "a policy-refused merge armed the marker")
+
+    def test_q5_foreground_real_merge_still_arms(self):
+        cmd = "gh pr " + "merge 1361 --squash"
+        payload = self.bash_payload(cmd, self.ipodhan)
+        payload["tool_response"] = {"stdout": "Squashed and merged pull request #1361 (fix)", "exit_code": 0}
+        self.run_hook("PostToolUseBash", payload)
+        self.assertTrue(os.path.exists(self.marker), "a confirmed foreground merge no longer arms")
+
+    def test_q6_pending_background_promoted_when_gh_shows_merge_since(self):
+        cmd = "gh pr " + "merge 1356 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        self.assertFalse(os.path.exists(self.marker))
+        env = self._gh_stub(STUB_MERGED_SOON)
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 2, "confirmed background merge was not owed at Stop: %s" % p.stderr)
+        self.assertIn("1356", p.stderr)
+
+    def test_q7_pending_background_dropped_when_gh_shows_no_merge(self):
+        cmd = "gh pr " + "merge 1355 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        env = self._gh_stub(STUB_NONE)
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 0, "an unmerged background merge blocked Stop: %s" % p.stderr)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_q8_pending_background_promoted_when_gh_unavailable(self):
+        cmd = "gh pr " + "merge 1357 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        env = self._gh_stub(STUB_FAIL)
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 2, "unverifiable background merge must stay owed (fail-safe): %s" % p.stderr)
+
+    def test_q9_other_sessions_pending_not_touched(self):
+        cmd = "gh pr " + "merge 1358 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd, session="other"))
+        env = self._gh_stub(STUB_FAIL)
+        self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertFalse(os.path.exists(self.marker), "another session's pending merge was promoted by this session")
 
 
 if __name__ == "__main__":

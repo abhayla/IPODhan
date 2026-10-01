@@ -17,7 +17,11 @@ This one script serves three events, selected by `--event`:
       cwd's git origin URL contains "IPODhan" AND the tool_response does not
       show the merge failed, append a JSON record {pr, command, session_id,
       ts} to the marker file (default ~/.claude/.board-owed.ipodhan, one JSON
-      object per line).
+      object per line). #1365: a run_in_background call has only QUEUED the
+      merge, so it is written to <marker>.pending instead; at Stop the session's
+      pending records are promoted to the marker only if `gh pr list --state
+      merged` shows a PR merged since the command was queued (or gh cannot
+      answer: fail-safe, record).
 
   --event PostToolUseArtifact
       stdin is a PostToolUse payload for Artifact. If tool_input has a `url`
@@ -329,7 +333,9 @@ def _tool_input(data):
 _FAILURE_TEXT_RE = re.compile(
     r"REFUSED\s*\(exit|conflicts with its base|is not OPEN|Mergeability is UNKNOWN|"
     r"checks are not green|not mergeable|CONFLICTING|is a draft|GraphQL:\s*|"
-    r"pull request is not mergeable",
+    r"pull request is not mergeable|was not merged|policy prohibits|"
+    r"Could not resolve to a PullRequest|No pull requests? found|"
+    r"Required status checks?|Merge conflict",
     re.IGNORECASE,
 )
 
@@ -359,6 +365,127 @@ def _merge_call_failed(data):
     return False
 
 
+PENDING_PATH = MARKER_PATH + ".pending"
+
+
+def _is_background_call(data):
+    """#1365: a run_in_background Bash call has only been QUEUED when this hook
+    fires; whatever merge statement it holds has not run yet and may be refused
+    by the gate. Recognised by the tool_input flag or the response shape."""
+    if _tool_input(data).get("run_in_background") is True:
+        return True
+    resp = data.get("tool_response")
+    if isinstance(resp, dict):
+        for key in ("backgroundTaskId", "background_task_id", "bash_id", "shell_id"):
+            if resp.get(key):
+                return True
+    return False
+
+
+def _append_pending(record):
+    os.makedirs(os.path.dirname(PENDING_PATH), exist_ok=True)
+    with open(PENDING_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+
+def _read_pending():
+    records = []
+    try:
+        with open(PENDING_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(rec, dict):
+                    records.append(rec)
+    except Exception:
+        pass
+    return records
+
+
+def _write_pending(records):
+    try:
+        if not records:
+            if os.path.exists(PENDING_PATH):
+                os.remove(PENDING_PATH)
+            return
+        with open(PENDING_PATH, "w", encoding="utf-8") as f:
+            for rec in records:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def _parse_ts(text):
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _merged_prs_since(cwd, since):
+    """PR numbers GitHub reports merged at/after `since`; None when gh cannot
+    be asked or answers something unreadable (caller must then fail safe)."""
+    argv = None
+    raw_argv = os.environ.get("BOARD_OWED_GH_ARGV")
+    if raw_argv:
+        try:
+            argv = json.loads(raw_argv)
+        except Exception:
+            argv = None
+    if not argv:
+        argv = ["gh"]
+    try:
+        proc = subprocess.run(
+            argv + ["pr", "list", "--state", "merged", "--limit", "30", "--json", "number,mergedAt"],
+            cwd=cwd or None, capture_output=True, text=True, timeout=20,
+        )
+        if proc.returncode != 0:
+            return None
+        rows = json.loads(proc.stdout)
+        if not isinstance(rows, list):
+            return None
+    except Exception:
+        return None
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return None
+        merged_at = _parse_ts(row.get("mergedAt"))
+        if merged_at is None:
+            continue
+        if merged_at >= since:
+            out.append(str(row.get("number")))
+    return out
+
+
+def _resolve_pending(session_id, cwd):
+    """#1365: turn this session's queued background merges into owed records
+    only when GitHub shows a PR merged since the command was queued. When that
+    cannot be established (gh down, unreadable ts) the merge is recorded: a
+    missed board publish costs more than one extra prompt."""
+    pending = _read_pending()
+    if not pending:
+        return
+    keep = []
+    for rec in pending:
+        owner = rec.get("session_id") or ""
+        if owner and owner != (session_id or ""):
+            keep.append(rec)
+            continue
+        since = _parse_ts(rec.get("ts"))
+        merged = _merged_prs_since(cwd, since) if since else None
+        if merged is None:
+            _append_marker(rec)
+        elif merged:
+            queued_pr = rec.get("pr") or ""
+            rec = dict(rec)
+            rec["pr"] = queued_pr if queued_pr in merged else ",".join(merged)
+            _append_marker(rec)
+    _write_pending(keep)
+
+
 def handle_bash(data):
     command = _tool_input(data).get("command")
     if not isinstance(command, str) or not command.strip():
@@ -372,14 +499,16 @@ def handle_bash(data):
     if _merge_call_failed(data):
         return
     pr_number = _extract_pr_number(merge_stmt)
-    _append_marker(
-        {
-            "pr": pr_number or "",
-            "command": _redact(command)[:300],
-            "session_id": data.get("session_id") or "",
-            "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-        }
-    )
+    record = {
+        "pr": pr_number or "",
+        "command": _redact(command)[:300],
+        "session_id": data.get("session_id") or "",
+        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+    }
+    if _is_background_call(data):
+        _append_pending(record)
+        return
+    _append_marker(record)
 
 
 def handle_artifact(data):
@@ -618,6 +747,8 @@ def handle_stop(data):
     # every other project's session on the machine (2026-09-24, Startup-Factory).
     if not _is_ipodhan_repo(data.get("cwd") or os.getcwd()):
         return 0
+
+    _resolve_pending(data.get("session_id"), data.get("cwd") or os.getcwd())
 
     if not os.path.exists(MARKER_PATH):
         # No merge owed. Still owed when the last publish is older than
