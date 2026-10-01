@@ -2,10 +2,6 @@
   "_comment": "#1150: DB-writing scripts that do not yet open the DB through openRepairDb(). Shrink-only: scripts/ci/require-db-writer-guard.mjs fails when a listed file is guarded, exempted or deleted, so remove the entry in the same change. Never add an entry to make a NEW script pass.",
   "entries": [
     {
-      "file": "scraper/scripts/audit/classify-suspect-ipos.ts",
-      "reason": "Audit tool whose --apply branch runs 'update ipos set offering_type'; it prints current_database() itself but has no prod refusal or --expect-db. Migration to openRepairDb tracked in #1384."
-    },
-    {
       "file": "scraper/scripts/audit/oracle-date-matrix.ts",
       "reason": "Oracle cross-check whose apply branch runs a built 'update ipos set ...' over a pg client; no prod refusal. Migration to openRepairDb tracked in #1384."
     },
