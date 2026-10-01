@@ -66,12 +66,12 @@ The main / default branch MUST have enforced protections:
 - Disallow force-push and branch deletion on main
 - Linear history enforced if using squash merges
 
-## Local pre-push gate (project-specific)
+## Local PR gate (project-specific)
 
-IPODhan runs `scripts/ci/pre-push-local.sh` via `.husky/pre-push`, mirroring the relevant slice of
-`.github/workflows/pr-gate.yml` for the pushed diff's paths — see CLAUDE.md's Commit gate section.
-Escape hatch is `PRE_PUSH_LOCAL_SKIP=1 git push` (warns, never silent); `--no-verify` is still blocked
-by the global git-hook-bypass-guard.
+Before pushing, run `npm run gate:local`: it runs `.github/workflows/pr-gate.yml`'s own steps for the
+touched trees (see CLAUDE.md). The optional `.husky/pre-push` hook runs it on every push once enabled
+with `git config ipodhan.localGate true`; skip once with `LOCAL_PR_GATE_SKIP=1 git push` (warns, never
+silent). `--no-verify` is still blocked by the global git-hook-bypass-guard.
 
 ## CRITICAL RULES
 

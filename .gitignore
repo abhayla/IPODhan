@@ -410,3 +410,5 @@ docs/design/probes/fixtures/pdf/
 # prior broker_affiliates rows before a delete/update, same "backup, not source" convention as
 # scraper/scripts/state/ above — never committed.
 /web/scripts/state/
+# local PR gate logs (scripts/ci/local-pr-gate.mjs)
+.local-gate/

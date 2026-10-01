@@ -19,6 +19,7 @@ function git(cwd, args) {
 
 function initRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'require-detection-change-'));
+  assertHermeticRepo(dir);
   git(dir, ['init', '--quiet', '-b', 'main']);
   assertHermeticRepo(dir);
   git(dir, ['config', 'user.email', 'test@example.com']);

@@ -611,6 +611,19 @@ jobs:
             scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs \
             scripts/tests/require-repair-tool-module.test.mjs
 
+      - name: "Local PR gate drift guard (#1037, run-discipline B3)"
+        # scripts/ci/local-pr-gate.mjs reads THIS file and runs its steps on a
+        # developer machine before a push. The test fails when this workflow
+        # gains a step the local gate can neither run verbatim nor finds
+        # classified (setup / CI-only / heavy). Needs the yaml package (npm ci).
+        run: node --test scripts/tests/local-pr-gate.test.mjs
+
+      - name: "Hermetic fixture-git guard self-test (#1063)"
+        # Removing or weakening scripts/tests/lib/hermetic-git.{mjs,sh} turns
+        # this red: empty, '.', relative, host-root and in-repo dirs must be
+        # refused, and an exported GIT_DIR must be refused.
+        run: node --test scripts/tests/hermetic-git.test.mjs
+
       - name: "build-card Status gate self-test (#1181, own step: it plants card fixtures in the real tree)"
         # Wired after #1174 found 3 cases red on the runner: they drive the real gate on the
         # real tree, whose PARTIAL cards need `gh`, and CI=true forbids the offline skip. The
@@ -1385,24 +1398,6 @@ jobs:
           tests/integration/status-forward-only.integration.test.ts
           tests/integration/hide-row-scraper-writes.integration.test.ts
           tests/integration/exchange-override-od106.integration.test.ts
-
-  # Run-discipline B3 (owner directive 2026-09-25): 44 of 149 PR Gate runs
-  # failed on repeated misses (an integration test missing from CI's run
-  # list, a ratchet/baseline drift, type-check:scripts, render-board --check,
-  # lint:ci) that a local pre-push gate now catches before the push. This
-  # drives the REAL .husky/pre-push hook through `git push` to a throwaway
-  # local bare remote (delete, tag, new/existing/force-pushed branch, wrong
-  # branch checked out, a failing check) plus the --plan path mapping.
-  pre-push-local-gate-test:
-    name: Pre-Push Local Gate Mapping Test (run-discipline B3)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run pre-push-local.sh mapping test
-        run: bash scripts/tests/pre-push-local.test.sh
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under

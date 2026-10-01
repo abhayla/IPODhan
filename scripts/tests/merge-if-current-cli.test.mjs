@@ -42,6 +42,7 @@ const CONSOLIDATOR = [
  */
 function buildRepo(mainMoves, branchEdits) {
   const repo = mkdtempSync(path.join(tmpdir(), 'merge-if-current-'));
+  assertHermeticRepo(repo);
   git(repo, ['init', '--quiet', '--initial-branch=main']);
   assertHermeticRepo(repo);
   git(repo, ['config', 'user.email', 'test@example.com']);

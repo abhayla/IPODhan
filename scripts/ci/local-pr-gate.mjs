@@ -1,0 +1,367 @@
+#!/usr/bin/env node
+// local-pr-gate.mjs — runs .github/workflows/pr-gate.yml's OWN steps on this
+// machine, for the trees a branch touched, before the push (run-discipline B3,
+// issues #1037 / #1063).
+//
+// WHY: a CI round costs ~15 min and a rebase. Measured misses that only CI
+// caught: a hard-coded count in scraper/tests/unit/pipeline-stages/fixtures/
+// stage-0/expected-schema.json broke CI for a migration PR (#1377, the 7th
+// "hardcoded counts break far from the change" round); four PRs pushed
+// integration tests missing from pr-gate.yml's list. Both are steps pr-gate.yml
+// already runs; nothing ran them before the push.
+//
+// HOW (structural, not a hand-copied list): the steps are READ FROM pr-gate.yml
+// at run time. Every step with a `run:` runs locally, verbatim, in its
+// working-directory with its env, UNLESS the table below classifies it as
+// setup (installs, toolchain), CI-only (needs a service container, a secret,
+// or the runner) or heavy (opt-in with --full). A step the gate cannot run
+// verbatim (an unknown ${{ }} expression, a service job, a global install) and
+// that the table does not classify makes the gate FAIL CLOSED, and
+// scripts/tests/local-pr-gate.test.mjs fails in CI, so pr-gate.yml cannot gain
+// a step this gate silently ignores.
+//
+// Usage:
+//   npm run gate:local                 # gate merge-base(origin/main)..HEAD
+//   node scripts/ci/local-pr-gate.mjs --plan          # print the plan, run nothing
+//   node scripts/ci/local-pr-gate.mjs --base <sha>    # explicit base
+//   node scripts/ci/local-pr-gate.mjs --full          # also run heavy steps (next build)
+//   node scripts/ci/local-pr-gate.mjs --keep-going    # run every step, report all failures
+//   node scripts/ci/local-pr-gate.mjs --files a,b     # pretend these paths changed (plan/test)
+//   node scripts/ci/local-pr-gate.mjs --only <regex>  # run only matching planned steps (re-run one failure)
+// Skip from the optional pre-push hook: LOCAL_PR_GATE_SKIP=1 git push
+import { spawnSync, execFileSync } from 'node:child_process';
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+export const WORKFLOW = join(REPO_ROOT, '.github', 'workflows', 'pr-gate.yml');
+
+// ---- trees -----------------------------------------------------------------
+// A step runs locally only when the push touched a tree it reads. Trees are
+// wider than the obvious owner on purpose: a migration under web/drizzle/
+// changes the scraper's stage-0 expected-schema counts (#1377), and a root
+// package.json/lockfile change can break anything.
+const ROOT_PKG = String.raw`package(-lock)?\.json$|tsconfig[^/]*\.json$`;
+export const TREES = {
+  any: /./,
+  web: new RegExp(String.raw`^(web/|packages/shared/|${ROOT_PKG})`),
+  scraper: new RegExp(String.raw`^(scraper/|packages/shared/|web/drizzle/|${ROOT_PKG})`),
+  webOrScraper: new RegExp(String.raw`^(web/|scraper/|packages/shared/|${ROOT_PKG})`),
+  shared: new RegExp(String.raw`^(packages/shared/|${ROOT_PKG})`),
+  python: /^(scraper\/scripts\/|scraper\/.*\.py$|scraper\/config\/)/,
+  hooks: /^\.claude\/hooks\//,
+  deploy: /^(scripts\/|\.github\/|ecosystem\.config|scraper\/config\/|deploy\/)/,
+};
+
+// ---- classification ----------------------------------------------------------
+// Keyed "<job id> :: <step name>". mode:
+//   setup   — toolchain / install; the developer's checkout already has it
+//   ci-only — cannot run here (service container, secret, runner-only state)
+//   heavy   — runs only with --full (printed, never silently skipped)
+//   local   — runs (the default for every unlisted step); `tree` narrows it,
+//             `cmd` replaces a run block that must not run verbatim here
+const NPM_CI_SETUP = { mode: 'setup', reason: 'npm ci: the checkout already has node_modules (never reinstall a junctioned worktree)' };
+export const STEP_TABLE = {
+  'gate :: Install dependencies': NPM_CI_SETUP,
+  'gate :: Build shared package': { mode: 'local', tree: 'webOrScraper' },
+  'gate :: Scraper import smoke (real ESM runtime)': { mode: 'local', tree: 'scraper' },
+  'gate :: Run lint': { mode: 'local', tree: 'web' },
+  'gate :: Run type-check': { mode: 'local', tree: 'web' },
+  'gate :: Run unit tests': { mode: 'local', tree: 'web' },
+  'gate :: Type-check scraper scripts (T-433 MAJOR-4 - scraper/tsconfig.json only ever covered src/**)': { mode: 'local', tree: 'scraper' },
+  'gate :: Type-check scraper/src against a fresh shared build, shrink-only baseline (#890)': { mode: 'local', tree: 'scraper' },
+  'gate :: Run shared package unit tests (T-433 MAJOR-5 - packages/shared test files had no runner)': { mode: 'local', tree: 'shared' },
+  'gate :: Run TZ-explicit case driver (issue #478)': { mode: 'local', tree: 'scraper' },
+  'gate :: Run scraper unit test suite (full, T-301)': { mode: 'local', tree: 'scraper' },
+  'gate :: Run pipeline stage harness (test ladder, issue #258)': { mode: 'local', tree: 'scraper' },
+
+  'python-tests :: Install test dependencies': { mode: 'setup', reason: 'pip install: install scraper/scripts/requirements-test.txt once yourself' },
+  'python-tests :: Run scraper python extractor test suite': { mode: 'local', tree: 'python' },
+  'python-tests :: Board-owed-guard hook self-tests (project-level, 2026-09-25)': {
+    mode: 'local', tree: 'hooks',
+    // CI writes a throwaway identity into the runner's GLOBAL git config; never
+    // touch the developer's. The fixtures only need some identity, which a
+    // developer machine already has.
+    cmd: 'python .claude/hooks/tests/board-owed-guard.test.py',
+  },
+  'python-tests :: DB-tunnel SessionEnd hook self-tests (project-level, 2026-09-25)': { mode: 'local', tree: 'hooks' },
+  // YAML reads ' #1080)' in this step's name as a comment, so its name ends at 'PR'.
+  'python-tests :: DB-tunnel script self-tests (round 2, PR': { mode: 'local', tree: 'hooks' },
+
+  'web-build :: Check whether web/** or packages/shared/** changed': { mode: 'setup', reason: 'path filter: the local gate applies the web tree itself' },
+  'web-build :: Install dependencies': NPM_CI_SETUP,
+  'web-build :: Build shared package': { mode: 'local', tree: 'web' },
+  'web-build :: Shared .js-suffixed imports resolve under webpack too (fast pre-check)': { mode: 'local', tree: 'web' },
+  'web-build :: next build': { mode: 'heavy', tree: 'web', reason: 'next build (~5 min, 6 GB heap): run with --full' },
+};
+// Whole jobs that cannot run here.
+export const JOB_TABLE = {
+  'scraper-document-integration': { mode: 'ci-only', reason: 'needs the postgres service container (DB-backed integration tests)' },
+  'deploy-script-tests': { tree: 'deploy' },
+};
+// The only step `if:` the gate understands: the web-build path filter, which
+// it replaces with the web tree.
+export const KNOWN_IFS = { "steps.filter.outputs.run == 'true'": 'web' };
+
+// A run block that must never run verbatim on a developer machine.
+export const FORBIDDEN_LOCAL = /\bnpm (ci|install)\b|\bpip3? install\b|-m pip install|git config --global|\bsudo\b|apt-get|\$GITHUB_[A-Z_]+|\bdocker\b/;
+
+// ---- ${{ }} expressions ------------------------------------------------------
+export function expressionValues(ctx) {
+  return {
+    'github.event.pull_request.base.sha': ctx.base,
+    'github.event.pull_request.head.sha': ctx.head,
+    'github.base_ref': 'main',
+    'github.event.pull_request.base.ref': 'main',
+    'github.token': '',
+    'github.event.pull_request.number': ctx.prNumber || '',
+  };
+}
+const EXPR_RE = /\$\{\{\s*([^}]*?)\s*\}\}/g;
+export function substitute(text, ctx) {
+  const vals = expressionValues(ctx);
+  const unknown = [];
+  const out = String(text).replace(EXPR_RE, (m, e) => {
+    if (Object.prototype.hasOwnProperty.call(vals, e)) return vals[e];
+    unknown.push(e);
+    return m;
+  });
+  return { out, unknown };
+}
+
+// ---- workflow --------------------------------------------------------------
+export function loadSteps(workflowPath = WORKFLOW) {
+  const YAML = require('yaml');
+  const wf = YAML.parse(readFileSync(workflowPath, 'utf8'));
+  const steps = [];
+  for (const [jobId, job] of Object.entries(wf.jobs || {})) {
+    if (job.defaults || job.container || job.strategy) {
+      steps.push({ jobId, name: '(job)', problem: `job ${jobId} uses defaults/container/strategy, which the local gate does not model` });
+    }
+    (job.steps || []).forEach((st, index) => {
+      steps.push({
+        jobId, index, hasServices: Boolean(job.services),
+        name: st.name || st.uses || `step ${index + 1}`,
+        uses: st.uses, run: st.run, if: st.if, shell: st.shell,
+        env: st.env || {}, workdir: st['working-directory'] || '.',
+      });
+    });
+  }
+  return { wf, steps };
+}
+
+// One decision per step. `problem` set = the gate cannot handle the step: the
+// gate fails closed on it and the drift test fails in CI.
+export function classify(step, ctx = { base: 'BASE', head: 'HEAD' }) {
+  const key = `${step.jobId} :: ${step.name}`;
+  if (step.problem) return { key, mode: 'error', problem: step.problem };
+  const job = JOB_TABLE[step.jobId] || {};
+  const entry = STEP_TABLE[key];
+  if (!step.run) return { key, mode: 'setup', reason: `uses: ${step.uses}` };
+  if (job.mode === 'ci-only') return { key, mode: 'ci-only', reason: job.reason };
+  if (step.hasServices) {
+    return { key, mode: 'error', problem: `job ${step.jobId} has service containers; classify the job in JOB_TABLE` };
+  }
+  if (entry && (entry.mode === 'setup' || entry.mode === 'ci-only')) return { key, mode: entry.mode, reason: entry.reason };
+  let tree = entry?.tree || job.tree || 'any';
+  if (step.if) {
+    const t = KNOWN_IFS[step.if];
+    if (!t) return { key, mode: 'error', problem: `unknown step if: ${step.if}` };
+    if (!entry?.tree) tree = t;
+  }
+  if (step.shell) return { key, mode: 'error', problem: `custom shell: ${step.shell}` };
+  const raw = entry?.cmd || step.run;
+  if (!entry?.cmd && FORBIDDEN_LOCAL.test(step.run)) {
+    return { key, mode: 'error', problem: `run block must not run verbatim locally (${step.run.match(FORBIDDEN_LOCAL)[0]}); classify it` };
+  }
+  const { out: cmd, unknown } = substitute(raw, ctx);
+  const env = {};
+  for (const [k, v] of Object.entries(step.env)) {
+    const s = substitute(v, ctx);
+    unknown.push(...s.unknown);
+    env[k] = s.out;
+  }
+  if (unknown.length) {
+    const secret = unknown.find((u) => /^secrets\./.test(u));
+    return { key, mode: 'error', problem: secret ? `needs ${secret}; classify it ci-only` : `unknown expression(s): ${unknown.join(', ')}` };
+  }
+  return { key, mode: entry?.mode === 'heavy' ? 'heavy' : 'local', tree, cmd, env, workdir: step.workdir, reason: entry?.reason };
+}
+
+// pr-gate.yml's own `on.pull_request.paths` (ordered, later wins, "!" negates):
+// a push whose every file is excluded does not run pr-gate.yml in CI either.
+export function globToRegex(glob) {
+  if (/[?[\]{}]/.test(glob)) throw new Error(`local-pr-gate: unsupported glob token in '${glob}'`);
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    if (glob.startsWith('**/', i)) { re += '(?:.*/)?'; i += 2; continue; }
+    if (glob.startsWith('**', i)) { re += '.*'; i += 1; continue; }
+    if (glob[i] === '*') { re += '[^/]*'; continue; }
+    re += glob[i].replace(/[.+^$()|\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`);
+}
+export function ciWouldRun(files, wf) {
+  const pats = wf?.on?.pull_request?.paths;
+  if (!pats) return files.length > 0;
+  const rules = pats.map((p) => (p.startsWith('!') ? { neg: true, re: globToRegex(p.slice(1)) } : { neg: false, re: globToRegex(p) }));
+  return files.some((f) => {
+    let inc = false;
+    for (const r of rules) if (r.re.test(f)) inc = !r.neg;
+    return inc;
+  });
+}
+
+export function buildPlan({ files, ctx, workflowPath = WORKFLOW, full = false }) {
+  const { wf, steps } = loadSteps(workflowPath);
+  const runs = ciWouldRun(files, wf);
+  const plan = [];
+  const seen = new Set();
+  for (const step of steps) {
+    const c = classify(step, ctx);
+    if (c.mode === 'local' || c.mode === 'heavy') {
+      const touched = files.some((f) => TREES[c.tree].test(f));
+      if (!runs || !touched) { plan.push({ ...c, action: 'skip', why: runs ? `tree '${c.tree}' not touched` : 'pr-gate.yml does not run for these paths' }); continue; }
+      if (c.mode === 'heavy' && !full) { plan.push({ ...c, action: 'skip', why: c.reason }); continue; }
+      const sig = `${c.workdir}\0${c.cmd}\0${JSON.stringify(c.env)}`;
+      if (seen.has(sig)) { plan.push({ ...c, action: 'skip', why: 'same command already in this plan' }); continue; }
+      seen.add(sig);
+      plan.push({ ...c, action: 'run' });
+    } else if (c.mode === 'error') {
+      plan.push({ ...c, action: 'error' });
+    } else {
+      plan.push({ ...c, action: c.mode });
+    }
+  }
+  return { plan, ciRuns: runs };
+}
+
+// ---- git -------------------------------------------------------------------
+// git exports GIT_DIR into hooks (from a linked worktree: .git/worktrees/<n>);
+// a fixture test inheriting it wrote into the real repo on 2026-09-25 (#1037).
+const GIT_LOCAL_ENV = ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
+  'GIT_OBJECT_DIRECTORY', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_INDEX_FILE',
+  'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_PREFIX', 'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR'];
+// CI has no database, Redis or tunnel. A developer shell often has them; a
+// unit test that silently reaches the dev DB is not a CI mirror.
+const CI_ABSENT_ENV = /^(DATABASE_URL|STAGE0_DATABASE_URL|TEST_DATABASE_URL|REDIS_URL|REDIS_HOST|REDIS_PORT|REDIS_PASSWORD|PGHOST|PGPORT|PGUSER|PGPASSWORD|PGDATABASE)$/;
+export function childEnv(stepEnv) {
+  const env = { ...process.env };
+  for (const k of GIT_LOCAL_ENV) delete env[k];
+  for (const k of Object.keys(env)) if (CI_ABSENT_ENV.test(k)) delete env[k];
+  env.CI = 'true';
+  for (const [k, v] of Object.entries(stepEnv || {})) {
+    if (v === '') delete env[k]; else env[k] = v; // e.g. GH_TOKEN: gh falls back to its own login
+  }
+  return env;
+}
+
+function git(args) {
+  const env = { ...process.env };
+  for (const k of GIT_LOCAL_ENV) delete env[k];
+  return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
+function parseArgs(argv) {
+  const a = { plan: false, full: false, keepGoing: false, base: null, files: null, only: null };
+  for (let i = 0; i < argv.length; i++) {
+    const x = argv[i];
+    if (x === '--plan') a.plan = true;
+    else if (x === '--full') a.full = true;
+    else if (x === '--keep-going') a.keepGoing = true;
+    else if (x === '--base') a.base = argv[++i];
+    else if (x === '--files') a.files = argv[++i].split(',').filter(Boolean);
+    else if (x === '--only') a.only = new RegExp(argv[++i], 'i');
+    else if (x === '--help' || x === '-h') a.help = true;
+  }
+  return a;
+}
+
+function fmtSecs(ms) { return `${(ms / 1000).toFixed(1)}s`; }
+
+export function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
+  if (args.help) {
+    console.log('usage: node scripts/ci/local-pr-gate.mjs [--plan] [--full] [--keep-going] [--base <ref>] [--files a,b] [--only <regex>]');
+    return 0;
+  }
+  const head = git(['rev-parse', 'HEAD']);
+  let base = args.base ? git(['rev-parse', args.base]) : null;
+  if (!base) {
+    try { base = git(['merge-base', 'refs/remotes/origin/main', 'HEAD']); } catch {
+      console.error('local-pr-gate: cannot find merge-base with refs/remotes/origin/main; run `git fetch origin main` or pass --base');
+      return 2;
+    }
+  }
+  const dirty = git(['status', '--porcelain', '--untracked-files=no']);
+  if (dirty && !args.files) console.log('local-pr-gate: WARNING - uncommitted tracked changes; steps run on the working tree, the changed-file list comes from commits.');
+  const files = args.files || git(['diff', '--name-only', base, 'HEAD']).split('\n').filter(Boolean);
+  let prNumber = '';
+  if (!args.plan && !args.files) {
+    const r = spawnSync('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    if (r.status === 0) prNumber = r.stdout.trim();
+  }
+  const ctx = { base, head, prNumber };
+  const { plan, ciRuns } = buildPlan({ files, ctx, full: args.full });
+
+  console.log(`local-pr-gate: ${files.length} changed file(s) in ${base.slice(0, 8)}..${head.slice(0, 8)} (mirrors .github/workflows/pr-gate.yml)`);
+  if (!ciRuns) console.log('local-pr-gate: every changed path is excluded by pr-gate.yml `paths:` (docs-only); CI will not run it either.');
+  const errors = plan.filter((p) => p.action === 'error');
+  const toRun = plan.filter((p) => p.action === 'run' && (!args.only || args.only.test(p.key)));
+  if (args.only) console.log(`local-pr-gate: --only ${args.only} keeps ${toRun.length} of ${plan.filter((p) => p.action === 'run').length} planned step(s); this is NOT a full gate run.`);
+  const ciOnly = plan.filter((p) => p.action === 'ci-only');
+  const heavy = plan.filter((p) => p.action === 'skip' && p.mode === 'heavy' && ciRuns && files.some((f) => TREES[p.tree].test(f)));
+  const treeSkips = plan.filter((p) => p.action === 'skip' && p.mode !== 'heavy');
+
+  console.log(`  run here: ${toRun.length}   CI-only: ${ciOnly.length}   heavy (--full): ${heavy.length}   tree not touched: ${treeSkips.length}   setup: ${plan.filter((p) => p.action === 'setup').length}`);
+  for (const p of ciOnly) console.log(`  CI-only  ${p.key} — ${p.reason}`);
+  for (const p of heavy) console.log(`  NOT RUN  ${p.key} — ${p.why}`);
+  if (errors.length) {
+    console.error('\nlocal-pr-gate: REFUSED — pr-gate.yml has step(s) this gate can neither run nor classify:');
+    for (const e of errors) console.error(`  ${e.key}: ${e.problem}`);
+    console.error('Classify each in STEP_TABLE / JOB_TABLE of scripts/ci/local-pr-gate.mjs.');
+    return 3;
+  }
+  if (args.plan) {
+    for (const p of plan) console.log(`  [${p.action}] ${p.key}${p.why ? ` (${p.why})` : ''}`);
+    return 0;
+  }
+  if (!toRun.length) { console.log('local-pr-gate: nothing to run for these paths.'); return 0; }
+
+  const logDir = join(REPO_ROOT, '.local-gate', new Date().toISOString().replace(/[:.]/g, '-'));
+  mkdirSync(logDir, { recursive: true });
+  const t0 = Date.now();
+  const failed = [];
+  toRun.forEach((p, i) => {
+    const log = join(logDir, `${String(i + 1).padStart(3, '0')}.log`);
+    const s = Date.now();
+    process.stdout.write(`[${i + 1}/${toRun.length}] ${p.key} ... `);
+    if (failed.length && !args.keepGoing) { console.log('not run (an earlier step failed)'); return; }
+    const r = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', p.cmd], {
+      cwd: join(REPO_ROOT, p.workdir), env: childEnv(p.env), encoding: 'utf8', maxBuffer: 1 << 28,
+    });
+    writeFileSync(log, `$ (cd ${p.workdir} && ${p.cmd})\n\n${r.stdout || ''}\n${r.stderr || ''}\n${r.error ? String(r.error) : ''}`);
+    const ok = r.status === 0;
+    console.log(`${ok ? 'PASS' : `FAIL (exit ${r.status})`} ${fmtSecs(Date.now() - s)}`);
+    if (!ok) {
+      failed.push({ p, log });
+      const tail = readFileSync(log, 'utf8').split('\n').slice(-40).join('\n');
+      console.log(`---- ${p.key}: last 40 lines (full log ${log}) ----\n${tail}\n----`);
+    }
+  });
+  const total = fmtSecs(Date.now() - t0);
+  if (failed.length) {
+    console.log(`\nlocal-pr-gate: RED — ${failed.length} step(s) failed in ${total}:`);
+    for (const f of failed) console.log(`  ${f.p.key}\n    (cd ${f.p.workdir} && ${f.p.cmd.trim().split('\n').join(' ; ')})\n    log: ${f.log}`);
+    return 1;
+  }
+  console.log(`\nlocal-pr-gate: GREEN — ${toRun.length} step(s) passed in ${total}. CI-only steps above still run on the PR.`);
+  return 0;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  process.exitCode = main();
+}

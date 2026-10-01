@@ -89,6 +89,7 @@ bash -n "$TMP/gate.sh" || { echo "FAIL: the gate step body is not valid bash" >&
 # Throwaway history: base -> docs-only commit -> code commit.
 REPO="$TMP/repo"
 mkdir -p "$REPO"
+assert_hermetic_repo "$REPO"
 cd "$REPO" || exit 1
 git init -q .
 assert_hermetic_repo "$REPO"

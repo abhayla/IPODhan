@@ -17,6 +17,7 @@
     "dev:scraper": "npm run dev --workspace=scraper",
     "scraper:nse": "npm start --workspace=scraper",
     "lint": "npm run lint --workspace=web",
+    "gate:local": "node scripts/ci/local-pr-gate.mjs",
     "build": "npm run build --workspace=web",
     "test:unit": "npm run test:unit --workspace=web",
     "audit:prod": "node scripts/audit-prod.mjs",

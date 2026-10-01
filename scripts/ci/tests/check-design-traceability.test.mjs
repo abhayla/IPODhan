@@ -428,6 +428,7 @@ function git(cwd, args) {
 }
 
 function initGitFixture(root) {
+  assertHermeticRepo(root);
   git(root, ['init', '-q']);
   assertHermeticRepo(root);
   git(root, ['config', 'core.autocrlf', 'false']);

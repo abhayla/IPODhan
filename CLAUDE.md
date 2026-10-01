@@ -260,13 +260,10 @@ export async function GET(request: NextRequest) {
   `.claude/skills/windows-deployment-expert/` describe that retired path — read them as history.
 - **Commit gate (husky pre-commit):** staged-secret scan → workflow-file ASCII check → lint-staged
   (`tsc --noEmit` on `web/**` only). Nothing type-checks `scraper/` or `packages/shared/` at commit time.
-- **Push gate (husky pre-push, `scripts/ci/pre-push-local.sh`, run-discipline B3):** reads the pushed refs git
-  sends on stdin and gates exactly those ranges (remote sha..local sha; new branch = merge-base with `origin/main`;
-  deletes and tags skipped), running the matching slice of `pr-gate.yml` (ratchets on every code push, web
-  tsc/lint, scraper `type-check:scripts`, board/registry `--check`, workflow ASCII, hook and companion tests).
-  Checks run on the working tree, so it REFUSES a push of a ref that is not HEAD or with uncommitted tracked
-  changes. The detection-change gate is left to CI (it reads the PR body). Plan only: `--plan`. Escape hatch:
-  `PRE_PUSH_LOCAL_SKIP=1 git push` (prints a warning, never silent).
+- **Local PR gate (`npm run gate:local`, run-discipline B3):** runs `pr-gate.yml`'s own steps, read from the
+  workflow, for the trees the branch touched (merge-base with `origin/main`..HEAD); DB/service steps are printed as
+  CI-only, `next build` only with `--full`. Re-run one failure: `--only <regex>`. Optional pre-push hook, off by
+  default: `git config ipodhan.localGate true` (skip once: `LOCAL_PR_GATE_SKIP=1 git push`).
 - **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---

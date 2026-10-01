@@ -52,6 +52,7 @@ build_fixture_repo() {
   local repo
   repo="$(fresh_dir)"
   (
+    assert_hermetic_repo "$repo"
     cd "$repo" || exit 1
     git init -q
     assert_hermetic_repo "$repo"
@@ -249,6 +250,7 @@ run_deploy() {
   # by committing a manifestless initial state on a fresh repo.
   REPO2="$(fresh_dir)"
   (
+    assert_hermetic_repo "$REPO2"
     cd "$REPO2" || exit 1
     git init -q
     assert_hermetic_repo "$REPO2"

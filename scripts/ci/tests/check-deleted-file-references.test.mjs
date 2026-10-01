@@ -9,6 +9,9 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scrubGitEnv, assertHermeticRepo } from '../../tests/lib/hermetic-git.mjs';
+
+scrubGitEnv();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(__dirname, '..', 'check-deleted-file-references.mjs');
@@ -20,7 +23,9 @@ function sh(cwd, args) {
 
 function makeRepo() {
   const root = mkdtempSync(join(tmpdir(), 'deleted-file-refs-fixture-'));
+  assertHermeticRepo(root);
   sh(root, ['git', 'init', '--quiet', '-b', 'main']);
+  assertHermeticRepo(root);
   sh(root, ['git', 'config', 'user.email', 'test@example.com']);
   sh(root, ['git', 'config', 'user.name', 'Test']);
   return root;

@@ -3504,6 +3504,7 @@ FIXTURE_UPSTREAM="$(fresh_root)/upstream.git"
 git init -q --bare "$FIXTURE_UPSTREAM"
 
 FIXTURE_WORK="$(fresh_root)/work"
+mkdir -p "$FIXTURE_WORK" && assert_hermetic_repo "$FIXTURE_WORK"
 git init -q "$FIXTURE_WORK"
 (
   cd "$FIXTURE_WORK" || exit 1

@@ -33,6 +33,7 @@ function commit(repo, message, isoDate) {
 
 function withFixtureRepo(fn) {
   const repo = mkdtempSync(join(tmpdir(), 'merged-not-deployed-fixture-'));
+  assertHermeticRepo(repo);
   git(repo, ['init', '-q']);
   assertHermeticRepo(repo);
   git(repo, ['config', 'user.email', 'test@example.com']);

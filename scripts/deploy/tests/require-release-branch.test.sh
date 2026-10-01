@@ -21,6 +21,7 @@ fail() { echo "FAIL: $1"; FAILED=1; }
 
 REPO="$(mktemp -d)"
 (
+  assert_hermetic_repo "$REPO"
   cd "$REPO" || exit 1
   git init -q -b main .
   assert_hermetic_repo "$REPO"
