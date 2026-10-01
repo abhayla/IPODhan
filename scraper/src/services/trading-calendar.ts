@@ -54,7 +54,7 @@ export class TradingCalendar {
     this.loaded = this.loadRows()
       .then((rows) => buildResolvedCalendar(rows))
       .catch((error: unknown) => {
-        this.failedAt = Date.now();
+        this.failedAt = Date.now(); // app-clock-ok: in-process retry throttle, never compared with a database time
         logger.error(
           { error: error instanceof Error ? error.message : String(error) },
           '[TradingCalendar] #1380: could not read market_holidays; working-day rules judge nothing until it loads'
