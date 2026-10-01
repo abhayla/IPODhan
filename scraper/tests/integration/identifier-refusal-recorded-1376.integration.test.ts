@@ -12,8 +12,6 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { sql, eq } from 'drizzle-orm';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 
 process.env.ENABLE_DATA_CONSOLIDATION = 'true';
 process.env.CONSOLIDATION_PERCENTAGE = '100';
@@ -24,17 +22,16 @@ import { IPORepository } from '../../../packages/shared/src/repositories/ipo-rep
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
 import { IDENTIFIER_HELD_RULE } from '../../src/services/identifier-refusal.js';
+import { getTestDb, cleanupTestDb } from '../test-utils/db';
 
-const DATABASE_URL = process.env.DATABASE_URL;
 const A = '00000000-0000-4000-8137-6100000000a1';
 const B = '00000000-0000-4000-8137-6100000000b1';
 const OFS = '00000000-0000-4000-8137-6100000000c1';
 const ISIN = 'INE137601015';
 const noRedis = { get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0, keys: async () => [], scan: async () => ['0', []] };
 
-describe.skipIf(!DATABASE_URL)('#1376 round 2: a dropped identifier is a recorded refusal (ipodhan_test)', () => {
-  let pool: Pool;
-  let db: ReturnType<typeof drizzle>;
+describe('#1376 round 2: a dropped identifier is a recorded refusal (ipodhan_test)', () => {
+  let db: Awaited<ReturnType<typeof getTestDb>>;
   let orchestrator: any;
   let repo: IPORepository;
 
@@ -58,10 +55,7 @@ describe.skipIf(!DATABASE_URL)('#1376 round 2: a dropped identifier is a recorde
     ({ companyName: name, status: 'UPCOMING', dataSource: 'NSE', offeringType: 'IPO', segment: 'MAINBOARD', ...over }) as never;
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
-    const cur = (await pool.query('select current_database() AS d')).rows[0].d as string;
-    if (cur !== 'ipodhan_test') throw new Error(`Refusing to run against ${cur}; ipodhan_test only`);
-    db = drizzle(pool, { schema });
+    db = await getTestDb();
     const { DataConsolidationOrchestrator } = await import('../../src/services/data-consolidation-orchestrator.js');
     repo = new IPORepository(db as never, noRedis as never);
     orchestrator = new DataConsolidationOrchestrator(
@@ -78,7 +72,7 @@ describe.skipIf(!DATABASE_URL)('#1376 round 2: a dropped identifier is a recorde
   });
   afterAll(async () => {
     if (db) await cleanup();
-    await pool?.end();
+    await cleanupTestDb();
   }, 60000);
 
   it('update door: the ISIN row A holds is not written to B, and the refusal is in the result AND the B5 ledger', async () => {

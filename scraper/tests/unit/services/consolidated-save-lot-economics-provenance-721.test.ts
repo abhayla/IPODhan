@@ -40,6 +40,13 @@ vi.mock('../../../src/config/feature-flags.js', async (importOriginal) => ({
 }));
 
 import { DataConsolidationOrchestrator } from '../../../src/services/data-consolidation-orchestrator.js';
+import {
+  walkFieldPlanForIPO,
+  LOT_REFUSED_REASON,
+  IDENTIFIER_REFUSED_REASON,
+  type FieldPlanWalkDeps,
+} from '../../../src/services/field-plan-walk.js';
+import { IDENTIFIER_HELD_RULE } from '../../../src/services/identifier-refusal.js';
 
 const IPO_ID = '00000000-0000-4000-8000-000000000721';
 
@@ -108,6 +115,61 @@ describe('#721 at the orchestrator door: lot refused before consolidation (OD-13
     expect((r.consolidation?.fieldResults ?? []).map((f: any) => f.fieldName)).not.toContain('lotSize');
     const ledger = (recordDiscoverySteps as any).mock.calls.at(-1)[1];
     expect(ledger.refused).toEqual([{ field: 'lotSize', rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD' }]);
+  });
+
+  it('UPDATE: one write with BOTH a lot refusal and an identifier refusal reaches the result, the B5 ledger and the walk (#1376 x #721)', async () => {
+    const { recordDiscoverySteps } = await import('../../../src/services/step-ledger-recorders.js');
+    (recordDiscoverySteps as any).mockClear();
+    const { orchestrator, ipoRepository } = harness();
+    ipoRepository.update.mockImplementation((async (_id: string, _data: unknown, opts: any) => {
+      opts?.onIdentifierRefused?.([{ fieldName: 'isin' }]);
+    }) as any);
+    const r = await orchestrator.consolidatedUpsertIPO(
+      { companyName: 'Lot Check Limited', lotSize: 100, isin: 'INE000000721' } as any, 'NSE', 100, storedMainboard(), ['lotSize', 'isin']
+    );
+    expect(r.refusedLotFields).toEqual(['lotSize']);
+    expect(r.refusedIdentifierFields).toEqual(['isin']);
+    const ledger = (recordDiscoverySteps as any).mock.calls.at(-1)[1];
+    expect(ledger.refused).toEqual([
+      { field: 'lotSize', rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD' },
+      { field: 'isin', rule: IDENTIFIER_HELD_RULE },
+    ]);
+
+    const planRow = (fieldName: string) => ({
+      id: 'plan-' + fieldName, ipoId: IPO_ID, tableName: 'ipos', rowKey: '', fieldName, rank1Source: 'NSE', rank2Source: null,
+      rank3Source: null, state: 'PENDING' as const, chosenSource: null, chosenRank: null, attempts: 0, claimToken: 'tok-' + fieldName,
+      manifestVersion: 2, policyOrigin: 'registry:2', reopenedUnderPolicy: null,
+    });
+    const queue: unknown[] = [planRow('lotSize'), planRow('isin')];
+    const recorded: any[] = [];
+    const d = {
+      fieldPlanRepository: {
+        claimNextDueField: vi.fn(async () => queue.shift() ?? null),
+        recordOutcome: vi.fn(async (p: any) => { recorded.push(p); return { written: true }; }),
+        releaseClaimUnrecorded: vi.fn(async () => ({ released: true })),
+        restoreSettledAfterReopen: vi.fn(async () => ({ restored: true })),
+      } as any,
+      orchestrator: {
+        consolidatedUpsertIPO: vi.fn(async () => r),
+        consolidatedUpsertChildRows: vi.fn(),
+      } as any,
+      sourceFetchers: {
+        NSE: vi.fn(async () => ({ outcome: 'SUPPLIED', value: 100, documentType: undefined, page: undefined })),
+      } as any,
+      ipoRepository: {
+        findById: vi.fn(async () => ({
+          id: IPO_ID, companyName: 'Lot Check Limited', symbol: null, isin: null, offeringType: 'IPO',
+          openDate: '2026-09-25', segment: 'MAINBOARD', listingExchanges: ['NSE'],
+        })),
+      } as any,
+      resolvePolicy: () => ({ ranks: ['NSE'], documentType: undefined, origin: { kind: 'registry', version: 2 }, na: false, incapable: {} }),
+      logAdminConflict: vi.fn(async () => undefined),
+    } as unknown as FieldPlanWalkDeps;
+    await walkFieldPlanForIPO(IPO_ID, d, { deadlineMs: 1_000_000, now: () => 0 });
+    const causes = recorded.map((x) => x.cause as string);
+    expect(recorded.map((x) => x.state)).toEqual(['CHECK_FAILED', 'CHECK_FAILED']);
+    expect(causes.some((c) => c.includes(`${LOT_REFUSED_REASON}: lotSize`))).toBe(true);
+    expect(causes.some((c) => c.includes(`${IDENTIFIER_REFUSED_REASON}: isin`))).toBe(true);
   });
 
   it('UPDATE: a legal lot 45 (Rs13,500) is written with its provenance', async () => {
