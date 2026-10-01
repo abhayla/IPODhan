@@ -476,6 +476,20 @@
     "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
   },
   {
+    "file": "scraper/tests/integration/field-plan-walk-matrix-bounds-flag-off-1379.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database (written before the #1142 structural lint merged); every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-rank2-after-refusal-1379.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database (written before the #1142 structural lint merged); every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
     "file": "scraper/tests/integration/field-plan-walk-real-writer.integration.test.ts",
     "variable": "new",
     "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
