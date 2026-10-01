@@ -4,6 +4,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { getTestDb, cleanupTestDb } from '../test-utils/db';
+// The nightly floor's own leg-2 SQL (p_plan_not_printed_over_failed_read), run here against ipodhan_test.
+import { notPrintedReasonNotStatedSql, readStatedAbsenceReasons } from '../../../scripts/lib/detection-floor-checks.mjs';
 import { clearRereadAnswers, NOT_PRINTED_REASON, type RereadClearInput, type RereadEnvelopeField } from '../../src/services/reread-answer-clear.js';
 
 const RUN = Boolean(process.env.DATABASE_URL || process.env.TEST_DB_NAME);
@@ -94,11 +96,25 @@ describe.skipIf(!RUN)('#1420 re-read answer clear (ipodhan_test)', () => {
 
   it('STATED_NOT_PRINTED: cleared with "current reader: not printed", rank 2 asked', async () => {
     await stored('financial_data', 'inventoryTurnover', 'inventory_turnover');
-    const r = await clearRereadAnswers(db, input({ inventory_turnover: { value: null, state: 'STATED_NOT_PRINTED', reason: 'ratio_not_applicable_stated' } }));
+    const r = await clearRereadAnswers(db, input({ inventory_turnover: { value: null, state: 'STATED_NOT_PRINTED', check: { name: 'not_extractable', passed: true, detail: 'not_ascertainable_loss' } } }));
     expect(r.cleared[0]).toMatchObject({ state: 'STATED_NOT_PRINTED', reason: NOT_PRINTED_REASON });
     expect((await fd()).inventory_turnover).toBeNull();
     expect((await failures())[0].rule_id).toBe('NOT_PRINTED');
     expect((await plan('inventory_turnover')).state).toBe('PENDING');
+    expect((await plan('inventory_turnover')).cause).toContain(NOT_PRINTED_REASON);
+  });
+
+  it('the nightly check (leg 2) does NOT flag the clear own NOT_PRINTED row, but still flags a genuine reader-miss row', async () => {
+    await stored('financial_data', 'inventoryTurnover', 'inventory_turnover');
+    await clearRereadAnswers(db, input({ inventory_turnover: { value: null, state: 'STATED_NOT_PRINTED', check: { name: 'not_extractable', passed: true, detail: 'not_ascertainable_loss' } } }));
+    const checkSql = notPrintedReasonNotStatedSql(readStatedAbsenceReasons());
+    const scoped = async () => (await q(sql.raw(checkSql))).filter((r: any) => r.slug === 'zzq1420-reread-testco');
+    expect(await scoped()).toEqual([]);
+    // Positive control: a NOT_PRINTED row for a reader miss (reason not on the list) is flagged.
+    await db.execute(sql`
+      INSERT INTO field_extraction_failures (ipo_id, table_name, field_name, row_key, document_id, document_sha256, rule_id, rank_attempted, cause)
+      VALUES (${IPO}::uuid, 'peer_companies', 'companyName', '', ${DOC}::uuid, ${SHA}, 'NOT_PRINTED', 'DRHP', 'RHP peers: peer_comparison_table_not_in_document')`);
+    expect((await scoped()).map((r: any) => r.fieldName)).toEqual(['companyName']);
   });
 
   it.each([
@@ -188,7 +204,7 @@ describe.skipIf(!RUN)('#1420 re-read answer clear (ipodhan_test)', () => {
     await stored('ipos', 'openDate', 'open_date');
     await stored('ipo_details', 'complianceOfficer', 'compliance_officer');
     const r = await clearRereadAnswers(db, input({
-      open_date: { value: null, state: 'STATED_NOT_PRINTED' },
+      open_date: { value: null, state: 'STATED_NOT_PRINTED', check: { name: 'not_extractable', passed: true, detail: 'not_priced_yet' } },
       compliance_officer: { value: null, state: 'REFUSED', refused_value: 'x', check: { passed: false, detail: 'not a name' } },
     }));
     expect(r.cleared.map((c) => c.field).sort()).toEqual(['ipo_details.complianceOfficer', 'ipos.openDate']);

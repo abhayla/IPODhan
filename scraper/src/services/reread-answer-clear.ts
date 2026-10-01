@@ -29,6 +29,7 @@ import { sql } from 'drizzle-orm';
 import { lockAndReadFieldHolds, protectionTableName } from '@ipodhan/shared/services/field-hold';
 import { clearIpoColumnsForRereadAnswer } from './data-persister.js';
 import { FILING_CLEARABLE_COLUMNS, type ClearableTable, type FilingClearableColumn } from './filing-clearable-columns.js';
+import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
 import logger from '../utils/logger.js';
 
 export type RereadTable = ClearableTable;
@@ -55,7 +56,7 @@ export interface RereadEnvelopeField {
 }
 
 export type RereadDecision =
-  | { action: 'CLEAR'; state: 'REFUSED' | 'STATED_NOT_PRINTED'; reason: string; refusedValue: unknown }
+  | { action: 'CLEAR'; state: 'REFUSED' | 'STATED_NOT_PRINTED'; reason: string; refusedValue: unknown; extractorReason: string | null }
   | { action: 'KEEP'; why: 'VALUE' | 'MISSED' | 'LOW_CONFIDENCE_OCR' | 'ABSENT' | 'NO_STATE' | 'UNKNOWN_STATE' | 'PERSISTER_HOLD_BACK'; state: string | null };
 
 /**
@@ -73,10 +74,15 @@ export function decideRereadAnswer(field: RereadEnvelopeField | undefined, heldB
   switch (state) {
     case 'REFUSED': {
       const detail = typeof field.check?.detail === 'string' && field.check.detail !== '' ? field.check.detail : 'refused';
-      return { action: 'CLEAR', state, reason: `current reader refused: ${detail}`, refusedValue: field.refused_value ?? null };
+      return { action: 'CLEAR', state, reason: `current reader refused: ${detail}`, refusedValue: field.refused_value ?? null, extractorReason: null };
     }
-    case 'STATED_NOT_PRINTED':
-      return { action: 'CLEAR', state, reason: NOT_PRINTED_REASON, refusedValue: null };
+    case 'STATED_NOT_PRINTED': {
+      // Second layer over answer_states.py: only a reason on the shared stated-absence list is an
+      // absence (the extractor's emit.null puts it in check.detail). Anything else fails closed.
+      const extractorReason = field.check?.detail;
+      if (!isStatedAbsenceReason(extractorReason)) return { action: 'KEEP', why: 'UNKNOWN_STATE', state };
+      return { action: 'CLEAR', state, reason: NOT_PRINTED_REASON, refusedValue: null, extractorReason: extractorReason as string };
+    }
     case 'VALUE':
       return { action: 'KEEP', why: 'VALUE', state };
     case 'MISSED':
@@ -214,11 +220,16 @@ export async function clearRereadAnswers(db: RereadExecutor, input: RereadClearI
       const cause =
         `#1420 ${d.state === 'REFUSED' ? 'OD-153' : 'OD-158'}: ${input.docType} re-read by ${input.extractorVersion} ` +
         `cleared the value an older read of the same document stored. ${d.reason}`;
+      // The NOT_PRINTED reason row is written in the persister's own shape `<docType> <extractor field>:
+      // <reason>` with the extractor's stated-absence reason after the first ': ', which is what the
+      // nightly check p_plan_not_printed_over_failed_read (leg 2) reads. The #1420 context lives in the
+      // retired provenance record and the reopened plan row, which carry the long `cause`.
+      const failureCause = d.state === 'STATED_NOT_PRINTED' ? `${input.docType} ${f.extractorField}: ${d.extractorReason}` : cause;
       await tx.execute(sql`
         INSERT INTO field_extraction_failures
           (ipo_id, table_name, field_name, row_key, document_id, document_sha256, rule_id, rank_attempted, extracted_value, cause)
         VALUES (${input.ipoId}::uuid, ${f.tableName}, ${f.column}, '', ${input.documentId}::uuid, ${input.sourceSha},
-                ${REREAD_RULE_ID[d.state]}, 'DRHP', ${serialiseRefused(d.refusedValue)}, ${cause})`);
+                ${REREAD_RULE_ID[d.state]}, 'DRHP', ${serialiseRefused(d.refusedValue)}, ${failureCause})`);
       // #1420 round 3 (OD-62): the empty column's provenance no longer names the older read as having
       // supplied a value; its record is retired (kept in field_sources_retired with the reason, the
       // pattern OD-156 uses), and the reason itself is the field_extraction_failures row above.

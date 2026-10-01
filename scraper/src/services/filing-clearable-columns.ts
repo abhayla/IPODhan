@@ -77,6 +77,7 @@ export const NOT_ONE_TO_ONE_COLUMNS: Readonly<Record<string, string>> = {
   'ipo_details.ofsIssue': 'one of several fields (ofs_amount_at_cap / ofs_amount / ofs_shares), withheld with freshIssue (F-51)',
   'ipo_details.issueType': 'decided from two fields (regulation + cover price type), or from the band (min === max)',
   'ipo_details.bidWindows': 'built from several fields',
+  'financial_data.ipoId': 'the row key set when the financial_data object is created, never a printed value',
   'financial_data.quickRatio': 'derived, never printed (OD-160)',
   'financial_data.netWorth': 'latest FY of a per-FY series; the series also feeds financial_statements child rows',
   'financial_data.eps': 'latest FY of a per-FY series; the series also feeds financial_statements child rows',

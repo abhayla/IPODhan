@@ -9,10 +9,15 @@ import { compareExtractorVersions, decideRereadAnswer, isOlderReadOfSameDocument
 describe('decideRereadAnswer: one row of the table per state', () => {
   it('REFUSED clears with the refusal as reason and carries refused_value (may be a list)', () => {
     const d = decideRereadAnswer({ value: null, state: 'REFUSED', refused_value: [1.54, 1.6], check: { passed: false, detail: 'basis mismatch' } });
-    expect(d).toEqual({ action: 'CLEAR', state: 'REFUSED', reason: 'current reader refused: basis mismatch', refusedValue: [1.54, 1.6] });
+    expect(d).toEqual({ action: 'CLEAR', state: 'REFUSED', reason: 'current reader refused: basis mismatch', refusedValue: [1.54, 1.6], extractorReason: null });
   });
   it('STATED_NOT_PRINTED clears with "current reader: not printed"', () => {
-    expect(decideRereadAnswer({ value: null, state: 'STATED_NOT_PRINTED' })).toMatchObject({ action: 'CLEAR', reason: NOT_PRINTED_REASON });
+    expect(decideRereadAnswer({ value: null, state: 'STATED_NOT_PRINTED', check: { passed: true, detail: 'not_ascertainable_loss' } })).toMatchObject({ action: 'CLEAR', reason: NOT_PRINTED_REASON, extractorReason: 'not_ascertainable_loss' });
+  });
+
+  it('STATED_NOT_PRINTED with a reason that is not on the shared list (or none) is kept (fail closed)', () => {
+    expect(decideRereadAnswer({ value: null, state: 'STATED_NOT_PRINTED', check: { passed: true, detail: 'peer_comparison_table_not_in_document' } })).toMatchObject({ action: 'KEEP', why: 'UNKNOWN_STATE' });
+    expect(decideRereadAnswer({ value: null, state: 'STATED_NOT_PRINTED' })).toMatchObject({ action: 'KEEP', why: 'UNKNOWN_STATE' });
   });
   it.each([
     ['MISSED', { value: null, state: 'MISSED', check: { passed: true } }, 'MISSED'],
