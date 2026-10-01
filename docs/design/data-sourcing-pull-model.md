@@ -878,6 +878,10 @@ table (fields 121-130 above). **F-186:** document peer-table figures are never p
 extractor returns printed text (e.g. `'132.00'`), and `filing-persister.ts`'s `numOrNull` (~732-734)
 accepts numbers only, so a document-sourced peer set saves `company_name`/`is_listed` alone and
 Chittorgarh is the only source that actually writes fields 123-128 (#1165, open build item).
+*2026-10-01 (#1165 fix, branch fix/1165-1166-document-peers):* printed peer figures are now parsed at one
+place (`scraper/src/services/printed-number.ts`: commas incl. lakh grouping, brackets as negative, `%`/`x`
+suffixes, placeholders as absent); an unparseable cell is stored null and reported with its printed text.
+Measured on the German Green RHP fixture: 5 document peers persist with EPS, diluted EPS, RoNW and NAV.
 
 ### 1.8 `documents` — the filing register (15 live fields)
 
