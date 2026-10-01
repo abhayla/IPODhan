@@ -176,7 +176,8 @@
         "REITS",
         "TENDER",
         "BUYBACK",
-        "OFS"
+        "OFS",
+        "RIGHTS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -1426,7 +1427,12 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
         }
       },
-      "na": [],
+      "na": [
+        "INVITS",
+        "REITS",
+        "OFS",
+        "RIGHTS"
+      ],
       "unit": "keep",
       "comparisonFamily": "RATIO"
     },
@@ -2017,7 +2023,9 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
     },
@@ -2077,7 +2085,10 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
         }
       },
-      "na": [],
+      "na": [
+        "OFS",
+        "RIGHTS"
+      ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
     },

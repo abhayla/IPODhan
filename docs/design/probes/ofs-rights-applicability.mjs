@@ -26,7 +26,9 @@ try {
               d.basis_of_allotment_date is not null as basis,
               d.initiation_of_refunds_date is not null as refunds,
               d.credit_of_shares_date is not null as credit,
-              d.retail_max_allottees is not null as allottees
+              d.retail_max_allottees is not null as allottees,
+              d.lot_multiple is not null as lotmult,
+              d.anchor_shares_offered is not null as anchorshares
          from ipos i left join ipo_details d on d.ipo_id = i.id
         where i.offering_type::text = $1
         order by i.slug`,
@@ -43,10 +45,12 @@ try {
         initiation_of_refunds_date: count('refunds'),
         credit_of_shares_date: count('credit'),
         retail_max_allottees: count('allottees'),
+        lot_multiple: count('lotmult'),
+        anchor_shares_offered: count('anchorshares'),
       },
       rowsWithAnyValue: rows
-        .filter((r) => r.band || r.lot || r.allot || r.basis || r.refunds || r.credit || r.allottees)
-        .map((r) => ({ slug: r.slug, status: r.status, band: r.band, lot: r.lot, allot: r.allot, basis: r.basis, refunds: r.refunds, credit: r.credit, allottees: r.allottees })),
+        .filter((r) => r.band || r.lot || r.allot || r.basis || r.refunds || r.credit || r.allottees || r.lotmult || r.anchorshares)
+        .map((r) => ({ slug: r.slug, status: r.status, band: r.band, lot: r.lot, allot: r.allot, basis: r.basis, refunds: r.refunds, credit: r.credit, allottees: r.allottees, lotmult: r.lotmult, anchorshares: r.anchorshares })),
     };
   }
 } finally {
