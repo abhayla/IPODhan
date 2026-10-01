@@ -63,6 +63,7 @@ function makeCheckout(where, { git = true } = {}) {
 }
 
 function runPreflight(checkout, cwd) {
+  // install-order-ok: child is a temp copy of scripts/lib/alias-preflight-auto.mjs, builtins-only and in this file's static graph (#1180)
   const r = spawnSync(process.execPath, [join(checkout, 'scripts', 'lib', 'alias-preflight-auto.mjs')], {
     cwd: cwd ?? checkout,
     encoding: 'utf8',
@@ -160,6 +161,7 @@ test('the cwd is checked as its own resolution origin when it is inside the chec
 function runModule(checkout, mod, { call = false } = {}) {
   const href = pathToFileURL(join(checkout, 'scripts', 'lib', mod)).href;
   const code = call ? `const m = await import('${href}'); await m.default();` : `await import('${href}');`;
+  // install-order-ok: -e imports temp copies of scripts/lib/alias-preflight*.mjs, builtins-only (#1180)
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd: checkout, encoding: 'utf8' });
   return { status: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') };
 }

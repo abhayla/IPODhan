@@ -253,6 +253,126 @@ test('parseWorkflowJobs keeps job boundaries and step order', () => {
   assert.deepEqual(jobs.map((j) => [j.id, j.steps.map((s) => s.run)]), [['a', ['npm ci', 'node x.mjs']], ['b', ['node y.mjs']]]);
 });
 
+// ---------------------------------------------------------------- #1180: spawned child scripts
+// Red-first: these cases were run against the checker before spawn-following
+// existed (all RED cases passed silently = red), and against a mutant whose
+// child-script extraction returns nothing (RED cases go green = test red).
+
+const PG_CHILD = { 'scripts/lib/child.mjs': "import pg from 'pg';\nexport default pg;\n" };
+const preStep = (file) => wf([...checkout, ...step('spawner', `node --test ${file}`), ...install]);
+
+test('#1180 RED: spawnSync(process.execPath, [literal]) is followed into the child script', () => {
+  withRepo(
+    {
+      ...PG_CHILD,
+      'scripts/tests/spawns.test.mjs':
+        "import { spawnSync } from 'node:child_process';\nspawnSync(process.execPath, ['scripts/lib/child.mjs', '--x'], { encoding: 'utf8' });\n",
+      [WF]: preStep('scripts/tests/spawns.test.mjs'),
+    },
+    (root) => {
+      const { problems } = analyze({ root });
+      assert.equal(problems.length, 1, problems.join('\n'));
+      assert.match(problems[0], /reaches npm package 'pg'/);
+      assert.match(problems[0], /scripts\/tests\/spawns\.test\.mjs =spawns=> scripts\/lib\/child\.mjs -> 'pg'/);
+    }
+  );
+});
+
+test('#1180 RED: path.join(__dirname, ...) / const chains / fileURLToPath(new URL()) / fork are resolved', () => {
+  const files = {
+    ...PG_CHILD,
+    'scripts/tests/a.test.mjs': [
+      "import { execFileSync as run } from 'node:child_process';",
+      "import path from 'node:path';",
+      "import { fileURLToPath } from 'node:url';",
+      'const __dirname = path.dirname(fileURLToPath(import.meta.url));',
+      "const REPO_ROOT = path.join(__dirname, '..', '..');",
+      "const SCRIPT = path.join(REPO_ROOT, 'scripts', 'lib', 'child.mjs');",
+      "run('node', [SCRIPT, '--check'], { encoding: 'utf8' });",
+      '',
+    ].join('\n'),
+    'scripts/tests/b.test.mjs': [
+      "import * as cp from 'child_process';",
+      "import { fileURLToPath } from 'node:url';",
+      "cp.fork(fileURLToPath(new URL('../lib/child.mjs', import.meta.url)), ['a']);",
+      '',
+    ].join('\n'),
+    'scripts/tests/c.test.mjs': [
+      "const { spawn } = require('node:child_process');",
+      "const { resolve } = require('node:path');",
+      "const NODE = process.execPath;",
+      "const args = [resolve(__dirname, '../lib/child.mjs')];",
+      'spawn(NODE, args);',
+      '',
+    ].join('\n'),
+  };
+  for (const t of ['a', 'b', 'c']) {
+    withRepo({ ...files, [WF]: preStep(`scripts/tests/${t}.test.mjs`) }, (root) => {
+      const { problems } = analyze({ root });
+      assert.equal(problems.length, 1, `${t}: ${problems.join('\n')}`);
+      assert.match(problems[0], new RegExp(`${t}\.test\.mjs =spawns=> scripts/lib/child\.mjs -> 'pg'`));
+    });
+  }
+});
+
+test('#1180 RED (fail closed): a computed script path, a computed command and an -e child are unresolved', () => {
+  const cases = {
+    'path.test.mjs': "import { spawnSync } from 'node:child_process';\nspawnSync(process.execPath, [pick()]);\n",
+    'cmd.test.mjs': "import { execFileSync } from 'node:child_process';\nconst a = ['node', 'x.mjs'];\nexecFileSync(a[0], a.slice(1));\n",
+    'eval.test.mjs': "import { spawnSync } from 'node:child_process';\nspawnSync(process.execPath, ['--input-type=module', '-e', code]);\n",
+    'tpl.test.mjs': "import { spawnSync } from 'node:child_process';\nspawnSync('node', [`${dir}/child.mjs`]);\n",
+    'dyn.test.mjs': "const cp = await import('node:child_process');\ncp.spawnSync(process.execPath, ['scripts/lib/child.mjs']);\n",
+  };
+  for (const [name, body] of Object.entries(cases)) {
+    withRepo({ ...PG_CHILD, [`scripts/tests/${name}`]: body, [WF]: preStep(`scripts/tests/${name}`) }, (root) => {
+      const { problems } = analyze({ root });
+      assert.equal(problems.length, 1, `${name}: ${problems.join('\n')}`);
+      assert.match(problems[0], /cannot be resolved statically|cannot follow/, name);
+    });
+  }
+});
+
+test('#1180 GREEN: non-node commands, builtins-only children, waived sites, unbound local names and post-install steps pass', () => {
+  withRepo(
+    {
+      'scripts/lib/pure-child.mjs': "import { join } from 'node:path';\nexport const x = join('a');\n",
+      ...PG_CHILD,
+      'scripts/tests/ok.test.mjs': [
+        "import { spawnSync, execFileSync } from 'node:child_process';",
+        "spawnSync('git', ['status']);",
+        "spawnSync('bash', ['scripts/lib/child.mjs']);",
+        "spawnSync(process.execPath, ['scripts/lib/pure-child.mjs']);",
+        '// install-order-ok: git wrapper, every caller passes git as args[0]',
+        'execFileSync(args[0], args.slice(1));',
+        '',
+      ].join('\n'),
+      'scripts/tests/local.test.mjs': "function fork(p) { return p; }\nfork(process.execPath, [compute()]);\n",
+      'scripts/tests/late.test.mjs': "import { spawnSync } from 'node:child_process';\nspawnSync(process.execPath, [pick()]);\nspawnSync(process.execPath, ['scripts/lib/child.mjs']);\n",
+      [WF]: wf([
+        ...checkout,
+        ...step('ok', 'node --test scripts/tests/ok.test.mjs scripts/tests/local.test.mjs'),
+        ...install,
+        ...step('late', 'node --test scripts/tests/late.test.mjs'),
+      ]),
+    },
+    (root) => {
+      const { problems } = analyze({ root });
+      assert.deepEqual(problems, []);
+    }
+  );
+});
+
+test('#1180: a waiver needs a reason; a bare marker does not waive', () => {
+  withRepo(
+    {
+      'scripts/tests/w.test.mjs':
+        "import { spawnSync } from 'node:child_process';\n// install-order-ok:\nspawnSync(process.execPath, [pick()]);\n",
+      [WF]: preStep('scripts/tests/w.test.mjs'),
+    },
+    (root) => assert.equal(analyze({ root }).problems.length, 1)
+  );
+});
+
 test('the REAL repository workflows pass', () => {
   const { problems, checked } = analyze({ root: REPO_ROOT });
   assert.deepEqual(problems, [], problems.join('\n'));

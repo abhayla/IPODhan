@@ -21,6 +21,9 @@
  *   - `import ... from '<s>'`, `import '<s>'`, `export ... from '<s>'`
  *     (`import type` / `export type` are erased by TS type stripping: skipped)
  *   - `import('<literal>')` and `require('<literal>')`
+ *   - child node scripts a file launches through child_process / execa
+ *     (spawnSync(process.execPath, [SCRIPT]), fork(SCRIPT), ...), #1180; see
+ *     spawnedScripts() below, which fails closed on paths it cannot resolve
  * Relative specifiers are followed (a `.js` specifier falls back to `.ts`, the
  * NodeNext convention). `node:` specifiers and bare builtins end the walk.
  * Anything else is an npm package, and reaching one from a pre-install step
@@ -34,7 +37,7 @@
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { builtinModules } from 'node:module';
-import { join, resolve, dirname, extname, relative, sep } from 'node:path';
+import { join, resolve, dirname, extname, relative, sep, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const WORKFLOWS_DIR = join('.github', 'workflows');
@@ -407,21 +410,279 @@ export function resolveRelative(fromFile, spec) {
   return null;
 }
 
+// ---------------------------------------------------------------- spawned child scripts (#1180)
+//
+// A test that launches a repo script as a separate node process
+// (`spawnSync(process.execPath, [SCRIPT])`) loads that script's import graph
+// just as surely as an `import` would, but no import edge points at it. So the
+// child is followed as an extra edge of the graph (shown as `=spawns=>`).
+//
+// The guard is named by IMPORT SOURCE, never by identifier text: only callees
+// bound from `child_process` / `node:child_process` / `execa` (named, renamed,
+// namespace, default, or `require` destructure/assign) count, so a local
+// function that happens to be called `fork` is not a spawn, and
+// `import { spawnSync as run }` is.
+//
+// Fail closed: a node child whose command, script path or argument list cannot
+// be resolved statically (a computed path, a template literal, an `-e` eval
+// body, a spread before the script, a child_process import in a shape this
+// checker cannot bind) is reported as unresolved. A site that is genuinely safe
+// carries `// install-order-ok: <reason>` on its line or the line above.
+// Out of scope (noted in #1180): `exec` / `execSync` shell strings, and node
+// launched indirectly through `bash` / `npx`.
+
+const SPAWN_SOURCES = new Set(['child_process', 'node:child_process', 'execa']);
+// callee name -> how its arguments are laid out
+const SPAWN_KIND = {
+  spawn: 'cmd', spawnSync: 'cmd', execFile: 'cmd', execFileSync: 'cmd',
+  execa: 'cmd', execaSync: 'cmd', fork: 'script', execaNode: 'script',
+};
+const NODE = '\u0000NODE';
+const WAIVER_RE = /\/\/\s*install-order-ok:\s*(\S.{9,})$/;
+
+/** Split `code` from index `open` (just after a `(` or `[`) into top-level comma args. */
+function splitArgs(code, open, closeCh) {
+  const args = [];
+  let depth = 0;
+  let cur = '';
+  for (let i = open; i < code.length; i++) {
+    const c = code[i];
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) {
+      if (depth === 0) {
+        if (c !== closeCh) return null;
+        if (cur.trim()) args.push(cur.trim());
+        return { args, end: i };
+      }
+      depth--;
+    }
+    if (c === ',' && depth === 0) { args.push(cur.trim()); cur = ''; continue; }
+    cur += c;
+  }
+  return null;
+}
+
+const reEsc = (n) => n.replace(/\$/g, '\\$');
+
+/** Local names bound to spawn functions from a child-process source. */
+export function spawnBindings(code, strings) {
+  const fns = new Map(); // local name -> kind
+  const namespaces = new Set();
+  let bound = 0;
+  const STR = `(['"])\\u0000(\\d+)\\u0000\\`;
+  const srcOk = (idx) => SPAWN_SOURCES.has(strings[Number(idx)]);
+  const addNamed = (list) => {
+    for (const part of list.split(',')) {
+      const m = part.trim().match(/^([\w$]+)(?:\s*(?:as|:)\s*([\w$]+))?$/);
+      if (m && SPAWN_KIND[m[1]]) fns.set(m[2] ?? m[1], SPAWN_KIND[m[1]]);
+    }
+  };
+  const staticIdx = new Set();
+  for (const m of code.matchAll(new RegExp(`(?:^|[;\\n])[ \\t]*import\\s+([^;'"]*?)\\s*from\\s*${STR}2`, 'g'))) {
+    if (!srcOk(m[3])) continue;
+    staticIdx.add(m[3]);
+    bound++;
+    let clause = m[1].trim();
+    if (/^type\s/.test(clause)) continue;
+    const named = clause.match(/\{([^}]*)\}/);
+    if (named) { addNamed(named[1]); clause = clause.replace(named[0], ''); }
+    const ns = clause.match(/\*\s*as\s+([\w$]+)/);
+    if (ns) { namespaces.add(ns[1]); clause = clause.replace(ns[0], ''); }
+    const def = clause.replace(/,/g, ' ').trim();
+    if (/^[\w$]+$/.test(def)) {
+      if (strings[Number(m[3])] === 'execa') fns.set(def, 'cmd');
+      else namespaces.add(def);
+    }
+  }
+  for (const m of code.matchAll(new RegExp(`(?:const|let|var)\\s+(\\{[^}]*\\}|[\\w$]+)\\s*=\\s*require\\s*\\(\\s*${STR}2\\s*\\)\\s*(?=[;\\n,])`, 'g'))) {
+    if (!srcOk(m[3])) continue;
+    staticIdx.add(m[3]);
+    bound++;
+    if (m[1].startsWith('{')) addNamed(m[1].slice(1, -1));
+    else namespaces.add(m[1]);
+  }
+  // Any other load of a child-process source (dynamic import, re-export,
+  // `require(...).spawnSync`, `export * from`) is a binding this checker
+  // cannot follow: report it rather than pass it.
+  let unboundAt = -1;
+  for (const [i, s] of strings.entries()) {
+    if (!SPAWN_SOURCES.has(s) || staticIdx.has(String(i))) continue;
+    const hit = code.search(new RegExp(`(?:import\\s*\\(|require\\s*\\(|from)\\s*(['"])\\u0000${i}\\u0000`));
+    if (hit !== -1) { unboundAt = hit; break; }
+  }
+  return { fns, namespaces, unboundAt, bound };
+}
+
+/** Find `const|let|var NAME = <expr>` in the file; returns the expr text or null. */
+function constExpr(code, name) {
+  const re = new RegExp(`(?:const|let|var)\\s+${reEsc(name)}\\s*=\\s*`, 'g');
+  const m = re.exec(code);
+  if (!m) return null;
+  let depth = 0;
+  let out = '';
+  for (let i = m.index + m[0].length; i < code.length; i++) {
+    const c = code[i];
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) { if (depth === 0) break; depth--; }
+    if (depth === 0 && (c === ';' || c === '\n' || c === ',')) break;
+    out += c;
+  }
+  return out.trim();
+}
+
+/**
+ * Resolve an expression to a string value (a path or NODE), a URL ({ url }),
+ * an array ({ items }), or null when it cannot be resolved statically.
+ */
+function resolveExpr(expr, ctx, depth = 0) {
+  if (depth > 12 || expr == null) return null;
+  let e = expr.trim();
+  while (e.startsWith('(') && e.endsWith(')') && splitArgs(e, 1, ')')?.end === e.length - 1) e = e.slice(1, -1).trim();
+  const str = e.match(/^(['"])\u0000(\d+)\u0000\1$/);
+  if (str) return ctx.strings[Number(str[2])];
+  if (e === 'process.execPath' || e === 'process.argv0') return NODE;
+  if (e === 'import.meta.url') return { url: ctx.file };
+  if (e === 'import.meta.filename') return ctx.file;
+  if (e === 'import.meta.dirname') return dirname(ctx.file);
+  if (/^process\.cwd\(\s*\)$/.test(e)) return ctx.cwd;
+  if (e.startsWith('[') && e.endsWith(']')) {
+    const parts = splitArgs(e, 1, ']');
+    if (!parts || parts.end !== e.length - 1) return null;
+    return { items: parts.args };
+  }
+  if (/^[\w$]+$/.test(e)) {
+    const def = constExpr(ctx.code, e);
+    if (def != null) return resolveExpr(def, ctx, depth + 1);
+    if (e === '__dirname') return dirname(ctx.file);
+    if (e === '__filename') return ctx.file;
+    return null;
+  }
+  const url = e.match(/^new\s+URL\s*\(/);
+  if (url) {
+    const parts = splitArgs(e, url[0].length, ')');
+    if (!parts || parts.end !== e.length - 1 || parts.args.length !== 2) return null;
+    const rel = resolveExpr(parts.args[0], ctx, depth + 1);
+    const base = resolveExpr(parts.args[1], ctx, depth + 1);
+    if (typeof rel !== 'string' || !base?.url) return null;
+    return { url: resolve(dirname(base.url), rel) };
+  }
+  if (e.endsWith('.href')) {
+    const v = resolveExpr(e.slice(0, -5), ctx, depth + 1);
+    return v?.url ? { url: v.url } : null;
+  }
+  const call = e.match(/^(?:(?:path|posix|nodePath|pathModule)\.)?([\w$]+)\s*\(/);
+  if (call) {
+    const parts = splitArgs(e, call[0].length, ')');
+    if (!parts || parts.end !== e.length - 1) return null;
+    const vals = parts.args.map((a) => resolveExpr(a, ctx, depth + 1));
+    if (vals.some((v) => v == null)) return null;
+    const fn = call[1];
+    if (fn === 'fileURLToPath') return vals[0]?.url ?? null;
+    if (fn === 'pathToFileURL') return typeof vals[0] === 'string' ? { url: vals[0] } : null;
+    if (vals.some((v) => typeof v !== 'string' || v === NODE)) return null;
+    if (fn === 'join') return join(...vals);
+    if (fn === 'resolve') return resolve(ctx.cwd, ...vals);
+    if (fn === 'dirname') return dirname(vals[0]);
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Every child node script a source file launches. Returns
+ * [{ line, script: absPath } | { line, unresolved: reason }].
+ */
+export function spawnedScripts(src, file, cwd) {
+  const { code, strings } = maskSource(src);
+  const { fns, namespaces, unboundAt } = spawnBindings(code, strings);
+  const srcLines = src.split('\n');
+  const lineOf = (idx) => code.slice(0, idx).split('\n').length;
+  const waived = (line) => [srcLines[line - 1], srcLines[line - 2]].some((l) => l && WAIVER_RE.test(l.trim()));
+  const out = [];
+  const ctx = { code, strings, file, cwd };
+  if (unboundAt !== -1) {
+    const line = lineOf(unboundAt);
+    if (!waived(line)) {
+      out.push({ line, unresolved: 'loads child_process in a shape this checker cannot follow (use a static import or a require destructure)' });
+    }
+  }
+  const alts = [];
+  if (fns.size) alts.push(`(?<![\\w$.])(${[...fns.keys()].map(reEsc).join('|')})`);
+  if (namespaces.size) {
+    alts.push(`(?<![\\w$.])(?:${[...namespaces].map(reEsc).join('|')})\\.(${Object.keys(SPAWN_KIND).join('|')})`);
+  }
+  if (!alts.length) return out;
+  const re = new RegExp(`(?:${alts.join('|')})\\s*\\(`, 'g');
+  for (const m of code.matchAll(re)) {
+    const kind = m[1] ? fns.get(m[1]) : SPAWN_KIND[m[2]];
+    const line = lineOf(m.index);
+    const parts = splitArgs(code, m.index + m[0].length, ')');
+    const fail = (why) => { if (!waived(line)) out.push({ line, unresolved: why }); };
+    if (!parts || !parts.args.length) { fail('a spawn call whose arguments cannot be parsed'); continue; }
+    let argList;
+    if (kind === 'cmd') {
+      const cmd = resolveExpr(parts.args[0], ctx);
+      if (typeof cmd !== 'string') { fail(`the command \`${parts.args[0]}\` cannot be resolved statically`); continue; }
+      const base = cmd.split(/[\\/]/).pop();
+      if (cmd !== NODE && base !== 'node' && base !== 'node.exe') continue; // not a node child
+      argList = parts.args[1];
+      if (argList == null) continue; // bare `node` with no script reads stdin: nothing to follow
+    } else {
+      argList = `[${parts.args[0]}]`;
+    }
+    const arr = resolveExpr(argList, ctx);
+    if (!arr?.items) { fail(`the argument list \`${argList}\` cannot be resolved statically`); continue; }
+    let script = null;
+    let why = null;
+    for (let k = 0; k < arr.items.length; k++) {
+      const item = arr.items[k];
+      if (item.startsWith('...')) { why = `a spread \`${item}\` before the script`; break; }
+      const v = resolveExpr(item, ctx);
+      const val = v?.url ?? v;
+      if (typeof val !== 'string' || val === NODE) { why = `the script path \`${item}\` cannot be resolved statically`; break; }
+      if (kind === 'cmd' && val.startsWith('-')) {
+        const flag = val.includes('=') ? val.slice(0, val.indexOf('=')) : val;
+        if (EVAL_FLAGS.has(flag)) { why = 'an `-e` / `--eval` child (its code is not followed)'; break; }
+        if (PRELOAD_FLAGS.has(flag)) { why = `a ${flag} preload in a child`; break; }
+        if (VALUE_FLAGS.has(flag) && !val.includes('=')) {
+          const pv = resolveExpr(arr.items[k + 1] ?? '', ctx);
+          if (typeof pv !== 'string') { why = `the value of ${flag} cannot be resolved statically`; break; }
+          k++;
+        }
+        continue;
+      }
+      script = val;
+      break;
+    }
+    if (!script) { fail(why ?? 'no script argument found'); continue; }
+    const abs = isAbsolute(script) ? script : resolve(cwd, script);
+    if (isFile(abs)) { out.push({ line, script: abs }); continue; }
+    const alt = resolve(dirname(file), script);
+    if (!isAbsolute(script) && isFile(alt)) { out.push({ line, script: alt }); continue; }
+    fail(`the spawned script ${toPosix(script)} does not exist`);
+  }
+  return out;
+}
+
 /**
  * Walk a root file's import graph breadth-first (so each reported chain is the
  * shortest). Returns { packages: [{ pkg, specifier, chain }], unresolved: [...] }.
  */
-export function walkImportGraph(rootFile, repoRoot) {
+export function walkImportGraph(rootFile, repoRoot, { cwd = repoRoot } = {}) {
   const rel = (p) => toPosix(relative(repoRoot, p));
   const parent = new Map([[rootFile, null]]);
+  const spawnEdges = new Set();
   const queue = [rootFile];
   const packages = [];
   const unresolved = [];
+  const unresolvedSpawns = [];
   const seenPkg = new Set();
   const chainTo = (f) => {
     const c = [];
-    for (let cur = f; cur; cur = parent.get(cur)) c.unshift(rel(cur));
-    return c;
+    for (let cur = f; cur; cur = parent.get(cur)) c.unshift(cur);
+    let s = rel(c[0]);
+    for (let k = 1; k < c.length; k++) s += (spawnEdges.has(c[k]) ? ' =spawns=> ' : ' -> ') + rel(c[k]);
+    return s;
   };
   while (queue.length) {
     const file = queue.shift();
@@ -440,8 +701,19 @@ export function walkImportGraph(rootFile, repoRoot) {
         packages.push({ pkg, specifier: spec, chain: chainTo(file) });
       }
     }
+    for (const child of spawnedScripts(src, file, cwd)) {
+      if (child.unresolved) {
+        unresolvedSpawns.push({ reason: child.unresolved, at: `${rel(file)}:${child.line}`, chain: chainTo(file) });
+        continue;
+      }
+      if (!parent.has(child.script)) {
+        parent.set(child.script, file);
+        spawnEdges.add(child.script);
+        queue.push(child.script);
+      }
+    }
   }
-  return { packages, unresolved };
+  return { packages, unresolved, unresolvedSpawns };
 }
 
 // ---------------------------------------------------------------- analysis
@@ -487,18 +759,26 @@ export function analyze({ root, workflowPaths } = {}) {
               problems.push(`${where}: runs ${shown}, which does not exist`);
               continue;
             }
-            const g = walkImportGraph(abs, root);
+            const g = walkImportGraph(abs, root, { cwd: resolve(root, cwd) });
             checked.push({ where, file: shown, packages: g.packages.map((p) => p.pkg) });
             for (const p of g.packages) {
               problems.push(
                 `${where}: ${shown} reaches npm package '${p.pkg}' before any npm ci in this job\n` +
-                  `      import chain: ${p.chain.join(' -> ')} -> '${p.specifier}'`
+                  `      import chain: ${p.chain} -> '${p.specifier}'`
               );
             }
             for (const u of g.unresolved) {
               problems.push(
                 `${where}: ${shown} has an unresolvable relative import '${u.specifier}'\n` +
-                  `      import chain: ${u.chain.join(' -> ')}`
+                  `      import chain: ${u.chain}`
+              );
+            }
+            for (const u of g.unresolvedSpawns) {
+              problems.push(
+                `${where}: ${shown} spawns a child that cannot be resolved statically at ${u.at}: ${u.reason}\n` +
+                  `      import chain: ${u.chain}\n` +
+                  '      Make the script path a literal or a path.join of literals, or mark the line ' +
+                  '`// install-order-ok: <reason>` when the child cannot reach a package (#1180).'
               );
             }
           }

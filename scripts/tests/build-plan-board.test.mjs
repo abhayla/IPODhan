@@ -109,6 +109,7 @@ import { parseDecisions } from ${JSON.stringify(SCRIPT_URL)};
 parseDecisions('| OD-9 | only three | cells |');
 console.log('NOT-REACHED');
 `;
+  // install-order-ok: -e imports SCRIPT_URL (build-plan-board.mjs), already in this file's static import graph (#1180)
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8' });
   eq(r.status, 1, 'malformed row must exit 1');
   ok(/malformed OD row \(3 cells/.test(r.stderr), `stderr must name the defect, got: ${r.stderr}`);
@@ -121,6 +122,7 @@ import { parseItems } from ${JSON.stringify(SCRIPT_URL)};
 parseItems('| 1 | a | **BUILT** | e |\\n| 1 | b | **PARTIAL** | e |');
 console.log('NOT-REACHED');
 `;
+  // install-order-ok: -e imports SCRIPT_URL (build-plan-board.mjs), already in this file's static import graph (#1180)
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8' });
   eq(r.status, 1, 'duplicate id must exit 1');
   ok(/duplicate build item id 1/.test(r.stderr), `stderr must name it, got: ${r.stderr}`);
