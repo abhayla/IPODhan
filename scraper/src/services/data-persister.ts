@@ -23,6 +23,8 @@ import { PeerCompanyRepository } from '../repositories/peer-company-repository.j
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { isWriterBookkeepingField } from '@ipodhan/shared/utils/conflict-reasons';
 import { resolveIpoTypeKey } from './field-plan-generator.js';
+import { rebuildIpoPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { runPreRankChecks, type PreRankCheckDeps } from './data-consolidation-service.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
 import { type DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, collectDegeneratePriceBandFields, fallbackDoorMayReplaceStoredValue, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
@@ -1457,6 +1459,42 @@ export interface UpsertIpoOptions {
   ) => Promise<void>;
 }
 
+/**
+ * #1296 (spec 2.8, 9.2 item 18): a scraper write that changes `segment`, `listingExchanges` or
+ * `offeringType` of an existing IPO drops and rebuilds that IPO's plan rows through THE rebuild the
+ * admin save and the filing persister use (`rebuildIpoPlanInTx`), inside the `ipos` write's own
+ * transaction. The ONE choke point is here, at the two `updateReportingHolds` calls of `upsertIPO`
+ * (consolidation door and fallback door), so no caller has to remember to pass `inIposWriteTx`. A
+ * caller-supplied hook (the filing persister's) wins. The manifest is loaded once per process; the
+ * rebuild itself reads the row in the transaction and does nothing when the plan inputs did not change.
+ */
+let cachedPlanManifest: PlanManifest | undefined;
+function planManifestOnce(): PlanManifest {
+  cachedPlanManifest ??= loadFieldManifest() as unknown as PlanManifest;
+  return cachedPlanManifest;
+}
+
+const PLAN_INPUT_KEYS = ['segment', 'listingExchanges', 'offeringType'] as const;
+
+export function resolveIposWriteTx(
+  repo: { updateReportingHolds?: unknown },
+  ipoId: string,
+  data: Record<string, unknown>,
+  existing: Record<string, unknown> | null | undefined,
+  explicit: UpsertIpoOptions['inIposWriteTx']
+): UpsertIpoOptions['inIposWriteTx'] {
+  if (explicit) return explicit;
+  // An untyped test fake with only `update` has no transaction to run the rebuild in.
+  if (typeof repo.updateReportingHolds !== 'function') return undefined;
+  const touches = PLAN_INPUT_KEYS.some(
+    (k) => k in data && JSON.stringify(data[k] ?? null) !== JSON.stringify(existing?.[k] ?? null)
+  );
+  if (!touches) return undefined;
+  return async (tx, before) => {
+    await rebuildIpoPlanInTx(tx as never, ipoId, planManifestOnce(), before as never);
+  };
+}
+
 async function updateReportingHolds(
   repo: {
     update: (id: string, data: any) => Promise<unknown>;
@@ -2189,7 +2227,12 @@ async function upsertIPOInScope(
             } else {
               // Update IPO with consolidated data. §9.2 item 19: the fields an admin hold dropped
               // inside the write transaction are reported back so no provenance claims them (OD-131).
-              heldDropped = await updateReportingHolds(ipoRepository as never, existingIPO.id, finalData, options?.inIposWriteTx);
+              heldDropped = await updateReportingHolds(
+                ipoRepository as never,
+                existingIPO.id,
+                finalData,
+                resolveIposWriteTx(ipoRepository as never, existingIPO.id, finalData, existingIPO as any, options?.inIposWriteTx)
+              );
             }
 
             // OD-131 ("Rejected = never set"): write provenance only for values this door
@@ -2331,7 +2374,12 @@ async function upsertIPOInScope(
           mergedValidationDroppedFields,
           provenanceLookupFailed,
         });
-        const fallbackHeld = await updateReportingHolds(ipoRepository as never, existingIPO.id, guardedFallback, options?.inIposWriteTx);
+        const fallbackHeld = await updateReportingHolds(
+          ipoRepository as never,
+          existingIPO.id,
+          guardedFallback,
+          resolveIposWriteTx(ipoRepository as never, existingIPO.id, guardedFallback, existingIPO as any, options?.inIposWriteTx)
+        );
         // OD-131 + §9.2 item 19: what the admin hold dropped was not stored; nothing below claims it.
         const storedFallback = withoutHeld(guardedFallback, fallbackHeld);
 
