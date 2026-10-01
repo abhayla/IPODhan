@@ -204,29 +204,36 @@ assert_slot_dsn() {
 # copy-pasted env file can still leave a non-prod slot pointed at Redis db0 -
 # the exact db prod uses - silently sharing prod's cache (F2: staging wrote
 # into the key prod served, because BOTH the client bug AND this class of
-# env mistake had to be closed). Effective db resolution mirrors the
-# client's own precedence: REDIS_DB wins when set; otherwise it is read off
-# the REDIS_URL path suffix (redis://host:port/N); otherwise db0.
+# env mistake had to be closed). Effective db resolution is the SHARED one in
+# lib/redis-cli-auth.sh (redis_cli_prepare_auth), the same the deploy lock,
+# the wake lock and the rollback cache clear use, and it follows ioredis
+# (`new Redis(REDIS_URL, { db: REDIS_DB })` = defaults(options, parseURL(url))):
+# the URL's /N wins; REDIS_DB only fills in when the URL names no db;
+# otherwise db0. A value the helper cannot parse (non-integer db, rediss://)
+# is refused here, fail closed (ioredis would read "3abc" as 3; the shell
+# refuses it, which is the safe side).
 # DSN_ASSERT_REDIS_DB is advisory-if-absent, like DSN_ASSERT_DB.
+# shellcheck source=lib/redis-cli-auth.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/redis-cli-auth.sh"
+
 resolve_redis_db() {
-  local file="$1" redis_db redis_url path
+  local file="$1" redis_db redis_url
   redis_db="$(get_value "$file" REDIS_DB)" || redis_db=""
   redis_db="${redis_db%\"}"; redis_db="${redis_db#\"}"
   redis_db="${redis_db%\'}"; redis_db="${redis_db#\'}"
-  if [ -n "$redis_db" ]; then
+  redis_url="$(get_value "$file" REDIS_URL)" || redis_url=""
+  redis_url="${redis_url%\"}"; redis_url="${redis_url#\"}"
+  redis_url="${redis_url%\'}"; redis_url="${redis_url#\'}"
+  if [ -z "$redis_url" ]; then
+    # No URL: the client has no URL db to prefer, so REDIS_DB (else db0).
+    case "$redis_db" in
+      ""|*[!0-9]*) [ -z "$redis_db" ] && { printf '%s\n' "0"; return 0; }; return 1 ;;
+    esac
     printf '%s\n' "$redis_db"
     return 0
   fi
-  redis_url="$(get_value "$file" REDIS_URL)" || redis_url=""
-  redis_url="${redis_url%\"}"; redis_url="${redis_url#\"}"
-  # redis://[:pass@]host:port[/db] - take the segment after the last '/',
-  # but only if the URL actually carries a path (has a 3rd '/').
-  if printf '%s' "$redis_url" | grep -qE '^redis(s)?://[^/]+/[0-9]+$'; then
-    path="${redis_url##*/}"
-    printf '%s\n' "$path"
-    return 0
-  fi
-  printf '%s\n' "0"
+  redis_cli_prepare_auth "$redis_url" "$redis_db" 2>/dev/null || return 1
+  printf '%s\n' "${REDIS_CLI_DB:-0}"
 }
 
 assert_slot_redis_db() {
@@ -237,7 +244,10 @@ assert_slot_redis_db() {
   # opt in with DSN_ASSERT_REDIS_DB is unaffected (pre-T-268 env files and
   # local/dev copies keep working).
   [ -n "$want" ] || return 0
-  effective="$(resolve_redis_db "$file")"
+  if ! effective="$(resolve_redis_db "$file")"; then
+    echo "FATAL: $label declares DSN_ASSERT_REDIS_DB=$want but its REDIS_URL / REDIS_DB cannot be resolved to one Redis db (refusing rather than guess)." >&2
+    exit 1
+  fi
   if [ "$effective" != "$want" ]; then
     echo "FATAL: $label declares DSN_ASSERT_REDIS_DB=$want but resolves to Redis db '$effective'." >&2
     exit 1

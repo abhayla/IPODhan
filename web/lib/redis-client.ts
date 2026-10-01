@@ -33,8 +33,8 @@ export function getRedisClient(): Redis {
       return redisClient;
     }
 
-    // F2 (T-264 P2-3): REDIS_DB, when set, always wins as an explicit slot
-    // override even if REDIS_URL has no (or a different) db suffix - see the
+    // F2 (T-264 P2-3): REDIS_DB is the slot's db only when REDIS_URL has no db
+    // suffix; a URL /N wins (ioredis defaults(options, parseURL(url))) - see the
     // matching comment in lib/cache/redis-client.ts for the full incident.
     redisClient = new Redis(redisUrl, {
       keyPrefix,

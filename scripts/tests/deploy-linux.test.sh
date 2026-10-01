@@ -18,8 +18,12 @@ FAILED=0
 # under `set -o pipefail` — on Linux, printf writing a large string into a
 # pipe that its reader (grep -q/head) closes early gets SIGPIPE and a
 # non-zero exit, which pipefail then propagates as a false assertion.
-emit() { printf '%s' "$1" 2>/dev/null || true; }
-emitn() { printf '%s\n' "$1" 2>/dev/null || true; }
+# `|| true` alone cannot catch it: SIGPIPE KILLS the writing subshell before
+# `|| true` runs. Ignoring PIPE in that subshell turns the signal into an
+# EPIPE write error that `|| true` absorbs (2026-09-30: cases 17-24 went red
+# on a 79 KB script string under Git Bash without it).
+emit() { ( trap '' PIPE; printf '%s' "$1" ) 2>/dev/null || true; }
+emitn() { ( trap '' PIPE; printf '%s\n' "$1" ) 2>/dev/null || true; }
 
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILED=1; }
@@ -1071,6 +1075,11 @@ EOSCRIPT
 }
 
 RESOLVE_BIN_FN="$(sed -n '/^resolve_bin()/,/^}/p' "$DEPLOY_SCRIPT")"
+# #1308: the web app's pm2 start now takes the web env file through
+# run_with_env_file (and fails closed without it), so the pm2 cases below eval
+# that helper and hand the start a minimal fixture env file.
+RUN_WITH_ENV_FN="$(sed -n '/^run_with_env_file()/,/^}/p' "$DEPLOY_SCRIPT")"
+WEB_ENV_9X="$(mktemp)"; printf 'PORT=3000\n' > "$WEB_ENV_9X"
 if [ -z "$RESOLVE_BIN_FN" ]; then
   fail "case 9b/9c/9d: could not extract resolve_bin() from $DEPLOY_SCRIPT — function renamed?"
 fi
@@ -1092,6 +1101,7 @@ else
   (
     eval "$RESOLVE_BIN_FN"
     eval "$RESTART_FN"
+    eval "$RUN_WITH_ENV_FN"; WEB_ENV_FILE="$WEB_ENV_9X"
     log() { echo "==> $*"; }
     warn() { echo "WARN: $*" >&2; }
     DRY_RUN=0
@@ -1296,6 +1306,7 @@ else
   (
     eval "$RESOLVE_BIN_FN"
     eval "$ROLLBACK_FN"
+    eval "$RUN_WITH_ENV_FN"; WEB_ENV_FILE="$WEB_ENV_9X"
     log() { echo "==> $*"; }
     warn() { echo "WARN: $*" >&2; }
     DRY_RUN=0
@@ -4750,6 +4761,176 @@ FAKERC41
   rm -rf "$STORE41" "$FAKEBIN41" "$ENVDIR41"
 fi
 
+
+# --- Case 42 (#1308): each env file reaches ONLY the process that needs it --
+# --- build_release/apply_migrations used to `set -a; . "$WEB_ENV_FILE"` in ---
+# --- the MAIN deploy shell, so every secret in it (REDIS_URL with its -------
+# --- password, DATABASE_URL, tokens) rode into every later child: npm ci, --
+# --- tsc, the scraper's pm2 start, curl, redis-cli. This case runs the REAL --
+# --- functions in deploy order in ONE shell, with fake npm/npx/pm2 that ----
+# --- record only whether a FAKE secret key was present (never a value), ----
+# --- and asserts: the build and the migration tool and the web app get the -
+# --- web env; npm ci, tsc and the scraper's pm2 start do not; and after ----
+# --- every function returns the deploy shell itself holds no key from it. --
+BUILD42_FN="$(sed -n '/^build_release()/,/^}/p' "$DEPLOY_SCRIPT")"
+MIGR42_FN="$(sed -n '/^apply_migrations()/,/^}/p' "$DEPLOY_SCRIPT")"
+RESTART42_FN="$(sed -n '/^restart_pm2()/,/^}/p' "$DEPLOY_SCRIPT")"
+ROLLBACK42_FN="$(sed -n '/^rollback_start_web()/,/^}/p' "$DEPLOY_SCRIPT")"
+RESUME42_FN="$(sed -n '/^resume_scraper()/,/^}/p' "$DEPLOY_SCRIPT")"
+HELPER42_FN="$(sed -n '/^run_with_env_file()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$BUILD42_FN" ] || [ -z "$MIGR42_FN" ] || [ -z "$RESTART42_FN" ] || [ -z "$ROLLBACK42_FN" ] || [ -z "$RESUME42_FN" ] || [ -z "$RESOLVE_BIN_FN" ]; then
+  fail "case 42: could not extract build_release/apply_migrations/restart_pm2/rollback_start_web/resume_scraper/resolve_bin from $DEPLOY_SCRIPT - renamed?"
+else
+  FAKEBIN42="$(mktemp -d)"; LOG42="$(mktemp)"; REL42="$(mktemp -d)"; SD42="$(mktemp -d)"; ENV42="$(mktemp -d)"
+  mkdir -p "$REL42/web/node_modules/next/dist/bin" "$REL42/scraper/node_modules/tsx/dist" "$REL42/packages/shared" "$REL42/scripts"
+  : > "$REL42/web/node_modules/next/dist/bin/next"
+  : > "$REL42/scraper/node_modules/tsx/dist/cli.mjs"
+  # Fake values only (standing rule: never a real secret in a test).
+  printf 'C4_FAKE_SECRET=fake-not-a-secret-1308\nDATABASE_URL=postgresql://fake-1308/db\nPORT=4123\n' > "$ENV42/web.env"
+  printf 'C4_FAKE_SCRAPER_ONLY=fake-scraper-1308\n' > "$ENV42/scraper.env"
+  # Each fake records "<tool> <first args> secret=<yes|no> port=<value|->".
+  for tool in npm npx pm2; do
+    cat > "$FAKEBIN42/$tool" <<EOSCRIPT
+#!/usr/bin/env bash
+printf '%s %s %s secret=%s port=%s buildsha=%s\n' "$tool" "\${1:-}" "\${2:-}" "\${C4_FAKE_SECRET:+yes}" "\${PORT:--}" "\${NEXT_PUBLIC_BUILD_SHA:+yes}" >> "\$LOG42_FILE"
+exit 0
+EOSCRIPT
+    chmod +x "$FAKEBIN42/$tool"
+  done
+  cat > "$SD42/assert-migrations-applied.sh" <<'EOSCRIPT'
+#!/usr/bin/env bash
+[ "$1" = "postgresql://fake-1308/db" ] && echo "assert-migrations dburl=matches" >> "$LOG42_FILE" || echo "assert-migrations dburl=WRONG" >> "$LOG42_FILE"
+exit 0
+EOSCRIPT
+  (
+    eval "$HELPER42_FN"
+    eval "$RESOLVE_BIN_FN"; eval "$BUILD42_FN"; eval "$MIGR42_FN"
+    eval "$RESTART42_FN"; eval "$ROLLBACK42_FN"; eval "$RESUME42_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    preflight_scraper_wake() { :; }; install_scraper_cron() { :; }; install_staging_window_cron() { :; }
+    DRY_RUN=0; RELEASE_DIR="$REL42"; PREVIOUS_RELEASE="$REL42"; SCRIPT_DIR="$SD42"
+    WEB_ENV_FILE="$ENV42/web.env"; SCRAPER_ENV_FILE="$ENV42/scraper.env"
+    SHORT_SHA="abc1234"; SLOT="staging"; SCRAPER_RESUME_TARGET="new"
+    PM2_WEB_APP="ipodhan-web"; PM2_SCRAPER_APP="ipodhan-scraper"; DEPLOY_WEB_INSTANCES=2
+    PYTHON_BIN_PATH="/tmp/fake-venv-42/bin/python"
+    PATH="$FAKEBIN42:$PATH"
+    export LOG42_FILE="$LOG42"
+    build_release; echo "rc build=$?"
+    apply_migrations; echo "rc migrations=$?"
+    restart_pm2; rollback_start_web; resume_scraper
+    # The deploy shell itself, after every function returned.
+    if env | grep -q -E '^(C4_FAKE_SECRET|C4_FAKE_SCRAPER_ONLY|DATABASE_URL)='; then echo "SHELL-AFTER leaked"; else echo "SHELL-AFTER clean"; fi
+  ) >/tmp/deploy-test-42.log 2>&1
+  bad42=""
+  grep -q '^npm ci .* secret= ' "$LOG42"                     || bad42="$bad42 npm-ci-got-web-env"
+  grep -q '^npx tsc  secret= ' "$LOG42"                      || bad42="$bad42 tsc-got-web-env"
+  grep -q '^npm run build secret=yes port=4123 buildsha=yes' "$LOG42" || bad42="$bad42 build-missing-web-env"
+  grep -q '^npx drizzle-kit migrate secret=yes' "$LOG42"     || bad42="$bad42 migrate-missing-web-env"
+  grep -q '^assert-migrations dburl=matches' "$LOG42"        || bad42="$bad42 assert-missing-dburl"
+  [ "$(grep -c '^pm2 start .* secret=yes port=4123' "$LOG42")" = "2" ] || bad42="$bad42 web-pm2-start(restart+rollback)-missing-web-env"
+  [ "$(grep -c '^pm2 start .*scraper-wake.sh secret= port=- ' "$LOG42")" = "2" ] || bad42="$bad42 scraper-pm2-start-got-web-env"
+  grep -q '^SHELL-AFTER clean' /tmp/deploy-test-42.log       || bad42="$bad42 deploy-shell-holds-env-after"
+  if [ -z "$bad42" ]; then
+    pass "case 42 (#1308): web env reaches only build, migrate and the web app; npm ci, tsc and the scraper start get none; the deploy shell holds none afterwards"
+  else
+    fail "case 42 (#1308): env-file scope broken:$bad42"
+    sed 's/^/    /' "$LOG42"; sed 's/^/    /' /tmp/deploy-test-42.log
+  fi
+  rm -rf "$FAKEBIN42" "$REL42" "$SD42" "$ENV42"; rm -f "$LOG42" /tmp/deploy-test-42.log
+fi
+
+# --- Case 42b (#1308, class sweep, fails closed): the slot env files are ----
+# --- sourced in exactly ONE place, run_with_env_file(), which sources in a -
+# --- subshell. Any other `. "$WEB_ENV_FILE"` / `source "$SCRAPER_ENV_FILE"` -
+# --- (the shape that leaked) is a regression, whatever function it is in. --
+if [ -z "$(sed -n '/^run_with_env_file()/,/^}/p' "$DEPLOY_SCRIPT")" ]; then
+  fail "case 42b: run_with_env_file() not found in $DEPLOY_SCRIPT - the single env-file sourcing site is missing"
+else
+  OUTSIDE42B="$(awk '/^run_with_env_file\(\)/{inside=1} inside&&/^}/{inside=0; next} !inside' "$DEPLOY_SCRIPT" \
+    | grep -v -E '^[[:space:]]*#' \
+    | grep -n -E '(^|[;&|[:space:](])(\.|source)[[:space:]]+"?\$\{?(WEB|SCRAPER)_ENV_FILE' || true)"
+  if [ -z "$OUTSIDE42B" ]; then
+    pass "case 42b (#1308): no slot env file is sourced outside run_with_env_file()"
+  else
+    fail "case 42b (#1308): slot env file sourced outside run_with_env_file(): $OUTSIDE42B"
+  fi
+fi
+
+# --- Case 43 (#1137): every Redis call the deploy makes addresses the db ---
+# --- the app's own client uses. getRedisClient() builds -----------------
+# --- `new Redis(REDIS_URL, { db: REDIS_DB })`; ioredis applies the URL's ---
+# --- fields first and fills only what it lacks, so the URL's /N wins and --
+# --- REDIS_DB applies only when the URL names no db. The deploy's lock ----
+# --- take/release and cycle-lock release ignored REDIS_DB (db 0 on a URL --
+# --- without /N), and the rollback cache clear let REDIS_DB OVERRIDE the --
+# --- URL's db (the opposite of the app). A non-numeric REDIS_DB fails -----
+# --- closed: no redis-cli call. Stub redis-cli records "<phase> <argv>". --
+FNS43="$(awk '/^DEPLOY_SCRAPER_LOCK_RESOURCES=/,/^DEPLOY_HELD_LOCK_KEYS=\(\)$/' "$DEPLOY_SCRIPT")
+$(grep -E '^LEGACY_(CACHE_KEY_NAMESPACES|NON_CACHE_KEY_PATTERNS)=' "$DEPLOY_SCRIPT")
+$(awk '/^acquire_deploy_scraper_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^release_deploy_scraper_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^release_scraper_cycle_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^clear_legacy_unprefixed_cache_keys\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^refuse_or_override_live_run\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+if ! printf '%s' "$FNS43" | grep -q '^release_scraper_cycle_locks() {' || ! printf '%s' "$FNS43" | grep -q '^clear_legacy_unprefixed_cache_keys() {' \
+   || ! printf '%s' "$FNS43" | grep -q '^acquire_deploy_scraper_locks() {'; then
+  fail "case 43 setup: could not extract the Redis lock/cache functions from $DEPLOY_SCRIPT"
+else
+  FAKEBIN43="$(mktemp -d)"; ENV43="$(mktemp -d)"; LOG43="$(mktemp)"
+  cat > "$FAKEBIN43/redis-cli" <<'EOSCRIPT'
+#!/usr/bin/env bash
+printf '%s %s\n' "${PHASE43:-?}" "$*" >> "$LOG43_FILE"
+for a in "$@"; do case "$a" in SET) echo OK; exit 0 ;; GET) echo stale-token-43; exit 0 ;; TTL) echo 99; exit 0 ;; EVAL) echo 1; exit 0 ;; --scan) exit 0 ;; esac; done
+exit 0
+EOSCRIPT
+  chmod +x "$FAKEBIN43/redis-cli"
+  printf 'REDIS_URL=redis://localhost:6379\nREDIS_DB=3\nDATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' > "$ENV43/scraper.env"  # secret-scan:allow (fake fixture, no password: the scanner joins REDIS_URL and DATABASE_URL across one printf line)
+  printf 'REDIS_URL=redis://localhost:6379/1\nREDIS_DB=3\n' > "$ENV43/web.env"
+  printf 'REDIS_URL=redis://localhost:6379\nREDIS_DB=3 -a x\nDATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' > "$ENV43/bad.env"  # secret-scan:allow (fake fixture, no password: the scanner joins REDIS_URL and DATABASE_URL across one printf line)
+  run_43() {
+    LOG43_FILE="$LOG43" PATH="$FAKEBIN43:$PATH" LIBDIR43="$SCRIPT_DIR/../lib" FNS43="$FNS43" \
+    SENV43="$1" WENV43="$ENV43/web.env" BODY43="$2" bash -c '
+      log() { echo "==> $*"; }; warn() { echo "WARN: $*" >&2; }; fatal() { echo "FATAL: $*" >&2; exit 1; }
+      live_cron_wake_pids() { :; }; cron_wake_pattern() { echo "pattern"; }
+      DRY_RUN=0; SLOT=staging; SCRAPER_ENV_FILE="$SENV43"; WEB_ENV_FILE="$WENV43"
+      . "$LIBDIR43/redis-slot-prefix.sh"; . "$LIBDIR43/redis-cli-auth.sh"
+      eval "$FNS43"
+      eval "$BODY43"' 2>&1
+  }
+  OUT43="$(run_43 "$ENV43/scraper.env" 'export PHASE43=lock; acquire_deploy_scraper_locks; release_deploy_scraper_locks; export PHASE43=cycle; release_scraper_cycle_locks; export PHASE43=cache; clear_legacy_unprefixed_cache_keys')"
+  bad43=""
+  LOCKN43="$(grep -c -E '^(lock|cycle) ' "$LOG43")"
+  [ "$LOCKN43" -gt 0 ] || bad43="$bad43 no-lock-calls-recorded"
+  [ "$(grep -E '^(lock|cycle) ' "$LOG43" | grep -c -v -- ' -n 3 ')" = "0" ] || bad43="$bad43 lock-call-without-REDIS_DB(-n 3)"
+  grep -q '^cache .* -n 1 ' "$LOG43" || bad43="$bad43 cache-clear-not-in-url-db-1"
+  if grep -q '^cache .* -n 3 ' "$LOG43"; then bad43="$bad43 cache-clear-let-REDIS_DB-override-the-url"; fi
+  if [ -z "$bad43" ]; then
+    pass "case 43 (#1137): deploy lock take/release and cycle-lock release use REDIS_DB when the URL has no db ($LOCKN43 calls, all -n 3); the cache clear keeps the URL's db 1 (ioredis parity)"
+  else
+    fail "case 43 (#1137):$bad43"; sed 's/^/    /' "$LOG43"; printf '%s\n' "$OUT43" | sed 's/^/    /'
+  fi
+  : > "$LOG43"
+  OUT43B="$(run_43 "$ENV43/bad.env" 'export PHASE43=cycle; release_scraper_cycle_locks; export PHASE43=lock; acquire_deploy_scraper_locks')"
+  if [ ! -s "$LOG43" ]; then
+    pass "case 43b (#1137): a non-numeric REDIS_DB reaches no redis-cli call (fails closed)"
+  else
+    fail "case 43b (#1137): a non-numeric REDIS_DB still reached redis-cli:"; sed 's/^/    /' "$LOG43"
+  fi
+  rm -rf "$FAKEBIN43" "$ENV43"; rm -f "$LOG43"
+fi
+
+# --- Case 43c (#1137, class sweep, fails closed): every Redis call in the --
+# --- deploy and wake scripts goes through the REDIS_DB-aware form. A bare -
+# --- `redis_cli_run N URL ...` or a one-argument redis_cli_prepare_auth ---
+# --- would silently drop REDIS_DB again.
+BARE43C="$(grep -n -E 'redis_cli_run [0-9]|redis_cli_prepare_auth "[^"]*"[[:space:]]*(;|$|\))' "$DEPLOY_SCRIPT" "$SCRIPT_DIR/../scraper-wake.sh" | grep -v -E ':[0-9]+:[[:space:]]*#' || true)"
+N43C="$(grep -c -E 'redis_cli_run_env [0-9]|redis_cli_prepare_auth "[^"]*" "' "$DEPLOY_SCRIPT" "$SCRIPT_DIR/../scraper-wake.sh" | awk -F: '{s+=$2} END{print s+0}')"
+if [ -z "$BARE43C" ] && [ "$N43C" -ge 9 ]; then
+  pass "case 43c (#1137): all $N43C Redis call sites in deploy-linux.sh + scraper-wake.sh pass REDIS_DB; none bare"
+else
+  fail "case 43c (#1137): REDIS_DB-blind Redis call sites (or fewer than 9 aware ones, found $N43C): $BARE43C"
+fi
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

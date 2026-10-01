@@ -1630,6 +1630,43 @@ else
   pass "case 20i: scripts/lib/redis-cli-auth.sh does not invoke redis-cli with '-u'"
 fi
 
+# --- Case 20k-20m (#1137): the wake selects the Redis db the way the ------
+# --- scraper's own client does. getRedisClient() (packages/shared) builds -
+# --- `new Redis(REDIS_URL, { db: REDIS_DB })`; ioredis applies the URL's ---
+# --- own fields first and fills ONLY what the URL lacks (lodash defaults, -
+# --- Redis.parseOptions), so the URL's /N wins and REDIS_DB is used only ---
+# --- when the URL names no db. The wake ignored REDIS_DB entirely, so on a --
+# --- URL without /N it read db 0 while the scraper held its lock in -------
+# --- REDIS_DB. A non-numeric REDIS_DB fails closed (no read, WARN).
+STUBDIR20K="$(mktemp -d)"
+RC_ARGV_LOG="$(mktemp)"
+printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$RC_ARGV_LOG"' 'echo 300' > "$STUBDIR20K/redis-cli"
+chmod +x "$STUBDIR20K/redis-cli"
+OUT20K="$(PATH="$STUBDIR20K:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379" REDIS_DB=3 \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if grep -qx -- "-h 127.0.0.1 -p 6379 -n 3 TTL prod:lock:resource:scraper:cycle" "$RC_ARGV_LOG"; then
+  pass "case 20k (#1137): REDIS_URL without a db + REDIS_DB=3 -> the lock is read in db 3, where the scraper holds it"
+else
+  fail "case 20k (#1137): expected -n 3 on the TTL read, argv: $(cat "$RC_ARGV_LOG"); out: $OUT20K"
+fi
+: > "$RC_ARGV_LOG"
+OUT20L="$(PATH="$STUBDIR20K:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379/1" REDIS_DB=3 \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if grep -qx -- "-h 127.0.0.1 -p 6379 -n 1 TTL prod:lock:resource:scraper:cycle" "$RC_ARGV_LOG"; then
+  pass "case 20l (#1137): REDIS_URL /1 + REDIS_DB=3 -> db 1, the URL's db wins, as in ioredis"
+else
+  fail "case 20l (#1137): expected -n 1 (URL wins over REDIS_DB, ioredis parity), argv: $(cat "$RC_ARGV_LOG"); out: $OUT20L"
+fi
+: > "$RC_ARGV_LOG"
+OUT20M="$(PATH="$STUBDIR20K:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379" REDIS_DB='3 -a x' \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if [ ! -s "$RC_ARGV_LOG" ] && printf '%s' "$OUT20M" | grep -q "lock-read-unavailable:.*REDIS_DB"; then
+  pass "case 20m (#1137): a non-numeric REDIS_DB never reaches redis-cli; the read fails closed with a WARN naming REDIS_DB"
+else
+  fail "case 20m (#1137): expected zero redis-cli calls and a REDIS_DB WARN, argv: $(cat "$RC_ARGV_LOG"); out: $OUT20M"
+fi
+rm -rf "$STUBDIR20K" "$RC_ARGV_LOG"
+
 # --- Case 21 (#698): the wake records WHAT launched it ------------------------
 # assert-repair-held counts only scheduled cycles, so the wrapper must hand the
 # job a validated SCRAPER_WAKE_TRIGGER: cron passes `schedule`, the deploy's pm2

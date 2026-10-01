@@ -17,6 +17,28 @@ export PATH="$FIXTURES/fake-bin:$PATH"
 
 FAILED=0
 
+# #1177: fail closed unless `psql` resolves to THIS fixture. The fake was
+# committed as mode 100644; Windows Git Bash runs it anyway, but on Linux a
+# non-executable file is skipped during PATH lookup, so CI's real psql ran
+# instead: the two "pass" cases exited 1 on `could not translate host name
+# "fake"`, and the three "fail loud" cases passed for that same wrong reason.
+# Both checks below go red on that shape, on any OS.
+FAKE_PSQL="$FIXTURES/fake-bin/psql"
+if [ "$(command -v psql 2>/dev/null)" != "$FAKE_PSQL" ]; then
+  echo "FAIL: precondition: psql resolves to '$(command -v psql 2>/dev/null)', not the fixture $FAKE_PSQL (not executable?)"
+  FAILED=1
+fi
+if git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  FAKE_MODE="$(git -C "$SCRIPT_DIR" ls-files -s -- "$FAKE_PSQL" | cut -d' ' -f1)"
+  if [ "$FAKE_MODE" != "100755" ]; then
+    echo "FAIL: precondition: $FAKE_PSQL is git mode '${FAKE_MODE:-untracked}', not 100755 - Linux CI will skip it and run the real psql"
+    FAILED=1
+  fi
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS: precondition: psql resolves to the executable fixture (git mode 100755)"
+fi
+
 run_case() {
   local name="$1" expect_exit="$2"
   shift 2

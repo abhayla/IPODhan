@@ -482,7 +482,16 @@ lock_is_held() {
     return 1
   fi
 
-  if ! command -v redis_cli_run >/dev/null 2>&1; then
+  # #1137: REDIS_DB comes from the same places as REDIS_URL, per key the way
+  # dotenv fills the scraper's own env (a set variable wins, else the .env
+  # line), and redis_cli_run_env applies it the way the scraper's ioredis
+  # client does (the URL's /N wins; REDIS_DB only when the URL has none).
+  redis_db="${REDIS_DB:-}"
+  if [ -z "$redis_db" ] && [ -f "$SCRAPER_DIR/.env" ]; then
+    redis_db="$(redis_slot_env_value "$SCRAPER_DIR/.env" REDIS_DB)"
+  fi
+
+  if ! command -v redis_cli_run_env >/dev/null 2>&1; then
     log "WARN lock-read-unavailable: scripts/lib/redis-cli-auth.sh not loaded; cannot read $SCRAPER_LOCK_KEY - proceeding (fail-open, see header)"
     return 1
   fi
@@ -504,7 +513,7 @@ lock_is_held() {
   # redis_cli_run (scripts/lib/redis-cli-auth.sh) parses the URL itself and
   # never passes -u, so this case can no longer recur here.
   ttl_err_file="/tmp/scraper-wake-ttl-err.$$"
-  ttl="$(redis_cli_run 3 "$redis_url" TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+  ttl="$(redis_cli_run_env 3 "$redis_url" "$redis_db" TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
   ttl_rc=$?
   ttl_err="$(cat "$ttl_err_file" 2>/dev/null)"
   rm -f "$ttl_err_file"
@@ -519,7 +528,7 @@ lock_is_held() {
       LOCK_NO_EXPIRY=1
       # Name the holder. A failed GET never changes the held verdict; it only
       # makes the holder read "unknown (GET failed)".
-      holder_raw="$(redis_cli_run 3 "$redis_url" GET "$SCRAPER_LOCK_KEY" 2>/dev/null)" || holder_raw=""
+      holder_raw="$(redis_cli_run_env 3 "$redis_url" "$redis_db" GET "$SCRAPER_LOCK_KEY" 2>/dev/null)" || holder_raw=""
       LOCK_HOLDER="$(sanitize_lock_holder "$holder_raw")"
       LOCK_HOLDER="${LOCK_HOLDER:-unknown (GET failed or empty)}"
       return 0
