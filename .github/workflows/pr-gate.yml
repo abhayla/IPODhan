@@ -1409,6 +1409,7 @@ jobs:
           tests/integration/repair-source-trust-batch-t292-stale-guard.integration.test.ts
           tests/integration/repair-name-pollution-merge-gate.integration.test.ts
           tests/integration/repair-reopen-stale-doc-nay.integration.test.ts
+          tests/integration/repair-chittorgarh-default-prospectus.integration.test.ts
           tests/integration/repair-retire-manifest-removed-fields.integration.test.ts
           tests/integration/oracle-parity.test.ts
           tests/integration/opening-day-create.integration.test.ts
