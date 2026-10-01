@@ -186,3 +186,45 @@ test('extractShape KEEPS a real label that merely contains a digit', () => {
   const a = `<table><tr><th>Top 10 Shareholders</th><td>x</td></tr></table>`;
   assert.ok(extractShape(a).labels.includes('top 10 shareholders'));
 });
+
+// #1336: the Runwal fixture (captured while its IPO was OPEN) carried a call-to-action
+// heading, "Apply for IPO Now!", that the live page loses the day the IPO closes (and
+// that dove-soft / paramount-syntex live pages GAIN while open). It is IPO-STATE, not
+// layout, and no extractor keys on it; the floor still raised a corpus_shape FAIL on
+// 2026-09-30. The block below is the real markup, copied from the live page capture.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
+
+const CTA_BLOCK =
+  '<div class="d-flex align-items-center"><div class="me-3 fs-3">&#128640;</div><div><h5 class="mb-1 fw-bold">Apply for IPO Now!</h5><p class="mb-0 text-muted small">Submit your IPO application</p></div></div>';
+const RUNWAL = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scraper', 'tests', 'fixtures', 'chittorgarh', 'chittorgarh-runwal-enterprises-detail.html'),
+  'utf8'
+);
+
+test('#1336: a status-dependent call-to-action heading is not part of the SHAPE', () => {
+  const shape = extractShape(`<h5>Apply for IPO Now!</h5><th>Issue Size</th>`);
+  assert.ok(!shape.labels.includes('apply for ipo now!'));
+  assert.ok(shape.labels.includes('issue size'));
+});
+
+test('#1336: the same real page with and without the open-IPO CTA has the SAME shape, both directions', () => {
+  const open = RUNWAL.replace('</body>', CTA_BLOCK + '</body>');
+  assert.notEqual(open, RUNWAL, 'the CTA must have been injected');
+  assert.equal(compareShape(extractShape(open), extractShape(RUNWAL)).same, true);
+  assert.equal(compareShape(extractShape(RUNWAL), extractShape(open)).same, true);
+});
+
+test('#1336: a REAL label lost from the real page still FAILS (the CTA exclusion does not blind the check)', () => {
+  const real = '<h2 itemProp="about" class="section-title">IPO Subscription Status</h2>';
+  assert.ok(RUNWAL.includes(real), 'the real heading must exist in the captured fixture');
+  const cmp = compareShape(extractShape(RUNWAL), extractShape(RUNWAL.replace(real, '')));
+  assert.equal(cmp.same, false);
+  assert.deepEqual(cmp.movedLabels, ['ipo subscription status']);
+});
+
+test('#1336: the state-dependent exclusion is exact - a different "apply" heading is still a label', () => {
+  const shape = extractShape('<h5>Apply for IPO Now!</h5><h3>How to apply for IPO</h3><th>Apply Online</th>');
+  assert.deepEqual(shape.labels, ['apply online', 'how to apply for ipo']);
+});
