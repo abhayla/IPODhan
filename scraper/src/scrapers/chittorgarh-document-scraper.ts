@@ -17,6 +17,7 @@
  * is a separate, deferred concern (C3b). We store the real external PDF URL — never a fabricated one.
  */
 import logger from '../utils/logger.js';
+import { classifyByTitle, fileNameFromUrl } from '../services/document-classifier.js';
 
 export type ProspectusDocType = 'DRHP' | 'RHP' | 'PROSPECTUS';
 
@@ -51,16 +52,19 @@ export function extractAnchorHref(html: string | null | undefined): string | nul
 }
 
 /**
- * Classify a prospectus PDF by its URL. Order matters: 'drhp' contains 'rhp', so test DRHP first.
+ * Classify a prospectus PDF by its FILE NAME only, through the shared classifier
+ * (#1116: Gabion's final Prospectus sat at '/RHP/Final%20Prospectus.pdf' and the
+ * whole-URL test typed it RHP from the folder name). The folder and host never
+ * decide: a file name that names none of the three types gets the default for
+ * this source (report 20 is the prospectus list), PROSPECTUS.
  */
 export function detectProspectusDocType(
   url: string,
   _exchange?: string | null,
   _issueType?: string | null
 ): ProspectusDocType {
-  const u = (url || '').toLowerCase();
-  if (u.includes('drhp')) return 'DRHP';
-  if (/\brhp\b/.test(u) || u.includes('rhp')) return 'RHP';
+  const fromName = classifyByTitle(fileNameFromUrl(url));
+  if (fromName === 'DRHP' || fromName === 'RHP' || fromName === 'PROSPECTUS') return fromName;
   return 'PROSPECTUS';
 }
 

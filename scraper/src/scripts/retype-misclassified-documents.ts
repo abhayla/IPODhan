@@ -28,7 +28,11 @@ import { sql } from 'drizzle-orm';
 import { db } from '@ipodhan/shared';
 import { isMoreSpecificDocumentType } from '@ipodhan/shared/db/document-type-refinement';
 import logger from '../utils/logger.js';
-import { classifyByTitle, fileNameFromUrl } from '../services/document-classifier.js';
+import {
+  classifyByTitle,
+  fileNameFromUrl,
+  isVariableMeaningBseFieldTitle,
+} from '../services/document-classifier.js';
 import { classifyZipMemberName } from '../services/document-download-verifier.js';
 import { memberNameFromUrl } from '../services/zip-member-documents.js';
 
@@ -72,7 +76,8 @@ export function planRetype(row: {
     };
   }
   const fromName = classifyByTitle(fileNameFromUrl(row.url));
-  const fromTitle = classifyByTitle(row.title);
+  // #1116: our 'Prospectus GID' label is not evidence of RHP vs PROSPECTUS.
+  const fromTitle = isVariableMeaningBseFieldTitle(row.title) ? null : classifyByTitle(row.title);
   const suggested = fromName ?? fromTitle;
   if (!suggested || suggested === row.type) return null;
 

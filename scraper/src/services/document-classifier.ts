@@ -143,6 +143,21 @@ export const BSE_DOCUMENT_FIELDS = {
 export type BseDocumentField = keyof typeof BSE_DOCUMENT_FIELDS;
 
 /**
+ * True when `title` is only OUR label for BSE's `Prospectus_GID` field
+ * ("Prospectus GID", written by primary-source-discovery.ts), not the document's
+ * own name. That field serves the RHP before close and the final Prospectus
+ * after, so its label says nothing about which one a row holds: classifying it
+ * as text returns PROSPECTUS for every RHP whose file name is silent (#1116,
+ * Varmora Granito: 'VARMORAGRANITOLIMITED_<ts>.zip', members '... RHP.pdf').
+ * Fixed-meaning field labels (Corrigendum, Price Band Advertisement) stay
+ * evidence, because their field default IS their meaning.
+ */
+export function isVariableMeaningBseFieldTitle(title: string | null | undefined): boolean {
+  if (typeof title !== 'string') return false;
+  return normalizeTitle(title.toLowerCase().trim()) === 'prospectus gid';
+}
+
+/**
  * Classify a BSE core-API document field.
  *
  * `Prospectus_GID` is the one field whose meaning CHANGES over the IPO's life:
