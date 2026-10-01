@@ -41,6 +41,8 @@ import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { LISTING_SENTENCE_ORDER } from '../../config/listing-sentence-precedence.mjs';
 import { rebuildIpoPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
+import type { RereadRefusalClearDeps } from './reread-refusal-clear.js';
+import { reopenPlanRowsForRefusedValues } from './plan-supersession.js';
 import type {
   DocumentFilingDateWriter,
   FilingPersisterDeps,
@@ -48,12 +50,12 @@ import type {
 } from './filing-persister.js';
 
 /** ipo_details has no repository - this is the single write path for it. */
-export function makeIpoDetailsWriter(): IpoDetailsWriter {
+export function makeIpoDetailsWriter(database: typeof db = db): IpoDetailsWriter {
   return {
     async upsert(ipoId, values) {
       // §9.2 item 19: the conflict-update never replaces an admin-held ipo_details field; the hold
       // is re-read under the ipos row lock inside this transaction (field-hold.ts).
-      await db.transaction(async (tx) => {
+      await database.transaction(async (tx) => {
         const { patch, hold } = await filterPatchUnderHold(tx as never, ipoId, 'ipo_details', values as Record<string, unknown>);
         if (hold?.hidden) return; // §9.2 item 23 (OD-151): a hidden IPO's ipo_details row is left as stored.
         await tx
@@ -125,6 +127,59 @@ export function makeDocumentFilingDateWriter(
  * `redis` is a parameter rather than resolved here so a caller that already
  * holds a client (the document cycle does) does not open a second one.
  */
+
+/**
+ * OD-153 production wiring (reread-refusal-clear.ts). Exported so an integration test can build the
+ * SAME deps against its own pool.
+ */
+export function makeRereadRefusalClear(p: {
+  db: typeof db;
+  fieldSources: Pick<FieldSourcesRepository, 'findByField'>;
+  fieldExtractionFailures: Pick<FieldExtractionFailuresRepository, 'recordFailure'>;
+  financialData: Pick<FinancialDataRepository, 'upsert'>;
+  ipoDetailsWriter: IpoDetailsWriter;
+  protectionFilter: (id: string, table: string, data: Record<string, unknown>, scraperName: string) => Promise<{ filtered: Record<string, unknown> }>;
+}): RereadRefusalClearDeps {
+  // OD-153: every write below goes through the table's own repository/writer (both re-check the
+  // admin hold under the ipos row lock); the reason row through the failures repository.
+  return {
+    findProvenance: async (ipoId, tableName, column) => {
+      const row = await p.fieldSources.findByField(ipoId, tableName, column, '');
+      return row ? { source: row.source ?? null, dataLineage: row.dataLineage } : null;
+    },
+    readStored: async (ipoId, tableName, column) => {
+      const table = tableName === 'ipo_details' ? schema.ipoDetails : schema.financialData;
+      const [row] = await p.db.select().from(table).where(eq(table.ipoId, ipoId)).limit(1);
+      return row ? ((row as unknown as Record<string, unknown>)[column] ?? null) : null;
+    },
+    isHeld: async (ipoId, tableName, column) => {
+      const { filtered } = await p.protectionFilter(ipoId, tableName, { [column]: null }, 'DRHP');
+      return !(column in filtered);
+    },
+    clear: async (ipoId, tableName, column) => {
+      // data_source is NOT NULL on insert; the clearing read is the document's, as every persister ipo_details write stamps.
+      if (tableName === 'ipo_details') await p.ipoDetailsWriter.upsert(ipoId, { [column]: null, dataSource: 'DRHP' });
+      else await p.financialData.upsert({ ipoId, [column]: null } as never);
+    },
+    recordReason: async (r) => {
+      await p.fieldExtractionFailures.recordFailure({
+        ipoId: r.ipoId,
+        tableName: r.tableName,
+        fieldName: r.fieldName,
+        rowKey: '',
+        documentId: r.documentId,
+        documentSha256: r.documentSha256,
+        ruleId: 'FAILED_VALIDATION',
+        rankAttempted: 'DRHP',
+        extractedValue: r.extractedValue,
+        cause: r.cause,
+      } as never);
+    },
+    reopenPlanRows: (ipoId, documentId, fields, cause) =>
+      reopenPlanRowsForRefusedValues(p.db as never, ipoId, documentId, fields, cause),
+  };
+}
+
 export function buildFilingPersistDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): FilingPersisterDeps {
@@ -168,6 +223,12 @@ export function buildFilingPersistDeps(
     );
   }
 
+  const financialData = new FinancialDataRepository(db, redis);
+  const ipoDetailsWriter = makeIpoDetailsWriter();
+  const protectionFilter = (id: string, table: string, data: Record<string, unknown>, scraperName: string) =>
+    filterProtectedFields(id, table, data, scraperName, db, redis);
+  const rereadRefusalClear = makeRereadRefusalClear({ db, fieldSources, fieldExtractionFailures, financialData, ipoDetailsWriter, protectionFilter });
+
   return {
     ipoRepository,
     financialStatements: new FinancialStatementsRepository(db, redis),
@@ -178,9 +239,9 @@ export function buildFilingPersistDeps(
     peerCompanies: new PeerCompanyRepository(db),
     // #545 (C): an attempted-but-empty promoters/peers section records its reason here (OD-62).
     fieldExtractionFailures,
-    financialData: new FinancialDataRepository(db, redis),
+    financialData,
     fieldSources,
-    ipoDetailsWriter: makeIpoDetailsWriter(),
+    ipoDetailsWriter,
     riskFactors: new IpoRiskFactorsRepository(db, redis),
     documentFilingDateWriter: makeDocumentFilingDateWriter(new DocumentRepository(db, redis)),
     childRowConsolidator,
@@ -188,12 +249,8 @@ export function buildFilingPersistDeps(
     listingPrecedence: makeListingPrecedenceReader(),
     planRebuildInTx: makePlanRebuilder(),
     fieldManifest: loadFieldManifest(),
-    protectionFilter: (
-      id: string,
-      table: string,
-      data: Record<string, unknown>,
-      scraperName: string
-    ) => filterProtectedFields(id, table, data, scraperName, db, redis),
+    protectionFilter,
+    rereadRefusalClear,
   };
 }
 

@@ -64,6 +64,7 @@ import {
   CROSS_DOC_TOLERANCE,
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
+import { clearRefusedStoredValues, type RereadRefusalClearDeps, type RereadRefusalResult } from './reread-refusal-clear.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
@@ -192,6 +193,12 @@ export interface FilingPersisterDeps {
   fieldExtractionFailures?: Pick<FieldExtractionFailuresRepository, 'recordFailure' | 'markResolved'>;
   financialData: FinancialDataRepository;
   fieldSources: FieldSourcesRepository;
+  /**
+   * OD-153: clears a stored value an older read of THIS document wrote and this re-read refused,
+   * records the refusal as its reason, and reopens the field's plan row (reread-refusal-clear.ts).
+   * Absent = nothing is cleared (the pre-OD-153 behaviour: non-null writes only).
+   */
+  rereadRefusalClear?: RereadRefusalClearDeps;
   ipoDetailsWriter: IpoDetailsWriter;
   /**
    * W-73 writers. Optional ONLY because the CLI that builds these deps
@@ -350,6 +357,8 @@ export interface PersistFilingSummary {
   ipos_fields: string[];
   /** Item 6 (OD-91): every field this extraction produced (before any write filter), camelCase. */
   receipt_fields?: ReceiptField[];
+  /** OD-153: stored values this re-read refused and cleared (absent when the dep is not wired). */
+  reread_refusal?: RereadRefusalResult;
   applied: boolean;
 }
 
@@ -3297,6 +3306,23 @@ export async function persistFilingExtraction(
       '[FilingPersister] child rows written WITHOUT per-row provenance'
     );
   }
+  let rereadRefusal: RereadRefusalResult | undefined;
+  if (apply && deps.rereadRefusalClear) {
+    rereadRefusal = await clearRefusedStoredValues(
+      {
+        ipoId,
+        docType: options.docType,
+        documentId: options.documentId ?? null,
+        sourceSha: options.sourceSha ?? null,
+        extractorVersion: options.extractorVersion ?? null,
+        fields: extraction.fields ?? {},
+      },
+      deps.rereadRefusalClear
+    );
+    if (rereadRefusal.cleared.length > 0 || rereadRefusal.held.length > 0) {
+      logger.info({ ipoId, docType: options.docType, ...rereadRefusal }, '[FilingPersister] OD-153 re-read refusals: stored values cleared');
+    }
+  }
   logger.info(
     { ipoId, docType: options.docType, apply, written },
     '[FilingPersister] filing extraction persisted'
@@ -3317,6 +3343,7 @@ export async function persistFilingExtraction(
     ipos_fields: iposFields,
     ...(planRebuildNote !== undefined ? { plan_rebuild: planRebuildNote } : {}),
     receipt_fields: receiptFields,
+    ...(rereadRefusal !== undefined ? { reread_refusal: rereadRefusal } : {}),
     fresh_ofs_reconciliation: {
       ok: reconciliation.ok,
       kind: reconciliation.kind,

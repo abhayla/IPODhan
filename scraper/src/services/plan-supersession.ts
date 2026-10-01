@@ -246,6 +246,32 @@ export async function reopenPlanRowsForCompletedDocument(
 }
 
 /**
+ * OD-153 (§5.3 rule 4 on the stored value): a re-read of `documentId` refused and cleared the values
+ * of `fields`; their SUPPLIED plan rows chosen from that same document are reopened (PENDING, due
+ * now) so the walk asks every rank again and writes the next-ranked source's answer. Reuses the
+ * supersession reopen write (guarded on the row still SUPPLIED on that document); `superseded_by`
+ * names the document whose re-read refused the value.
+ */
+export async function reopenPlanRowsForRefusedValues(
+  exec: ExecuteLike,
+  ipoId: string,
+  documentId: string,
+  fields: ReadonlyArray<{ tableName: string; column: string }>,
+  cause: string
+): Promise<string[]> {
+  const toSnake = (c: string) => c.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
+  const wanted = new Set(fields.map((f) => `${f.tableName}|${toSnake(f.column)}`));
+  const { rows } = await loadSupersessionInputs(exec, ipoId);
+  const toReopen = rows
+    .filter((r) => r.chosen.id === documentId && wanted.has(`${r.tableName}|${r.fieldName}`))
+    .map((r) => ({ planRowId: r.planRowId, expectedChosenDocumentId: documentId, supersededBy: documentId, cause }));
+  if (toReopen.length === 0) return [];
+  const { reopenedIds } = await new IpoFieldPlanRepository(exec as never, null).reopenSuperseded(toReopen);
+  logger.info({ ipoId, documentId, reopened: reopenedIds }, '[plan-supersession] OD-153 refused values cleared: plan rows reopened');
+  return reopenedIds;
+}
+
+/**
  * #968 fix round 1, finding 3 (OD-91 + OD-95): supersession fires once, at a
  * document's COMPLETED write, and only on SUPPLIED rows -- so a better document
  * that completes while a row is override-reopened (PENDING) skips it. Before
