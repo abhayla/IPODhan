@@ -325,16 +325,6 @@
     "reason": "UNVERIFIED, not triaged (#1312)"
   },
   {
-    "key": "scraper/src/scripts/scrape-coolcaps.ts :: lastScrapedAt: new Date(),",
-    "count": 1,
-    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
-  },
-  {
-    "key": "scraper/src/scripts/scrape-coolcaps.ts :: updatedAt: new Date(),",
-    "count": 1,
-    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
-  },
-  {
     "key": "scraper/src/scripts/validate-backfill.ts :: const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];",
     "count": 1,
     "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."

@@ -5,6 +5,7 @@ import { scrapeNSEAPI } from '../scrapers/nse-api-client.js';
 import { db } from '@ipodhan/shared';
 import { ipos, subscriptions } from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
+import { readDatabaseNow } from '@ipodhan/shared/db/database-clock';
 import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
 import { loadPlanManifest } from '../config/field-manifest-loader.js';
 import logger from '../utils/logger.js';
@@ -38,9 +39,10 @@ async function scrapeCoolCaps() {
     const [target] = await db.select({ id: ipos.id }).from(ipos).where(eq(ipos.slug, 'cool-caps-industries-limited'));
     if (!target) throw new Error('Cool Caps IPO row not found');
     const manifest = loadPlanManifest();
-    await db.transaction((tx) =>
-      writeIposRebuildingPlanInTx(tx as never, target.id, { ...coolCaps, lastScrapedAt: new Date(), updatedAt: new Date() }, manifest)
-    );
+    await db.transaction(async (tx) => {
+      const now = await readDatabaseNow(tx as never);
+      await writeIposRebuildingPlanInTx(tx as never, target.id, { ...coolCaps, lastScrapedAt: now, updatedAt: now }, manifest);
+    });
     const updated = await db.select().from(ipos).where(eq(ipos.id, target.id));
 
     logger.info({ updated: updated[0] }, 'Updated Cool Caps IPO record');
