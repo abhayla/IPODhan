@@ -4042,6 +4042,29 @@ async function checkD_segmentDocumentBoard() {
       + (unordered.length ? `; ${unordered.length} IPO(s) whose best documents cannot be ordered (same type, missing filing date), not judged: ${unordered.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
+// OD-157 (#1166 item 3): no live source record points at a deleted child row. A replacing source
+// set that deletes a peer row moves that row's field_sources records to field_sources_retired;
+// a record still in field_sources whose row key names no stored peer row reads a deleted row as
+// live. Reported per IPO by name with each orphan row key (signal-ownership.md R1). First case
+// peer_companies (row key = normalized_name); other keyed child tables are not covered yet.
+async function checkR_childProvenanceOrphan() {
+  const id = 'r_child_provenance_orphan';
+  const name = 'no live field_sources record points at a deleted peer_companies row (OD-157)';
+  const rows = await q(
+    `SELECT i.company_name AS "companyName", i.slug, fs.row_key AS "rowKey", count(*)::int AS records
+       FROM field_sources fs
+       JOIN ipos i ON i.id = fs.ipo_id
+      WHERE fs.table_name = 'peer_companies' AND fs.row_key <> ''
+        AND NOT EXISTS (SELECT 1 FROM peer_companies p WHERE p.ipo_id = fs.ipo_id AND p.normalized_name = fs.row_key)
+      GROUP BY i.company_name, i.slug, fs.row_key
+      ORDER BY i.company_name, fs.row_key`
+  );
+  const lines = rows.map((r) => `${r.companyName} (${r.slug}): '${r.rowKey}' ${r.records} record(s)`);
+  for (const r of rows) notify(id, 'P2', `${r.slug}|${r.rowKey}`, `live source records for a deleted peer row: ${r.companyName}`, `'${r.rowKey}'`);
+  record('r_child_provenance_orphan', name, rows.length === 0 ? 'PASS' : 'FAIL',
+    `${rows.length} orphan peer row key(s)` + (rows.length ? `: ${lines.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
 async function runCheck(fn, ids = []) {
   return runCheckAgainstIds(fn, ids, { record, results });
 }
@@ -4121,6 +4144,7 @@ async function main() {
   await runCheck(checkD_iposDocLineageDocumentId, ['d_ipos_doc_lineage_document_id']);
   await runCheck(checkR_provenanceWithoutValue, ['r_provenance_without_value']);
   await runCheck(checkZipMemberRows, ['zip_member_rows']);
+  await runCheck(checkR_childProvenanceOrphan, ['r_child_provenance_orphan']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

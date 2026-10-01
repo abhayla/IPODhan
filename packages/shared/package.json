@@ -10,6 +10,7 @@
     "./repositories": "./src/repositories/index.ts",
     "./repositories/data-conflicts-repository": "./src/repositories/data-conflicts-repository.ts",
     "./repositories/field-sources-repository": "./src/repositories/field-sources-repository.ts",
+    "./repositories/field-sources-retirement": "./src/repositories/field-sources-retirement.ts",
     "./repositories/listing-performance-repository": "./src/repositories/listing-performance-repository.ts",
     "./repositories/field-source-overrides-repository": "./src/repositories/field-source-overrides-repository.ts",
     "./cache": "./src/cache/index.ts",

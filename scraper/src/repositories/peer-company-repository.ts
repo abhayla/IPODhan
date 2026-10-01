@@ -9,7 +9,8 @@ import { lockAndReadRowHolds, applyRowHolds, type HoldExecutor } from '@ipodhan/
 import { lockAndReadListOwnership, recordListSuggestion } from '@ipodhan/shared/services/admin-list-hold';
 import { logger } from '../utils/logger';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
+import { retireChildRowSources } from '@ipodhan/shared/repositories/field-sources-retirement';
 import * as schema from '@ipodhan/shared/db/schema';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 
@@ -47,6 +48,36 @@ export interface PeerReplaceOptions {
    * exist are left as stored, and only new row keys are inserted.
    */
   fillGapsOnly?: boolean;
+  /**
+   * OD-156: the offer document type the incoming set came from. When set, a stored peer the set
+   * no longer names is removed ONLY when it is a document peer whose recorded type is the same as
+   * or older than this one (`documentPeerMayBeRemoved`); every other stored row is kept. When
+   * omitted (the Chittorgarh path) the set is a whole-list replace, as before.
+   */
+  documentType?: string;
+  /** OD-157: which set replaced a deleted row, written as the retired source records' reason. */
+  replacedBy?: string;
+}
+
+/** OD-156 / OD-154: the document order for peer list membership. Lower = older. */
+export const PEER_DOCUMENT_ORDER: Readonly<Record<string, number>> = { DRHP: 1, RHP: 2, PROSPECTUS: 3 };
+
+/**
+ * OD-156: may a document peer list of `incomingType` remove this stored row it no longer names?
+ * Only a row a DOCUMENT wrote (data_source 'DRHP', the enum slot every document maps to) whose real
+ * document type is recorded and is the same as or older than the incoming list's. Fails closed: a
+ * Chittorgarh or admin row, a document row of unknown type (written before OD-156), and any type
+ * outside the OD-156 order (the price band advertisement) are never removed.
+ */
+export function documentPeerMayBeRemoved(
+  stored: { dataSource: string | null; sourceDocumentType: string | null },
+  incomingType: string
+): boolean {
+  if (stored.dataSource !== 'DRHP') return false;
+  const storedRank = stored.sourceDocumentType ? PEER_DOCUMENT_ORDER[stored.sourceDocumentType] : undefined;
+  const incomingRank = PEER_DOCUMENT_ORDER[incomingType];
+  if (storedRank === undefined || incomingRank === undefined) return false;
+  return storedRank <= incomingRank;
 }
 
 /** The value columns a peer row carries; identity and write metadata excluded. */
@@ -168,9 +199,22 @@ export class PeerCompanyRepository {
         return options.fillGapsOnly ? [] : stored;
       }
 
+      const incomingKeys = new Set(deduped.map((row) => row.normalizedName));
+      const replacedBy = options.replacedBy ?? `a ${options.documentType ?? 'whole-list'} peer set`;
+
       if (options.fillGapsOnly) {
-        // Insert-only: a stored row is never touched. A row the admin removed leaves a hold under
-        // its key with no stored row — it stays removed (OD-121: delete = keep empty), never refilled.
+        // Insert-only for named rows: a stored row the set names is never touched. A row the admin
+        // removed leaves a hold under its key with no stored row — it stays removed (OD-121: delete
+        // = keep empty), never refilled. OD-156: names-only sets also remove the document peers of
+        // the same or an older type that they no longer name (never a held row).
+        if (options.documentType) {
+          const dropped = stored
+            .filter((row) => !incomingKeys.has(row.normalizedName))
+            .filter((row) => !holds.rows.has(row.normalizedName))
+            .filter((row) => documentPeerMayBeRemoved(row, options.documentType as string))
+            .map((row) => row.normalizedName);
+          await this.deleteAndRetire(tx, ipoId, dropped, replacedBy);
+        }
         const fresh = deduped
           .filter((row) => !storedByKey.has(row.normalizedName))
           .filter((row) => !holds.rows.has(row.normalizedName))
@@ -192,10 +236,58 @@ export class PeerCompanyRepository {
         });
       }
       const rowsToWrite = this.honourRowHolds(ipoId, incoming, stored, holds.rows);
-      await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
+      const writtenKeys = new Set(rowsToWrite.map((row) => row.normalizedName));
+      if (options.documentType) {
+        // OD-156: rewrite the rows the set names (and held rows), remove only the document peers of
+        // the same or an older type it no longer names; every other stored row stays as it is.
+        const dropped = stored
+          .filter((row) => !writtenKeys.has(row.normalizedName))
+          .filter((row) => documentPeerMayBeRemoved(row, options.documentType as string))
+          .map((row) => row.normalizedName);
+        const rewritten = stored.map((row) => row.normalizedName).filter((key) => writtenKeys.has(key));
+        if (rewritten.length > 0) {
+          await tx
+            .delete(schema.peerCompanies)
+            .where(and(eq(schema.peerCompanies.ipoId, ipoId), inArray(schema.peerCompanies.normalizedName, rewritten)));
+        }
+        await this.deleteAndRetire(tx, ipoId, dropped, replacedBy);
+      } else {
+        await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
+        // OD-157: the whole-list replace deleted every stored row it did not write again.
+        await retireChildRowSources(tx as unknown as NodePgDatabase<typeof schema>, {
+          ipoId,
+          tableName: 'peer_companies',
+          rowKeys: stored.map((row) => row.normalizedName).filter((key) => !writtenKeys.has(key)),
+          reason: `replaced by ${replacedBy}`,
+        });
+      }
       if (rowsToWrite.length === 0) return [];
       return tx.insert(schema.peerCompanies).values(rowsToWrite).returning();
     });
+  }
+
+  /**
+   * OD-156 + OD-157: delete the named stored rows and, in the same transaction, retire their
+   * field_sources records (kept in field_sources_retired with the date and the replacing set).
+   */
+  private async deleteAndRetire(
+    tx: unknown,
+    ipoId: string,
+    rowKeys: string[],
+    replacedBy: string
+  ): Promise<void> {
+    if (rowKeys.length === 0) return;
+    const t = tx as NodePgDatabase<typeof schema>;
+    await t
+      .delete(schema.peerCompanies)
+      .where(and(eq(schema.peerCompanies.ipoId, ipoId), inArray(schema.peerCompanies.normalizedName, rowKeys)));
+    const retired = await retireChildRowSources(t, {
+      ipoId,
+      tableName: 'peer_companies',
+      rowKeys,
+      reason: `OD-156: no longer named by ${replacedBy}`,
+    });
+    logger.info({ ipoId, removed: rowKeys, retiredSourceRecords: retired, replacedBy }, '[OD-156] document peers dropped by a newer or same-type peer list');
   }
 
   /**

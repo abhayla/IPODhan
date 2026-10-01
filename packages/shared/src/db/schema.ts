@@ -1104,6 +1104,12 @@ export const peerCompanies = pgTable(
 
     // Metadata
     dataSource: varchar('data_source', { length: 100 }),
+    // OD-156 (#1166 item 1): the offer document type (DRHP | RHP | PROSPECTUS | PRICE_BAND_AD)
+    // that wrote this row. data_source says 'DRHP' for every document (scraper_source has no
+    // RHP member), so this is the only record of the real type. Null = not written by a
+    // document, or written before OD-156 (type unknown): such a row is never removed by a
+    // document peer list (fail closed).
+    sourceDocumentType: varchar('source_document_type', { length: 32 }),
     lastUpdated: timestamp('last_updated'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
@@ -1709,6 +1715,36 @@ export const fieldSources = pgTable(
       table.tableName,
       table.rowKey,
       table.fieldName
+    ),
+  })
+);
+
+// ==================== FIELD_SOURCES_RETIRED (OD-157, #1166 item 3) ====================
+// The source records of a child row that a replacing source set deleted. They are KEPT
+// (OD-157) but moved out of field_sources, so no reader of field_sources can read a deleted
+// row's provenance as live: retirement is structural, not a filter each reader must remember.
+// `record` is the full field_sources row as it stood when retired.
+
+export const fieldSourcesRetired = pgTable(
+  'field_sources_retired',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    tableName: varchar('table_name', { length: 100 }).notNull(),
+    rowKey: varchar('row_key', { length: 200 }).notNull(),
+    fieldName: varchar('field_name', { length: 100 }).notNull(),
+    source: scraperSourceEnum('source').notNull(),
+    record: jsonb('record').notNull(),
+    retiredAt: timestamp('retired_at').defaultNow().notNull(),
+    retiredReason: text('retired_reason').notNull(),
+  },
+  (table) => ({
+    ipoTableRowIdx: index('idx_field_sources_retired_ipo_table_row').on(
+      table.ipoId,
+      table.tableName,
+      table.rowKey
     ),
   })
 );
