@@ -16,6 +16,8 @@ import {
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
+  classifyDocumentUrlOrTitle,
+  DOCUMENT_TYPE_REFINEMENTS,
   checkNotYetFiledAge,
   checkAbsenceWithoutEvidence,
   checkCycleOverrun,
@@ -1052,4 +1054,38 @@ test('#676 checkExtractionStatusDeclared flags undeclared and NULL, passes every
     /x\/DRHP \(d1\): extraction_status 'QUEUED_FOR_REVIEW' is not in the declared set/);
   assert.match(checkExtractionStatusDeclared({ id: 'd2', slug: 'x', type: 'RHP', extractionStatus: 'SUCCESS' }, declared), /'SUCCESS'/);
   assert.match(checkExtractionStatusDeclared({ id: 'd3', slug: 'x', type: 'RHP', extractionStatus: null }, declared), /NULL/);
+});
+
+// --- #1116: the floor's own mirror, on the two real rows the 2026-09-25 floor flagged ---
+
+test('#1116 Varmora (real prod row): a Prospectus_GID RHP whose zip name is silent is NOT flagged', () => {
+  // Zip members: 'VARMORA GRANITO LIMITED GID.pdf', 'Varmora Granito Limited RHP.pdf' -- an RHP.
+  const row = {
+    url: 'https://listing.bseindia.com/Download/8888888/PreAnchor/VARMORAGRANITOLIMITED_20260918181531.zip',
+    title: 'Prospectus GID',
+    type: 'RHP',
+  };
+  assert.equal(checkDocumentTypeMatchesClassifier(row, classifyDocumentUrlOrTitle, DOCUMENT_TYPE_REFINEMENTS), null);
+});
+
+test('#1116 Gabion (real row): a final Prospectus stored as RHP is still flagged', () => {
+  // PDF cover: "PROSPECTUS Dated: January 9, 2026".
+  const row = {
+    url: 'https://gabionindia.com//wp-content/themes/gabion/RHP/Final%20Prospectus.pdf',
+    title: 'RHP — Gabion Technologies India Ltd. (Chittorgarh)',
+    type: 'RHP',
+  };
+  assert.match(
+    checkDocumentTypeMatchesClassifier(row, classifyDocumentUrlOrTitle, DOCUMENT_TYPE_REFINEMENTS),
+    /stored as RHP but classifies as PROSPECTUS/
+  );
+});
+
+test('#1116 the mirror folds underscores like the classifier (shape documented in document-classifier.ts for IPO_NO 7922; no stored row carries it today)', () => {
+  assert.equal(
+    classifyDocumentUrlOrTitle('https://x/DEEPA_Red_Herring_Prospectus_and_GID_20260902.zip', 'Prospectus GID'),
+    'RHP'
+  );
+  // A fixed-meaning field label is still evidence.
+  assert.equal(classifyDocumentUrlOrTitle('https://x/a.pdf', 'Price Band Advertisement'), 'PRICE_BAND_AD');
 });

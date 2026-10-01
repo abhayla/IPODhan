@@ -103,4 +103,29 @@ describe('planRetype — what the one-off script would do to stored rows', () =>
     })!;
     expect(plan.suggestedType).toBe('CORRIGENDUM');
   });
+  // #1116 (real rows, ipodhan prod/staging documents table, read 2026-10-01).
+  it('#1116: a BSE Prospectus_GID row whose file name says nothing is NOT re-typed from our own field-label title', () => {
+    // Real row: Varmora Granito. Stored RHP from the Prospectus_GID field default;
+    // the zip's members are 'VARMORA GRANITO LIMITED GID.pdf' and
+    // 'Varmora Granito Limited RHP.pdf' -- it IS an RHP. The title "Prospectus GID"
+    // is our label for the BSE field (primary-source-discovery.ts), not the document's name.
+    const plan = planRetype({
+      id: 'varmora',
+      url: 'https://listing.bseindia.com/Download/8888888/PreAnchor/VARMORAGRANITOLIMITED_20260918181531.zip',
+      title: 'Prospectus GID',
+      type: 'RHP',
+    });
+    expect(plan).toBeNull();
+  });
+  it('#1116: a final Prospectus filed under an /RHP/ folder is re-typed PROSPECTUS (Gabion, real row)', () => {
+    // Real row: Gabion Technologies. Cover page of the PDF reads "PROSPECTUS Dated: January 9, 2026".
+    const plan = planRetype({
+      id: 'gabion',
+      url: 'https://gabionindia.com//wp-content/themes/gabion/RHP/Final%20Prospectus.pdf',
+      title: 'RHP — Gabion Technologies India Ltd. (Chittorgarh)',
+      type: 'RHP',
+    })!;
+    expect(plan.suggestedType).toBe('PROSPECTUS');
+    expect(plan.action).toBe('retype');
+  });
 });

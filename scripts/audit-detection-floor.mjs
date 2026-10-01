@@ -54,6 +54,8 @@ import {
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
+  classifyDocumentUrlOrTitle,
+  DOCUMENT_TYPE_REFINEMENTS,
   checkNotYetFiledAge,
   checkAbsenceWithoutEvidence,
   checkCycleOverrun,
@@ -1664,24 +1666,9 @@ async function checkM() {
   // corpus against it, so a Prospectus stored as RHP stayed invisible.
   // The classifier itself is TypeScript and this audit runs as plain Node on the
   // box, so the rules are mirrored here — same convention as HIGH_VALUE_FIELDS.
-  const REFINEMENTS = {
-    RHP: ['PROSPECTUS'],
-    ADDENDUM: ['CORRIGENDUM', 'PRICE_BAND_AD'],
-    BASIS_OF_ALLOTMENT: ['BASIS_OF_ALLOTMENT_AD'],
-  };
-  const classifyUrlOrTitle = (url, title) => {
-    const name = String(url || '').split(/[?#]/)[0].split('/').pop() || '';
-    for (const text of [decodeURIComponent(name).toLowerCase(), String(title || '').toLowerCase()]) {
-      if (!text) continue;
-      if (text.includes('price band') || text.includes('pricebandad')) return 'PRICE_BAND_AD';
-      if (text.includes('corrigendum')) return 'CORRIGENDUM';
-      if (text.includes('basis of allot') || text.includes('allotment advert')) return 'BASIS_OF_ALLOTMENT_AD';
-      if (text.includes('draft') || text.includes('drhp')) return 'DRHP';
-      if (text.includes('red herring') || /rhp/.test(text)) return 'RHP';
-      if (text.includes('prospectus')) return 'PROSPECTUS';
-    }
-    return null;
-  };
+  // #1116: the mirror lives in scripts/lib/document-state-checks.mjs, unit-tested there.
+  const REFINEMENTS = DOCUMENT_TYPE_REFINEMENTS;
+  const classifyUrlOrTitle = classifyDocumentUrlOrTitle;
   const docRows = await q(`SELECT d.id, d.url, d.title, d.type::text AS type FROM documents d`);
   const mistyped = docRows
     .map((r) => checkDocumentTypeMatchesClassifier(r, classifyUrlOrTitle, REFINEMENTS))

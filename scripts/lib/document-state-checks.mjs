@@ -240,6 +240,52 @@ export function countBsePayloadLeadManagers(brlmField, coField) {
  * source/classifier change for a human, and is reported separately by the
  * re-type script rather than paged nightly.
  */
+/**
+ * The nightly floor's mirror of scraper/src/services/document-classifier.ts
+ * (`classifyByTitle` over the file name, then the title), for the types the M6
+ * refinement map can flag. Plain Node on the box cannot import the TypeScript
+ * classifier, so the rules are mirrored here where a unit test can pin them.
+ *
+ * #1116: two mirror gaps made the floor disagree with the classifier --
+ *  - it did not fold '_' / '-' / '.' into spaces, so 'Red_Herring_Prospectus'
+ *    read as a bare 'prospectus' (the classifier's normalizeTitle does fold);
+ *  - it classified our own BSE field label "Prospectus GID" as PROSPECTUS. That
+ *    field serves the RHP before close and the Prospectus after, so the label is
+ *    not evidence (Varmora Granito: an RHP whose zip name says nothing).
+ */
+export const DOCUMENT_TYPE_REFINEMENTS = Object.freeze({
+  RHP: ['PROSPECTUS'],
+  ADDENDUM: ['CORRIGENDUM', 'PRICE_BAND_AD'],
+  BASIS_OF_ALLOTMENT: ['BASIS_OF_ALLOTMENT_AD'],
+});
+
+function normalizeDocText(t) {
+  return t
+    .replace(/\.[a-z0-9]{2,5}$/, '')
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function classifyDocumentUrlOrTitle(url, title) {
+  const rawName = String(url || '').split(/[?#]/)[0].split('/').pop() || '';
+  let name = rawName;
+  try { name = decodeURIComponent(rawName); } catch { /* malformed escape: classify the raw name */ }
+  const titleText = normalizeDocText(String(title || '').toLowerCase().trim());
+  const texts = [normalizeDocText(name.toLowerCase())];
+  if (titleText !== 'prospectus gid') texts.push(titleText);
+  for (const text of texts) {
+    if (!text) continue;
+    if (text.includes('price band') || text.includes('pricebandad')) return 'PRICE_BAND_AD';
+    if (text.includes('corrigendum')) return 'CORRIGENDUM';
+    if (text.includes('basis of allot') || text.includes('allotment advert')) return 'BASIS_OF_ALLOTMENT_AD';
+    if (text.includes('draft') || /drhp/.test(text)) return 'DRHP';
+    if (text.includes('red herring') || /rhp/.test(text)) return 'RHP';
+    if (text.includes('prospectus')) return 'PROSPECTUS';
+  }
+  return null;
+}
+
 export function checkDocumentTypeMatchesClassifier(row, classifyUrlOrTitle, refinements) {
   const suggested = classifyUrlOrTitle(row.url ?? '', row.title ?? '');
   if (!suggested || suggested === row.type) return null;

@@ -1,0 +1,13 @@
+{
+  "class_id": "a document's type is decided from text that is not the document's own name",
+  "feature": "every path that types a documents row from text (store-time writers, the re-type script, the nightly floor's mirror of the classifier), every document type, both segments, both exchanges",
+  "symptom": "the type is read from a string that only sits next to the document: a URL directory name ('/RHP/Final Prospectus.pdf' typed RHP from the folder) or our own source-slot label (BSE's Prospectus_GID field, titled 'Prospectus GID', read as PROSPECTUS although the field serves the RHP before close). A wrong RHP/PROSPECTUS type changes document precedence (OD-30: the final prospectus is terminal). Generic test: for every stored row, classify the file name alone; rows whose stored type came only from a folder name or a variable-meaning slot label are members.",
+  "first_seen": "2026-09-25 nightly floor m_document_type_classifier on prod (#1116), resolved 2026-10-01 read-only: Gabion Technologies (url .../gabion/RHP/Final%20Prospectus.pdf, PDF cover 'PROSPECTUS Dated: January 9, 2026') stored RHP by chittorgarh-document-scraper's whole-URL test; Varmora Granito (url .../PreAnchor/VARMORAGRANITOLIMITED_20260918181531.zip, zip members 'VARMORA GRANITO LIMITED GID.pdf' and 'Varmora Granito Limited RHP.pdf') correctly stored RHP but flagged because the floor and the re-type script classified the title 'Prospectus GID'. Of 81 Chittorgarh rows on staging and 81 on prod, the file-name-first rule changes exactly 1 (Gabion).",
+  "fix_prs": "#1116 PR (fix/1116-doc-type-classifier): Chittorgarh writer classifies the file name first through document-classifier.ts; planRetype and the floor mirror ignore the 'Prospectus GID' label; the floor mirror moves to scripts/lib/document-state-checks.mjs and folds '_'/'-' like the classifier. The stored Gabion rows are repaired by the existing scraper/src/scripts/retype-misclassified-documents.ts --execute (staging, then prod on the owner's word).",
+  "detection_check": "m_document_type_classifier (scripts/lib/document-state-checks.mjs classifyDocumentUrlOrTitle + checkDocumentTypeMatchesClassifier, recorded by scripts/audit-detection-floor.mjs)",
+  "status": "guarded",
+  "spec_ref": [
+    "§2.5",
+    "§1.8"
+  ]
+}
