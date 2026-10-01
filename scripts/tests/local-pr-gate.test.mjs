@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  WORKFLOW, STEP_TABLE, JOB_TABLE, loadSteps, classify, buildPlan, ciWouldRun, childEnv,
+  WORKFLOW, STEP_TABLE, JOB_TABLE, LINUX_ONLY, loadSteps, classify, buildPlan, ciWouldRun, childEnv,
 } from '../ci/local-pr-gate.mjs';
 
 const CTX = { base: 'b'.repeat(40), head: 'h'.repeat(40), prNumber: '' };
@@ -27,6 +27,7 @@ test('every table entry names a step or job that still exists (no stale classifi
   const { wf, steps } = loadSteps();
   const keys = new Set(steps.map((s) => `${s.jobId} :: ${s.name}`));
   assert.deepEqual(Object.keys(STEP_TABLE).filter((k) => !keys.has(k)), []);
+  assert.deepEqual(Object.keys(LINUX_ONLY).filter((k) => !keys.has(k)), []);
   assert.deepEqual(Object.keys(JOB_TABLE).filter((j) => !wf.jobs[j]), []);
 });
 
@@ -162,5 +163,16 @@ test('child env drops git repo-local vars and DB/Redis vars CI never has (#1037 
   } finally {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
     Object.assign(process.env, saved);
+  }
+});
+
+test('Linux-only steps run on linux and are listed CI-only elsewhere', () => {
+  const { steps } = loadSteps();
+  for (const key of Object.keys(LINUX_ONLY)) {
+    const st = steps.find((s) => `${s.jobId} :: ${s.name}` === key);
+    assert.equal(classify(st, { ...CTX, platform: 'linux' }).mode, 'local', key);
+    const win = classify(st, { ...CTX, platform: 'win32' });
+    assert.equal(win.mode, 'ci-only', key);
+    assert.match(win.reason, /Linux-only/);
   }
 });

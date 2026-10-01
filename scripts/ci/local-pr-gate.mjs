@@ -53,7 +53,8 @@ export const TREES = {
   shared: new RegExp(String.raw`^(packages/shared/|${ROOT_PKG})`),
   python: /^(scraper\/scripts\/|scraper\/.*\.py$|scraper\/config\/)/,
   hooks: /^\.claude\/hooks\//,
-  deploy: /^(scripts\/|\.github\/|ecosystem\.config|scraper\/config\/|deploy\/)/,
+  // ~15 min of bash suites (measured 2026-10-01): only for deploy/ops/shell changes.
+  deploy: /^(scripts\/(deploy|ops)\/|scripts\/[^/]*\.sh$|scripts\/tests\/[^/]*\.sh$|scripts\/tests\/lib\/|\.github\/workflows\/deploy|ecosystem\.config|scraper\/config\/|deploy\/)/,
 };
 
 // ---- classification ----------------------------------------------------------
@@ -96,6 +97,16 @@ export const STEP_TABLE = {
   'web-build :: Build shared package': { mode: 'local', tree: 'web' },
   'web-build :: Shared .js-suffixed imports resolve under webpack too (fast pre-check)': { mode: 'local', tree: 'web' },
   'web-build :: next build': { mode: 'heavy', tree: 'web', reason: 'next build (~5 min, 6 GB heap): run with --full' },
+};
+// Steps whose result depends on the OS, not on the change: on a Windows
+// checkout they fail on CRLF line endings or Linux-only tools, while CI's
+// ubuntu runner is green. On those platforms they are LISTED, never run, so a
+// red local run always means the change. Measured 2026-10-01 on Windows 11 /
+// Git Bash (the full proof run in PR #1037's successor).
+export const LINUX_ONLY = {
+  'gate :: VPS runtime preflight self-test (T-406)': 'asserts /etc/timezone, timedatectl and python3 on PATH, which exist on the VPS and the ubuntu runner only',
+  'gate :: main-gate.yml structural self-test (#616/#681)': 'asserts LF line endings; a core.autocrlf Windows checkout has CRLF',
+  'deploy-script-tests :: Run config-only deploy release-link test suite (item 3 S5, symlink-only on Linux)': 'needs real symlinks, which Git Bash on Windows copies',
 };
 // Whole jobs that cannot run here.
 export const JOB_TABLE = {
@@ -187,6 +198,9 @@ export function classify(step, ctx = { base: 'BASE', head: 'HEAD' }) {
   if (unknown.length) {
     const secret = unknown.find((u) => /^secrets\./.test(u));
     return { key, mode: 'error', problem: secret ? `needs ${secret}; classify it ci-only` : `unknown expression(s): ${unknown.join(', ')}` };
+  }
+  if (LINUX_ONLY[key] && (ctx.platform || process.platform) !== 'linux') {
+    return { key, mode: 'ci-only', reason: `Linux-only here: ${LINUX_ONLY[key]}` };
   }
   return { key, mode: entry?.mode === 'heavy' ? 'heavy' : 'local', tree, cmd, env, workdir: step.workdir, reason: entry?.reason };
 }
