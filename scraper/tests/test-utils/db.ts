@@ -26,7 +26,13 @@ export async function getTestDb() {
     password: process.env.TEST_DB_PASSWORD || process.env.DATABASE_PASSWORD || '',
   };
 
-  testPool = new Pool(testDbConfig);
+  // #1364: DATABASE_URL (what .env.test and the global prod/staging guard in
+  // vitest.integration.setup.ts resolve) wins when set. The discrete-field fallback below names the
+  // database DATABASE_NAME + '_test', which does not exist (3D000) under the repo's own .env.test.
+  // Every pool needs `-c timezone=UTC` (ist-timezone rule).
+  testPool = process.env.DATABASE_URL
+    ? new Pool({ connectionString: process.env.DATABASE_URL, max: 5, options: '-c timezone=UTC' })
+    : new Pool({ ...testDbConfig, options: '-c timezone=UTC' });
   testDb = drizzle(testPool, { schema });
 
   return testDb;

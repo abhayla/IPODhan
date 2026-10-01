@@ -8,7 +8,7 @@
 // advertisement counts only when it names the exchanges". The ad's place (below RHP, above DRHP)
 // is inferred, not spec-stated: it is published with the RHP and after the draft, so "an older
 // draft can never overwrite a final advertisement" (spec, document type order) keeps it above DRHP.
-// This is NOT the price-field order (field-priority-matrix.ts DOCUMENT_TYPE_RANK, where the ad
+// This is NOT the price-dependent order (document-field-order.mjs PRICE_DEPENDENT_ORDER, where the ad
 // ranks first); the listing sentence is a fact about the filing, not about the price.
 
 /** Higher number = decides. A type not listed here never decides these fields (fail closed). */

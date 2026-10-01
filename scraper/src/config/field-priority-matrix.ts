@@ -12,7 +12,7 @@ import { loadFieldManifest } from './field-manifest-loader.js';
 import { mapManifestSourceToScraperSource } from './field-source-codes.js';
 import type { IpoTypeKey } from '../services/field-plan-generator.js';
 import { FEATURE_FLAGS } from './feature-flags.js';
-import { LISTING_SENTENCE_ORDER } from '../../config/listing-sentence-precedence.mjs';
+import { compareDocumentsForField, type DocumentFieldOrder, type FieldDocumentRef } from '../../config/document-field-order.mjs';
 import { logger } from '../utils/logger.js';
 
 export type ScraperSource =
@@ -89,13 +89,13 @@ export interface FieldRules {
 
   /**
    * #1233 round 2: this field's OWN order between two offer documents (higher number decides),
-   * used instead of the generic price-field `DOCUMENT_TYPE_RANK` by
+   * used instead of the generic price-dependent order (document-field-order.mjs) by
    * `incomingDocumentOutranksStored`. `ipos.segment` and `ipos.listing_exchanges` carry the
    * listing-sentence order (scraper/config/listing-sentence-precedence.mjs, OD-129). A type not in
    * the order, or two documents of the same type, cannot be ordered here (no filing date at this
    * layer) and return null.
    */
-  documentOrder?: Readonly<Record<string, number>>;
+  documentOrder?: DocumentFieldOrder;
 
   /**
    * Ignore DRHP for this field (for real-time data)
@@ -264,14 +264,14 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // later FILING date, OD-30; scraper/config/listing-sentence-precedence.mjs). The upsert passes no
   // document type to consolidation, so the same-source refresh below cannot rank two documents and
   // the newest write wins, which is the one the gate let through. `documentOrder` makes any caller
-  // that does pass a type use the listing-sentence order, never the price-field DOCUMENT_TYPE_RANK.
+  // that does pass a type use the listing-sentence order, never the price-dependent order.
   segment: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
     normalization: 'none',
     confidenceThreshold: 70,
     sameSourceRefresh: true,
     sameSourceRefreshSources: ['DRHP'],
-    documentOrder: LISTING_SENTENCE_ORDER,
+    documentOrder: 'LISTING',
     description: 'MAINBOARD/SME board (null for InvIT/REIT business trusts). The offer document decides (OD-129); the exchange feeds, then Chittorgarh, only before a document is read.',
   },
 
@@ -669,7 +669,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     confidenceThreshold: 75,
     // #1233 round 2: the document set comes from the listing sentence (OD-129); its order is the
     // listing-sentence order, the same one the persister gate applies.
-    documentOrder: LISTING_SENTENCE_ORDER,
+    documentOrder: 'LISTING',
     description: 'Listing exchange set — union of exchange self-assertions (NSE/BSE speak only for themselves)',
   },
 };
@@ -679,54 +679,46 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
  * Returns default rules if field not in matrix
  */
 /**
- * T-520 round 2 (MAJOR 2): every offer document folds into the single
- * `scraper_source` member `DRHP` (`filing-persister.ts` `scraperSourceForDocType`),
- * so a same-source refresh decided purely on WRITE TIME would let a
- * re-extraction of an old RHP overwrite a price-band advertisement's band —
- * and no website can undo it now that DRHP outranks them all. Refreshes
- * between two documents are therefore ordered by DOCUMENT TYPE first.
+ * T-520 round 2 (MAJOR 2): every offer document folds into the single `scraper_source` member `DRHP`
+ * (`filing-persister.ts` `scraperSourceForDocType`), so a same-source refresh decided on WRITE TIME
+ * would let a re-extraction of an old RHP overwrite a price-band advertisement's band. Refreshes
+ * between two documents are ordered by document type, then filing date (OD-30).
  *
- * Lower number = more authoritative. This matches the guard already shipped in
- * `filing-persister.ts` (`coverOutrankedByAd`: a PROSPECTUS cover must not
- * overwrite a value a PRICE_BAND_AD set), which is the pricing reality — the
- * ad and any corrigendum carry the FINAL band. It deliberately differs from the
- * "PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP" line in
- * docs/reviews/wp-c-extraction-contract.md §0, which describes recency of
- * filing, not pricing authority.
+ * #1364: the orders and the comparator live in ONE place, scraper/config/document-field-order.mjs
+ * (spec §1 "Document type order inside rank 1"). Which order a field follows:
+ *  - its own `documentOrder` (segment, listing exchanges: the OD-129 listing-sentence order);
+ *  - 'PRICE' when the field manifest names PRICE_BAND_AD as its document (the price-dependent fields);
+ *  - otherwise 'UNDECIDED': the spec does not say which fields are "final post-issue facts", so a
+ *    pair is ranked only where the price and post-issue orders agree, and the stored value is kept
+ *    where they disagree (fail closed; owner-questions-2026-10-01 Q3).
+ * A call with no field name (legacy) uses the price order.
  */
-export const DOCUMENT_TYPE_RANK: Record<string, number> = {
-  CORRIGENDUM: 0,
-  PRICE_BAND_AD: 0,
-  RHP: 1,
-  PROSPECTUS: 2,
-  DRHP: 3,
-};
+export function documentOrderForField(fieldName: string | undefined, tableName = 'ipos'): DocumentFieldOrder {
+  if (!fieldName) return 'PRICE';
+  const own = getFieldRules(fieldName).documentOrder;
+  if (own) return own;
+  try {
+    const entry = loadFieldManifest().fields[`${tableName}.${fieldNameToColumn(fieldName)}`];
+    return entry?.documentType === 'PRICE_BAND_AD' ? 'PRICE' : 'UNDECIDED';
+  } catch {
+    return 'UNDECIDED';
+  }
+}
 
 /**
- * Should an incoming document write replace a stored document write on the same
- * field? `null` means "cannot tell from document type alone" (one or both types
- * unknown) and the caller falls back to its newest-write rule.
+ * Should an incoming document write replace a stored document write on the same field? `null` means
+ * the two cannot be told apart (an unknown type, the same document read again, equal rank without
+ * both filing dates) and the caller falls back to its newest-write rule.
  */
 export function incomingDocumentOutranksStored(
-  storedDocType: string | null | undefined,
-  incomingDocType: string | null | undefined,
-  fieldName?: string
+  stored: FieldDocumentRef | string | null | undefined,
+  incoming: FieldDocumentRef | string | null | undefined,
+  fieldName?: string,
+  tableName = 'ipos'
 ): boolean | null {
-  if (!storedDocType || !incomingDocType) return null;
-  // #1233 round 2: a field with its own document order (segment, listing exchanges) never uses the
-  // price-field rank below.
-  const own = fieldName ? getFieldRules(fieldName).documentOrder : undefined;
-  if (own) {
-    const s = own[storedDocType];
-    const i = own[incomingDocType];
-    if (s === undefined || i === undefined || s === i) return null;
-    return i > s;
-  }
-  const stored = DOCUMENT_TYPE_RANK[storedDocType];
-  const incoming = DOCUMENT_TYPE_RANK[incomingDocType];
-  if (stored === undefined || incoming === undefined) return null;
-  if (incoming === stored) return null; // same authority — newest write wins
-  return incoming < stored;
+  const ref = (d: FieldDocumentRef | string | null | undefined): FieldDocumentRef =>
+    typeof d === 'string' ? { docType: d } : d ?? { docType: null };
+  return compareDocumentsForField(ref(stored), ref(incoming), documentOrderForField(fieldName, tableName)).outranks;
 }
 
 /**
