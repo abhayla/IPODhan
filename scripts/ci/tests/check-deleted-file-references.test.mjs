@@ -14,6 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(__dirname, '..', 'check-deleted-file-references.mjs');
 
 function sh(cwd, args) {
+  // install-order-ok: sh() wrapper; every caller passes git as args[0], never node (#1180)
   return execFileSync(args[0], args.slice(1), { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 

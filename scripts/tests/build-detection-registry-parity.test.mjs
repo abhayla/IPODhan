@@ -20,6 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 
 function sh(args) {
+  // install-order-ok: sh() wrapper; every caller passes git as args[0], never node (#1180)
   return execFileSync(args[0], args.slice(1), { cwd: REPO_ROOT, encoding: 'utf8' });
 }
 

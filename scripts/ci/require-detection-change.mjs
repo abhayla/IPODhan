@@ -53,6 +53,7 @@ function hasRealDeclaration(text) {
 }
 
 function sh(args, opts = {}) {
+  // install-order-ok: sh() wrapper; every caller passes git or gh as args[0], never node (#1180)
   return execFileSync(args[0], args.slice(1), {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
