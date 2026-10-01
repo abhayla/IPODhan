@@ -1,5 +1,18 @@
 #!/usr/bin/env node
 /**
+ * #1142 round 2: TWO layers, one baseline.
+ *   Layer 1 (structural, the guarantee): every pg / postgres.js client is built
+ *     by one sanctioned module per package - scripts/ci/pg-construction-sites.mjs
+ *     (SANCTIONED_MODULES). A construction anywhere else, in ANY tracked code
+ *     file including tests/, is an offender whatever values it is given, keyed
+ *     by import source and followed through aliases, require, import(),
+ *     re-exports and drizzle's own drivers; unresolvable shapes fail closed.
+ *   Layer 2 (value, second layer, kept because it is cheap): the #640 checks
+ *     below, on non-test code - they still catch a literal target handed to a
+ *     sanctioned helper (createUtcPool({ database: 'ipodhan' })).
+ * The baseline is SHRINK-ONLY: an entry whose offender is gone FAILS the run
+ * until it is removed, so a fixed site cannot silently become a free slot.
+ *
  * Detection check for #640: a pg connection field read from
  * `process.env.DATABASE_NAME` / `process.env.DATABASE_USER` (or `env.X` where
  * `env = process.env`) that silently DEFAULTS to a literal when the env var
@@ -42,6 +55,7 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { findConstructionSites } from './pg-construction-sites.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -80,11 +94,17 @@ const PG_URL_TAIL = /\/[A-Za-z_][\w-]*(?:\?\S*)?$/;
 const OR_KINDS = new Set([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken]);
 const OR_ASSIGN_KINDS = new Set([ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken]);
 
-function listFiles() {
+const LAYER1_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
+// Layer 1 parses only files that could import a driver or load a module.
+const LAYER1_PREFILTER = /\bpg\b|postgres|drizzle|require\s*\(|import\s*\(/;
+
+function trackedFiles() {
   const out = execSync('git ls-files', { cwd: REPO_ROOT, encoding: 'utf8' });
-  return out
-    .split('\n')
-    .filter(Boolean)
+  return out.split('\n').filter(Boolean).filter((f) => !/(^|\/)node_modules\//.test(f));
+}
+
+function listFiles(all = trackedFiles()) {
+  return all
     .filter((f) => FILE_EXTENSIONS.has(path.extname(f)))
     .filter((f) => !EXCLUDE_PATTERNS.some((re) => re.test('/' + f)));
 }
@@ -394,6 +414,11 @@ export function findOffenders(file, source, isTsx = false) {
   return offenders;
 }
 
+/** Layer 1 over one file (same fail-closed parse wrapper). */
+export function scanConstructions(file, source) {
+  return scanSource(file, source, findConstructionSites);
+}
+
 /** Fail closed: a file the detector cannot parse is an offender, never a skip. */
 export function scanSource(file, source, parse = findOffenders) {
   try {
@@ -406,7 +431,7 @@ export function scanSource(file, source, parse = findOffenders) {
 /** #1142: keyed by file + variable + normalised expression text, so an edit
  * that only shifts lines does not fail CI. */
 export function keyOf(o) {
-  return `${o.file}|${o.variable}|${o.text}`;
+  return `${o.file}|${o.kind}|${o.variable}|${o.text}`;
 }
 
 /** Occurrence-counted compare: a second identical offender in the same file is
@@ -432,6 +457,12 @@ export function compareToBaseline(offenders, baseline) {
   return { newOffenders, gone };
 }
 
+/** Exit code for a compare result. A stale (gone) entry FAILS, same as a new
+ * offender: the baseline is shrink-only (#1142 round 1 MINOR). */
+export function exitCodeFor({ newOffenders, gone }) {
+  return newOffenders.length > 0 || gone.length > 0 ? 1 : 0;
+}
+
 function loadBaseline() {
   if (!existsSync(BASELINE_PATH)) return [];
   return JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
@@ -440,22 +471,47 @@ function loadBaseline() {
 function main() {
   const printBaseline = process.argv.includes('--baseline');
   const allOffenders = [];
-
-  for (const relFile of listFiles()) {
-    let source;
+  const tracked = trackedFiles();
+  const read = (relFile) => {
     try {
-      source = readFileSync(path.join(REPO_ROOT, relFile), 'utf8');
+      return readFileSync(path.join(REPO_ROOT, relFile), 'utf8');
     } catch {
-      continue; // listed by git but deleted in the working tree
+      return null; // listed by git but deleted in the working tree
     }
-    if (!PREFILTER.test(source)) continue;
+  };
+
+  let layer1Files = 0;
+  for (const relFile of tracked.filter((f) => LAYER1_EXTENSIONS.has(path.extname(f)))) {
+    const source = read(relFile);
+    if (source === null || !LAYER1_PREFILTER.test(source)) continue;
+    layer1Files++;
+    allOffenders.push(...scanConstructions(relFile, source));
+  }
+  if (layer1Files === 0) {
+    console.error('[check-db-connection-defaults] FAIL: layer 1 scanned 0 files - the file walk is broken, refusing to pass');
+    process.exitCode = 1;
+    return;
+  }
+
+  for (const relFile of listFiles(tracked)) {
+    const source = read(relFile);
+    if (source === null || !PREFILTER.test(source)) continue;
     allOffenders.push(...scanSource(relFile, source));
   }
 
   if (printBaseline) {
+    // Keep the reasons already written; only new entries get FILL IN.
+    const reasons = new Map();
+    for (const e of loadBaseline()) {
+      const k = keyOf(e);
+      reasons.set(k, [...(reasons.get(k) || []), e.reason]);
+    }
     console.log(
       JSON.stringify(
-        allOffenders.map((o) => ({ file: o.file, variable: o.variable, text: o.text, kind: o.kind, reason: 'FILL IN' })),
+        allOffenders.map((o) => {
+          const pending = reasons.get(keyOf(o)) || [];
+          return { file: o.file, variable: o.variable, text: o.text, kind: o.kind, reason: pending.shift() ?? 'FILL IN' };
+        }),
         null,
         2
       )
@@ -474,31 +530,36 @@ function main() {
   const { newOffenders, gone } = result;
 
   if (gone.length > 0) {
-    console.log(
-      `[check-db-connection-defaults] ${gone.length} baseline entr${gone.length === 1 ? 'y is' : 'ies are'} gone (fixed) — shrink scripts/ci/db-connection-defaults-baseline.json:`
+    // Shrink-only: a fixed site left in the baseline is a free slot for the
+    // next offender with the same text, so it fails the run (#1142 round 1 MINOR).
+    console.error(
+      `[check-db-connection-defaults] FAIL: ${gone.length} baseline entr${gone.length === 1 ? 'y is' : 'ies are'} gone (fixed) - ` +
+        `remove ${gone.length === 1 ? 'it' : 'them'} from scripts/ci/db-connection-defaults-baseline.json (the baseline is shrink-only):`
     );
-    gone.forEach((k) => console.log(`  - ${k}`));
+    gone.forEach((k) => console.error(`  - ${k}`));
   }
 
   if (newOffenders.length > 0) {
     console.error(
-      `[check-db-connection-defaults] FAIL: ${newOffenders.length} new offender(s) (#640, #1142) — a pg ` +
-        `connection target (database or user) is chosen without an explicit env value: an env read ` +
-        `that defaults to a literal ('ipodhan' is production, 'postgres' is the superuser), a fallback ` +
-        `the detector cannot resolve, or a hard-coded target in a connection config / postgres:// URL. ` +
-        `Use resolveDiscreteDbParams(env) (from '@ipodhan/shared/db' in a .ts file, or ` +
-        `'scripts/lib/pg-connection-params.mjs' in a plain-node .mjs file) instead. If the shape is ` +
-        `genuinely safe, add it to scripts/ci/db-connection-defaults-baseline.json with a reason.\n`
+      `[check-db-connection-defaults] FAIL: ${newOffenders.length} new offender(s) (#640, #1142).\n` +
+        `  construction / escape / unresolved / drizzle-fresh-client: a Postgres client is built outside the ` +
+        `sanctioned modules (scripts/ci/pg-construction-sites.mjs SANCTIONED_MODULES). Use the shared pool ` +
+        `('@ipodhan/shared/db', web '@/lib/db'), createUtcPool() from scripts/lib/pg-utc.mjs in a plain-node ` +
+        `script, or scraper/tests/test-utils/db.ts in a test.\n` +
+        `  env-default / hardcoded-target: a connection target (database or user) is chosen without an explicit ` +
+        `env value ('ipodhan' is production, 'postgres' is the superuser) - use resolveDiscreteDbParams(env).\n` +
+        `  A genuinely needed exception goes in scripts/ci/db-connection-defaults-baseline.json with a reason.\n`
     );
     newOffenders.forEach((o) => {
       console.error(`  ${o.file}:${o.line}  [${o.kind} ${o.variable}]  ${o.text}`);
     });
-    process.exitCode = 1;
-    return;
   }
 
+  process.exitCode = exitCodeFor(result);
+  if (process.exitCode) return;
   console.log(
-    `[check-db-connection-defaults] PASS: 0 new offenders (${allOffenders.length} baseline entries carried forward)`
+    `[check-db-connection-defaults] PASS: 0 new offenders, 0 stale baseline entries ` +
+      `(${layer1Files} files in layer 1; ${allOffenders.length} baselined sites carried forward)`
   );
 }
 

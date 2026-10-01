@@ -14,7 +14,7 @@
  *   DATABASE_URL=... node scripts/audit-field-extraction-failures.mjs [--hours=24] [--fail-over=N]
  */
 
-import pg from 'pg';
+import { createUtcPool } from './lib/pg-utc.mjs';
 
 const args = process.argv.slice(2);
 const hours = Number((args.find((a) => a.startsWith('--hours=')) ?? '--hours=24').split('=')[1]);
@@ -31,7 +31,7 @@ if (!Number.isFinite(hours) || hours <= 0) {
   process.exit(2);
 }
 
-const pool = new pg.Pool({ connectionString: url, options: '-c timezone=UTC' });
+const pool = createUtcPool({ connectionString: url });
 
 try {
   const { rows } = await pool.query(

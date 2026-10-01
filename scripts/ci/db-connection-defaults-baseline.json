@@ -1,5 +1,1286 @@
 [
   {
+    "file": "docs/design/probes/_lib.mjs",
+    "variable": "new",
+    "text": "new Pool({ host: 'localhost', port: 15432, user: 'ipodhan_app', password, database, max: 2, // UTC, and read-only for every transaction on this connection. options: '-c timezone=UTC -c default_transac",
+    "kind": "construction",
+    "reason": "Design-probe helper: read-only tunnel probe as ipodhan_app. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/audit/classify-suspect-ipos.ts",
+    "variable": "new",
+    "text": "new Client({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATAB",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/audit/classify-suspect-ipos.ts",
+    "variable": "new",
+    "text": "new Client({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATAB",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/audit/oracle-date-matrix.ts",
+    "variable": "new",
+    "text": "new Client({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATAB",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/audit/oracle-date-matrix.ts",
+    "variable": "new",
+    "text": "new Client({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATAB",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/probe-doc-fetcher.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: url, options: '-c timezone=UTC -c default_transaction_read_only=on', max: 2, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/readback-document-state.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: databaseUrl, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/refresh-staging-row-from-prod.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: url, max: 2, options: '-c timezone=UTC -c default_transaction_read_only=on', // keep in sync with PROD_POOL_OPTIONS above connectionTimeoutMillis: 20000, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/repair-dates-and-leadmanagers-t299.ts",
+    "variable": "new",
+    "text": "new Pool({ options: '-c timezone=UTC', // GitHub #28: session UTC so `updated_at = now()` writes UTC-naive, matching app writes ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/repair-lead-managers-from-payload.ts",
+    "variable": "new",
+    "text": "new Pool({ options: '-c timezone=UTC', ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/repair-subscription-regressions-t299.ts",
+    "variable": "new",
+    "text": "new Pool({ options: '-c timezone=UTC', // GitHub #28: session UTC so the naive `timestamp` column reads/compares as UTC, matching app writes ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/run-document-discovery.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: databaseUrl, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/run-document-discovery.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: url, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/jobs/refresh-calendar.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, options: '-c timezone=UTC', // Force session UTC so the NOW() scraper_logs write is UTC-naive (#28) max: 2, // Small pool for background jobs idl",
+    "kind": "construction",
+    "reason": "Background job with its own small pool (max 2, -c timezone=UTC); that config is pinned by scraper/tests/unit/scripts/pool-utc-pin.test.ts and web/tests/unit/db/pool-config.test.ts. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/analyze-data-gaps.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/backfill-clean-company-names.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), ssl: false, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/backfill-isin-from-nse.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/check-dual-listed.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/check-isin-sources.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/check-isin.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/comprehensive-verification.ts",
+    "variable": "new",
+    "text": "new Pool({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/display-nse-fields-table.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/get-all-fields.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/get-current-stats.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/get-field-stats.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/get-mainboard-sme-fields.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/get-nse-scraped-fields.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/reclassify-corporate-actions.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString, connectionTimeoutMillis: 10000 })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/validate-nse-run-v2.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/validate-nse-run.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/verify-bse-data.ts",
+    "variable": "new",
+    "text": "new Pool({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/src/scripts/verify-bse-scrape-results.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-alerts-loaders.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-field-write.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-field-write.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-identifier-move-1290.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-ipo-create-od111.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-list-followups-1294.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-list-merge-refusal-1294.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-owned-lists.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-suggestion-followups-1294-1300.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-write-database-clock.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-write-races-1371.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-write-races-1371.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC', application_name: B_APP })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/child-row-consolidation-financials.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/child-table-normalized-name.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/child-table-row-key-unique-constraint.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/closed-ipo-job-plan-then-walk.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/consolidation-dedup.integration.test.ts",
+    "variable": "new",
+    "text": "new pg.Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/corrigendum-suggestions.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/data-conflicts-repository-hold.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/delisting-strikes.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/derived-key-recompute-guard.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/document-decides-board-1233.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/document-extraction-attempts.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/document-fetch-state-repository.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/document-field-receipts.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/duplicate-ipo-merge.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/exchange-override-od106.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/fallback-door-prerank-checks-1368.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-generation-wiring.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-held-field-read.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-real-writer.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-real-writer.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-reason-codes.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-reclaim-starvation.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-resume.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-plan-walk-verdict-writer.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-source-overrides-repository.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-sources-row-key-provenance.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-sources-row-key-provenance.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-sources-row-key-unique.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-sources-row-key-unique.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/field-sources-witnesses.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/hide-row-scraper-writes.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/identifier-aliases-item26.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/identity-matching-od68.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/incapable-source-refusal.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/ipo-field-plan-repository.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/ipo-field-plan-repository.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 1, options: '-c timezone=UTC', statement_timeout: 4000, })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/ipo-field-plan-row-key-unique.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/ipo-field-plan-row-key-unique.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/ipos-lineage-document-id.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/live-slot-miss-monitor.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/merge-repoint-conflict.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/merge-unmerge-roundtrip.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/newer-document-suggestions.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/newer-document-suggestions.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/normalizer-sql-agreement.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/ocr-loses-disagreement.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/od142-type-correction-values.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/od144-plan-rank-write.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/od73-settled-field.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/opening-day-create.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/peer-company-replace-atomicity.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/phase-1-e2e.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/post-listing-price.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/postponed-relaunch-1298.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 3, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/postponed-relaunch-refill-1298.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/prospectus-ratio-reason-ledger.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/provenance-lookup-failed-keeps-stored-value.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/provenance-lookup-failed-keeps-stored-value.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/relaunch-clears-admin.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 3, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-bse-subscription-ist-shift.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-ipos-lineage-document-id.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-issue-size-od74.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-ledger-guarded-requeue.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 3, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-ledger-written-rows.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 3, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-name-pollution-merge-gate.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-reopen-stale-doc-nay.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-retire-manifest-removed-fields.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/repair-source-trust-batch-t292-stale-guard.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/rhp-promoters-peers-persist.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/scraper-writers-honour-hold.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/scraper-writers-honour-hold.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/settled-field-override-reopen.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC', })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/source-record-keys-od85.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 6, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/status-forward-only.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/unit/pipeline-stages/stage-0-db-rebuild.test.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: url })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/unit/scripts/persist-filing-db-guard.test.ts",
+    "variable": "new",
+    "text": "new Pool({ host: LIVE_HOST, port: Number(LIVE_PORT), database: 'ipodhan_test', // fixed — never taken from the env, on purpose user: LIVE_USER, password: LIVE_PASSWORD, connectionTimeoutMillis: 10000,",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/assert-row-key-constraints.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: argOrUrl })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/assert-row-key-constraints.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/assert-schema-drift.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: argOrUrl })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/assert-schema-drift.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/audit-consensus-verdict.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: argOrUrl })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/audit-consensus-verdict.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/audit/fold-collision-report.mjs",
+    "variable": "new",
+    "text": "new pg.Pool({ host, port, user, password, database, max: 2, options: '-c timezone=UTC -c default_transaction_read_only=on', statement_timeout: 60_000, })",
+    "kind": "construction",
+    "reason": "Read-only report pool (-c default_transaction_read_only=on); createUtcPool() replaces options, which would drop the read-only pin. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/check-stage3-dod.mjs",
+    "variable": "new",
+    "text": "new pg.Pool({ connectionString, ssl: false, max: 1 })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/ops/reassign-test-db-ownership.mjs",
+    "variable": "new",
+    "text": "new Client({ host: 'localhost', port: 15432, user, password, database: 'ipodhan_test', options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Test-database admin tool: connects to localhost:15432 (the sanctioned tunnel) to create/own ipodhan_test; it needs the admin role the shared pool never uses."
+  },
+  {
+    "file": "scripts/ops/test-db-lifecycle.mjs",
+    "variable": "new",
+    "text": "new Client({ host: 'localhost', port: 15432, user, password, database: 'postgres', options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Test-database admin tool: connects to localhost:15432 (the sanctioned tunnel) to create/own ipodhan_test; it needs the admin role the shared pool never uses."
+  },
+  {
+    "file": "scripts/ops/walk-proof.mjs",
+    "variable": "new",
+    "text": "new Pool({ host: '127.0.0.1', port: 15432, user: 'ipodhan_app', password, database, max: 2, options: '-c timezone=UTC -c default_transaction_read_only=on', statement_timeout: 60_000, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/tests/assert-schema-drift.test.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: databaseUrl })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/tests/audit-ipo-coverage-distinct-on.test.mjs",
+    "variable": "new",
+    "text": "new pg.Pool({ connectionString: TEST_DB })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/tests/row-key-coverage.db.test.mjs",
+    "variable": "new",
+    "text": "new pg.Client({ connectionString: CONNECTION_STRING, connectionTimeoutMillis: 10000 })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/analyze-scraper-history.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/apply-anchor-migration.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/apply-ipo-scores-migration.ts",
+    "variable": "new",
+    "text": "new Pool({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), database: process.env.DATABASE_NAME, user: process.env.DATABASE_USER, password: process.env.DATABASE_PA",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/apply-kpi-migration.ts",
+    "variable": "new",
+    "text": "new Pool({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), database: process.env.DATABASE_NAME, user: process.env.DATABASE_USER, password: process.env.DATABASE_PA",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/apply-migration-0006.ts",
+    "variable": "new",
+    "text": "new pg.Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/apply-phase0-direct.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/apply-phase0-migration.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-affiliate-clicks.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-data-state.ts",
+    "variable": "new",
+    "text": "new Pool({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), database: process.env.DATABASE_NAME, user: process.env.DATABASE_USER, password: process.env.DATABASE_PA",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-db-data.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-ipo-distribution.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-ipos-columns.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-ipos-schema.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-migrations.ts",
+    "variable": "new",
+    "text": "new pg.Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-scraper-health.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/check-tables-exist.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/create-phase4-tables.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/direct-db-check.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/insert-test-nse-data.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/list-tables.ts",
+    "variable": "new",
+    "text": "new Pool({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), database: process.env.DATABASE_NAME, user: process.env.DATABASE_USER, password: process.env.DATABASE_PA",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-data-quality-checks.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-gate-checks.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DATABASE_USER}:${process.env.DATABASE_PASSWORD}@${process.env.DATABASE_HOST}:${process.env.DATABASE_PORT}/${process",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-iteration4-data-integrity.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DATABASE_USER}:${process.env.DATABASE_PASSWORD}@${process.env.DATABASE_HOST}:${process.env.DATABASE_PORT}/${process",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-schema-verification.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-scraper-health.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test10-historical-data.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test11-ipo-scores.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test12-peer-comparison.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test4-fuzzy-matching.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test6-duplicates.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test8-field-coverage.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/phase1-test9-gmp-subscription.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/test-cache-behavior.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DATABASE_USER}:${process.env.DATABASE_PASSWORD}@${process.env.DATABASE_HOST}:${process.env.DATABASE_PORT}/${process",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/test-db-connection.ts",
+    "variable": "new",
+    "text": "new Pool({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), database: process.env.DATABASE_NAME, user: process.env.DATABASE_USER, password: process.env.DATABASE_PA",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/verify-anchor-table.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/verify-data-population.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/verify-database-schema.js",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/scripts/verify-migration-simple.ts",
+    "variable": "new",
+    "text": "new pg.Pool({ connectionString: process.env.DATABASE_URL })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/test-ac-direct.mjs",
+    "variable": "new",
+    "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
+    "kind": "construction",
+    "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/e2e/admin/fixtures/ipo-editor-fixture.ts",
+    "variable": "new",
+    "text": "new Client(cfg)",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/integration/ipo-hide-admin-writes.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (web/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/integration/ipo-hide-row.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (web/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/integration/repositories/anchor-investor-derived-count-1294.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (web/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/unit/db/migrations.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: testDbUrl })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/unit/db/migrations.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: testDbUrl })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "web/tests/unit/db/migrations.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: testDbUrl })",
+    "kind": "construction",
+    "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
     "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
     "variable": "DATABASE_NAME",
     "text": "dbName || '(unresolved)'",

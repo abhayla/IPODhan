@@ -239,7 +239,7 @@ test('#1142 baseline key is file + normalised expression, not the line number', 
 test('#1142 baseline compare counts occurrences: a second identical offender is new', () => {
   const src = `const u = process.env.DATABASE_USER || 'postgres';\nconst v = process.env.DATABASE_USER || 'postgres';`;
   const offenders = findOffenders('s.mjs', src);
-  const baseline = [{ file: 's.mjs', variable: 'DATABASE_USER', text: offenders[0].text, reason: 'r' }];
+  const baseline = [{ file: 's.mjs', kind: offenders[0].kind, variable: 'DATABASE_USER', text: offenders[0].text, reason: 'r' }];
   const { newOffenders, gone } = compareToBaseline(offenders, baseline);
   assert.equal(newOffenders.length, 1);
   assert.equal(gone.length, 0);
@@ -248,4 +248,126 @@ test('#1142 baseline compare counts occurrences: a second identical offender is 
 test('#1142 a baseline entry without a reason is refused', () => {
   const offenders = findOffenders('s.mjs', `const u = process.env.DATABASE_USER || 'postgres';`);
   assert.throws(() => compareToBaseline(offenders, [{ file: 's.mjs', variable: 'DATABASE_USER', text: offenders[0].text }]), /reason/);
+});
+
+// ---------------------------------------------------------------------------
+// #1142 round 2, layer 1 (structural): one sanctioned constructor per package.
+// Every shape below arrives at a Postgres connection without a defaulting
+// literal the value layer can see; each is caught because the client is NOT
+// built through a sanctioned module.
+// ---------------------------------------------------------------------------
+import { findConstructionSites, SANCTIONED_MODULES } from '../pg-construction-sites.mjs';
+import { exitCodeFor, scanConstructions } from '../check-db-connection-defaults.mjs';
+
+const kinds = (file, src) => findConstructionSites(file, src).map((o) => o.kind);
+
+// The round-1 reviewer's missed shapes (9), each in a NEW file, plus a plain new Pool().
+const MISSED_SHAPES = {
+  'shorthand { database }': `import { Pool } from 'pg';\nconst database = 'ipodhan';\nexport const p = new Pool({ host: 'h', database });`,
+  'config with no host key (pg reads PGHOST/PGPASSWORD)': `import pg from 'pg';\nconst c = new pg.Client({ database: process.env.X });`,
+  'spread config': `import { Pool } from 'pg';\nconst base = { database: 'ipodhan' };\nnew Pool({ ...base, host: 'h' });`,
+  'process.env.PGDATABASE assignment': `import { Client } from 'pg';\nprocess.env.PGDATABASE = 'ipodhan';\nnew Client();`,
+  'if-assign': `import { Pool } from 'pg';\nlet db;\nif (!process.env.DATABASE_NAME) db = 'ipodhan';\nnew Pool({ host: 'h', database: db });`,
+  'parameter default': `import { Pool } from 'pg';\nfunction open(database = 'ipodhan') { return new Pool({ host: 'h', database }); }`,
+  '+-built URL': `import { Pool } from 'pg';\nnew Pool({ connectionString: 'postgres://u:p@h:5432/' + 'ipodhan' });`,
+  'property assignment': `import { Pool } from 'pg';\nconst cfg = { host: 'h' };\ncfg.database = 'ipodhan';\nnew Pool(cfg);`,
+  'config object from a function': `import { Client } from 'pg';\nconst mk = () => ({ host: 'h', user: 'postgres' });\nnew Client(mk());`,
+  'plain new Pool() in a new file': `import { Pool } from 'pg';\nconst pool = new Pool();`,
+};
+
+for (const [name, src] of Object.entries(MISSED_SHAPES)) {
+  test(`#1142 r2: ${name} is caught as a construction outside the sanctioned modules`, () => {
+    const found = findConstructionSites('scripts/new-file.mjs', src);
+    assert.equal(found.filter((o) => o.kind === 'construction').length, 1, JSON.stringify(found));
+    // The same source inside a sanctioned module is not flagged (the allow-list is the only exemption).
+    assert.deepEqual(findConstructionSites('scripts/lib/pg-utc.mjs', src), []);
+  });
+}
+
+const ALIAS_SHAPES = {
+  'import * as ns': `import * as pg from 'pg';\nnew pg.Pool();`,
+  'default import member': `import pg from 'pg';\nnew pg.Client();`,
+  'named import renamed': `import { Pool as P } from 'pg';\nnew P();`,
+  'string-literal import name': `import { 'Pool' as P } from 'pg';\nnew P();`,
+  'require destructure': `const { Pool } = require('pg');\nnew Pool();`,
+  'require member': `const P = require('pg').Pool;\nnew P();`,
+  'inline require': `new (require('pg').Client)();`,
+  createRequire: `import { createRequire } from 'node:module';\nconst r = createRequire(import.meta.url);\nconst { Pool } = r('pg');\nnew Pool();`,
+  'await import destructure': `const { Pool } = await import('pg');\nnew Pool();`,
+  'await import default interop': `const pg = (await import('pg')).default;\nnew pg.Pool();`,
+  'alias of alias': `import pg from 'pg';\nconst a = pg;\nconst B = a.Pool;\nnew B();`,
+  'destructure from namespace': `import pg from 'pg';\nconst { Client: C } = pg;\nnew C();`,
+  'pg.native': `import pg from 'pg';\nnew pg.native.Pool();`,
+  'element access': `import pg from 'pg';\nnew pg['Pool']();`,
+  'import = require (TS)': `import pg = require('pg');\nnew pg.Pool();`,
+  'postgres.js default call': `import postgres from 'postgres';\nconst sql = postgres(process.env.URL);`,
+  'pg-pool default': `import PgPool from 'pg-pool';\nnew PgPool();`,
+};
+for (const [name, src] of Object.entries(ALIAS_SHAPES)) {
+  test(`#1142 r2: alias shape '${name}' resolves to a construction`, () => {
+    assert.deepEqual(kinds('scraper/src/x.ts', src), ['construction']);
+  });
+}
+
+const ESCAPE_SHAPES = {
+  're-export named': [`export { Pool } from 'pg';`, 'escape'],
+  're-export star': [`export * from 'pg';`, 'escape'],
+  'export local binding': [`import { Pool } from 'pg';\nexport { Pool };`, 'escape'],
+  'exported alias': [`import pg from 'pg';\nexport const P = pg.Pool;`, 'escape'],
+  'passed as an argument': [`import { Pool } from 'pg';\nmake(Pool);`, 'escape'],
+  'shorthand property': [`import { Pool } from 'pg';\nconst deps = { Pool };`, 'escape'],
+  subclass: [`import pg from 'pg';\nclass Mine extends pg.Pool {}`, 'escape'],
+  'pg.defaults write': [`import pg from 'pg';\npg.defaults.database = 'ipodhan';`, 'unresolved'],
+  'computed member': [`import pg from 'pg';\nconst k = 'Pool';\nnew pg[k]();`, 'unresolved'],
+  'non-literal require': [`const m = require(process.env.DRIVER);`, 'unresolved'],
+  'non-literal import()': [`const m = await import(name);`, 'unresolved'],
+  'un-awaited import() promise': [`import('pg').then((m) => new m.Pool());`, 'unresolved'],
+  'drizzle with an env URL': [`import { drizzle } from 'drizzle-orm/node-postgres';\nconst db = drizzle(process.env.DATABASE_URL);`, 'drizzle-fresh-client'],
+  'drizzle with a url literal': [`import { drizzle } from 'drizzle-orm/node-postgres';\ndrizzle('postgres://h/ipodhan');`, 'drizzle-fresh-client'],
+  'drizzle with a connection config': [`import { drizzle } from 'drizzle-orm/node-postgres';\ndrizzle({ connection: { database: 'ipodhan' } });`, 'drizzle-fresh-client'],
+};
+for (const [name, [src, kind]] of Object.entries(ESCAPE_SHAPES)) {
+  test(`#1142 r2: '${name}' fails closed as ${kind}`, () => {
+    const k = kinds('web/lib/x.ts', src);
+    assert.ok(k.includes(kind), `expected ${kind}, got ${JSON.stringify(k)}`);
+  });
+}
+
+test('#1142 r2: shapes that never open a connection are clean', () => {
+  const clean = [
+    `import type { Pool } from 'pg';\nlet p: Pool;`,
+    `import { type PoolClient, Pool } from 'pg';\nfunction f(c: PoolClient, p: Pool) {}`,
+    `import { Pool, QueryResult } from 'pg';\nlet r: QueryResult; const ok = x instanceof Pool;`,
+    `import pg from 'pg';\npg.types.setTypeParser(1114, (v) => v);`,
+    `import { drizzle } from 'drizzle-orm/node-postgres';\nimport { pool } from '@ipodhan/shared/db';\nconst db = drizzle(pool, { schema });`,
+    `vi.mock('pg');`,
+    `const m = await import(pathToFileURL(SPEC).href);`,
+    `const m = require('./local.mjs');`,
+  ];
+  for (const src of clean) assert.deepEqual(findConstructionSites('web/lib/x.ts', src), [], src);
+});
+
+test('#1142 r2: tests/ folders are scanned; only the test-db module is sanctioned', () => {
+  const src = `import { Pool } from 'pg';\nnew Pool({ connectionString: process.env.DATABASE_URL });`;
+  assert.deepEqual(kinds('scraper/tests/integration/x.test.ts', src), ['construction']);
+  assert.deepEqual(kinds('web/tests/unit/y.test.ts', src), ['construction']);
+  assert.deepEqual(kinds('scraper/tests/test-utils/db.ts', src), []);
+  assert.ok(SANCTIONED_MODULES.has('scraper/tests/test-utils/db.ts'));
+  assert.equal(SANCTIONED_MODULES.size, 4);
+});
+
+test('#1142 r2: a construction site is keyed by file + kind + expression, not line', () => {
+  const a = scanConstructions('s.mjs', `import { Pool } from 'pg';\nnew Pool();`);
+  const b = scanConstructions('s.mjs', `import { Pool } from 'pg';\n\n\nnew Pool();`);
+  assert.equal(keyOf(a[0]), keyOf(b[0]));
+  assert.notEqual(a[0].line, b[0].line);
+});
+
+test('#1142 r2: the baseline is shrink-only - a fixed (gone) entry FAILS the run', () => {
+  const entry = { file: 's.mjs', kind: 'construction', variable: 'new', text: 'new Pool()', reason: 'r' };
+  const result = compareToBaseline([], [entry]);
+  assert.equal(result.gone.length, 1);
+  assert.equal(exitCodeFor(result), 1);
+  assert.equal(exitCodeFor(compareToBaseline([{ ...entry, line: 2 }], [entry])), 0);
+  assert.equal(exitCodeFor(compareToBaseline([{ ...entry, line: 2 }], [])), 1);
 });

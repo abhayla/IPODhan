@@ -19,12 +19,10 @@
 // Reads the app-role password from D:/Abhay/GLOBAL.env (IPODHAN_APP_DB_PASSWORD)
 // unless DATABASE_URL is already set in the environment.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createUtcPool } from '../lib/pg-utc.mjs';
 
-const require = createRequire(import.meta.url);
-const { Pool } = require('pg'); // hoisted workspace dependency (root node_modules)
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -178,7 +176,7 @@ function renderJson(types, generatedAt, source) {
 
 async function main() {
   const databaseUrl = resolveDatabaseUrl();
-  const pool = new Pool({ connectionString: databaseUrl, options: '-c timezone=UTC' });
+  const pool = createUtcPool({ connectionString: databaseUrl });
   let types;
   try {
     const { rows: [{ db }] } = await pool.query('select current_database() db');
