@@ -290,7 +290,7 @@ function analyze(sf) {
       const a = e.argumentExpression && unwrap(e.argumentExpression);
       if (!a || !(ts.isStringLiteralLike(a) || ts.isNumericLiteral(a))) return 'unresolved';
       const k = kindOf(e.expression);
-      return isClockKind(k) ? k : 'safe'; // new Date().toISOString().split('T')[0]
+      return isClockKind(k) ? k : 'safe'; // a Date's ISO string sliced to its date part is still the app clock
     }
     if (ts.isBinaryExpression(e)) {
       const k = join(kindOf(e.left), kindOf(e.right));
