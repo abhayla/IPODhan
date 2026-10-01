@@ -1109,6 +1109,39 @@ export function anchorMaxSpawnsPerCycle(): number {
   return requested;
 }
 
+/** OD-155 (#1245 item 2): the marker `classifyFailure` is given when the W-45 paired gate refuses a pair. */
+export const W45_REFUSAL_MARKER = 'w45_disagreement';
+const W45_PAIR_TYPES = ['PRICE_BAND_AD', 'RHP'] as const;
+
+/**
+ * OD-155: a W-45-refused pair (price band ad + RHP that disagree about one restated figure, neither
+ * series written) is re-read as a PAIR when EITHER file changes. A refused document whose bytes
+ * differ from the sha it was refused at is re-admitted by its own gate already; its counterpart
+ * carries the same old sha and stays blocked, so the pair gate (which needs both) could never run.
+ * Returns the ids of the refused counterparts to admit for one read. An arrival event only:
+ * no clock, no count (OD-33). Once re-read, a fresh refusal is tagged with the current shas, so
+ * a second pass with no change returns nothing.
+ */
+export function w45PairReadmissions(
+  docs: Array<{ id: string; type?: string | null; sha256?: string | null; extractionStatus?: string | null; extractionError?: string | null }>
+): Set<string> {
+  const refused = docs.filter(
+    (d) => d.extractionStatus === 'FAILED' && !!d.extractionError && d.extractionError.startsWith(W45_REFUSAL_MARKER) && (W45_PAIR_TYPES as readonly string[]).includes(String(d.type ?? '').toUpperCase())
+  );
+  const changedTypes = new Set<string>();
+  for (const d of refused) {
+    const failedSha = parseFailedSha(d.extractionError);
+    if (failedSha && d.sha256 && d.sha256.slice(0, 16) !== failedSha) changedTypes.add(String(d.type).toUpperCase());
+  }
+  const ids = new Set<string>();
+  if (changedTypes.size === 0) return ids;
+  for (const d of refused) {
+    const t = String(d.type).toUpperCase();
+    if (!changedTypes.has(t)) ids.add(d.id);
+  }
+  return ids;
+}
+
 /**
  * Which stored documents still need extracting.
  *
@@ -1160,6 +1193,7 @@ export function selectPendingFilings(
   const pending: CandidateDocument[] = [];
   const skipped: string[] = [];
   const parked: ParkedUnfinished[] = [];
+  const pairReadmit = w45PairReadmissions(docs);
 
   for (const doc of docs) {
     const type = String(doc.type ?? '').toUpperCase();
@@ -1203,7 +1237,9 @@ export function selectPendingFilings(
       },
       version
     );
-    if (gate.blocked) {
+    if (gate.blocked && pairReadmit.has(doc.id)) {
+      logger.info({ ipoId, docType: type }, 'OD-155: counterpart of a W-45-refused pair has new bytes — re-reading both');
+    } else if (gate.blocked) {
       skipped.push(`${type}: ${gate.reason}`);
       if (gate.park && gate.unfinished) {
         parked.push({ doc: { ...doc, type }, reason: gate.reason ?? UNFINISHED_READS_EXHAUSTED_REASON, facts: gate.unfinished });
@@ -2876,7 +2912,7 @@ export async function processPendingFilings(
     // failure. `doc.retryCount` already holds the value the IN_PROGRESS stamp
     // wrote for THIS document earlier in this run.
     for (const { doc } of extractions) {
-      const classified = classifyFailure(doc.retryCount ?? 0, version, `w45_disagreement: ${refusedReason}`, { sha256: doc.sha256 });
+      const classified = classifyFailure(doc.retryCount ?? 0, version, `${W45_REFUSAL_MARKER}: ${refusedReason}`, { sha256: doc.sha256 });
       await deps
         .setDocumentExtractionState({
           documentId: doc.id,

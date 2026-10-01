@@ -1324,6 +1324,7 @@ jobs:
           tests/integration/bse-scraper.integration.test.ts
           tests/integration/ipo-alerts-fallback.integration.test.ts
           tests/integration/document-fetch-state-repository.integration.test.ts
+          tests/integration/w45-pair-readmit-od155.integration.test.ts
           tests/integration/child-table-normalized-name.integration.test.ts
           tests/integration/child-table-row-key-unique-constraint.integration.test.ts
           tests/integration/child-row-consolidation-financials.integration.test.ts
