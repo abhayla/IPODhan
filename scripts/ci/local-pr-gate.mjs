@@ -410,10 +410,15 @@ export function childEnv(stepEnv) {
   return env;
 }
 
-function git(args) {
+// Exact stdout, for file CONTENT compared with a disk copy (#1434: .trim() dropped the final newline).
+function gitRaw(args) {
   const env = { ...process.env };
   for (const k of GIT_LOCAL_ENV) delete env[k];
-  return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
+}
+// Trimmed one-line output (shas, name lists, status).
+function git(args) {
+  return gitRaw(args).trim();
 }
 
 function parseArgs(argv) {
@@ -446,13 +451,13 @@ export function readTrustedWorkflow() {
 
 function fmtSecs(ms) { return `${(ms / 1000).toFixed(1)}s`; }
 
-function readMainPath(path) {
-  try { return git(['show', `${TRUSTED_REF}:${path}`]); } catch (e) {
+export function readMainPath(path) {
+  try { return gitRaw(['show', `${TRUSTED_REF}:${path}`]); } catch (e) {
     if (/exists on disk, but not in|does not exist in|path .* does not exist/i.test(String(e.stderr || e.message))) return null;
     throw e;
   }
 }
-function readBranchPath(path) {
+export function readBranchPath(path) {
   try { return readFileSync(join(REPO_ROOT, path), 'utf8'); } catch { return null; }
 }
 
