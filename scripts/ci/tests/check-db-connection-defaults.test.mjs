@@ -185,7 +185,7 @@ test('#1142 hard-coded connection target in a pg config object is flagged', () =
       password: process.env.DB_PASSWORD, database: 'ipodhan',
     });
   `;
-  const offenders = findOffenders('database/create-schema.js', source);
+  const offenders = findOffenders('legacy/connect.js', source);
   assert.deepEqual(offenders.map((o) => o.variable).sort(), ['database', 'user']);
   assert.ok(offenders.every((o) => o.kind === 'hardcoded-target'));
 });
