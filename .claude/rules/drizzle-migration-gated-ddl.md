@@ -55,7 +55,9 @@ THIS order only after the owner's explicit sign-off:
 
 1. `B3_gmp_drop_orphans.sql` — drops orphan `gmp_history`, `gmp_tracking`, matview `gmp_current`.
 2. `B4_gmp_unique_dedup.sql` — dedup, then `UNIQUE(ipo_id, timestamp, source)`.
-3. `B2_gmp_int_to_numeric.sql` — widens `gmp`/`expected_listing_price`/`subject_rate`/`kostak_rate` int → numeric(10,2).
+
+
+- SUPERSEDED: `B2_gmp_int_to_numeric.sql` (widens `gmp`/`expected_listing_price`/`subject_rate`/`kostak_rate` int -> numeric(10,2)) was promoted into the journal by #1176 as `20261001031338_gmp_records_int_to_numeric.sql` (lock_timeout 5s, one rewrite); it is no longer in the apply-after-sign-off list and is not hand-applied.
 
 - MUST apply each gated file manually via the SSH tunnel (`localhost:15432`), in the README
   order, ONLY after owner sign-off, WITH a read-back verifying the change.

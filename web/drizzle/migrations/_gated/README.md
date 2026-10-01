@@ -10,7 +10,7 @@ up. Apply them manually, in order, only after sign-off:
 
 1. `B3_gmp_drop_orphans.sql` — drop orphan `gmp_history`, `gmp_tracking`, matview `gmp_current`.
 2. `B4_gmp_unique_dedup.sql` — dedup then add `UNIQUE(ipo_id, timestamp, source)`.
-3. `B2_gmp_int_to_numeric.sql` — widen `gmp`/`expected_listing_price`/`subject_rate`/`kostak_rate` int → numeric(10,2).
+3. `B2_gmp_int_to_numeric.sql` — widen `gmp`/`expected_listing_price`/`subject_rate`/`kostak_rate` int → numeric(10,2). **SUPERSEDED (#1176):** promoted into the journal as `20261001031338_gmp_records_int_to_numeric.sql` (guarded, no-op where already numeric); do not hand-apply.
 
 Additive (non-destructive) DDL, parked here only because db:generate is blocked:
 

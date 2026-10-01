@@ -1,3 +1,6 @@
+-- SUPERSEDED (#1176, 2026-10-01): promoted into the journal as
+-- ../20261001031338_gmp_records_int_to_numeric.sql (guarded: alters only columns still integer).
+-- Do not hand-apply this file any more; drizzle-kit migrate now carries it on every slot.
 -- ============================================================================
 -- GATED / UNAPPLIED — B2 / G14: widen GMP integer columns to numeric(10,2) so
 -- fractional GMP / rates are no longer truncated by Math.round.

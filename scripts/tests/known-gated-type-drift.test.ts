@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { isKnownGatedDrift, KNOWN_GATED_TYPE_DRIFT, type Drift } from '../assert-schema-drift';
 
 test('an exact gated finding (from evidence/T-405/after-drift.txt) is ignored', () => {
-  const gated = KNOWN_GATED_TYPE_DRIFT[0]; // gmp_records.gmp
+  const gated = KNOWN_GATED_TYPE_DRIFT[0]; // listing_performance.listing_price
   const drift: Drift = {
     kind: 'COLUMN_TYPE_MISMATCH',
     detail: `"${gated.tableName}.${gated.columnName}" expects ${gated.expected}, live column is ${gated.actual}`,
@@ -32,7 +32,7 @@ test('every registered entry round-trips as gated', () => {
 });
 
 test('same gated column but a DIFFERENT actual type is NOT ignored', () => {
-  const gated = KNOWN_GATED_TYPE_DRIFT[0]; // gmp_records.gmp, registered actual numeric(32,0)
+  const gated = KNOWN_GATED_TYPE_DRIFT[0]; // listing_performance.listing_price, registered actual numeric(32,0)
   const drift: Drift = {
     kind: 'COLUMN_TYPE_MISMATCH',
     detail: `"${gated.tableName}.${gated.columnName}" expects ${gated.expected}, live column is numeric(8,4)`,
