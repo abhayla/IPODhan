@@ -179,6 +179,9 @@ export class FieldSourcesRepository extends BaseRepository {
         ? incoming
         : sql`CASE WHEN ${fieldSources.source} = 'ADMIN' THEN ${column} ELSE ${incoming} END`;
     const rowKey = input.rowKey ?? '';
+    const restampSet = {
+      rowKey,
+    };
 
     // rowKey is part of the ON CONFLICT target below (item 1 slice s18), so an
     // upsert can never move an existing row from one rowKey to another: a
@@ -215,28 +218,26 @@ export class FieldSourcesRepository extends BaseRepository {
               fieldSources.rowKey,
               fieldSources.fieldName,
             ],
-            set: {
+            // #1311 / OD-73: an identical incoming value is never written and never re-stamps
+            // provenance. Nothing else is touched: source, confidence, previous_* and updated_at stay put, so
+            // an old date extension cannot look newer than the IPO's status to the ladder.
+            set: restamp ? restampSet : {
               rowKey,
               // §9.2 item 19 / OD-131: a non-ADMIN write never takes over an ADMIN provenance row
               // (same rule as packages/shared's trackFieldUpdate).
               source: keepAdmin(fieldSources.source, sql`${input.source}`),
               confidence: keepAdmin(fieldSources.confidence, sql`${input.confidence ?? 100}`),
-              // #1311: an identical restamp keeps the last real change's evidence; a write that names a
-              // previous value but not its source carries the stored row's source (the source that set
-              // that previous value), so a later reader never sees a change with no origin.
-              previousValue: keepAdmin(
-                fieldSources.previousValue,
-                restamp ? sql`${fieldSources.previousValue}` : sql`${input.previousValue || null}`
-              ),
+              // #1311: a write that names a previous value but not its source carries the
+              // stored row's source (assumption: the stored row's source set that previous value),
+              // so a later reader never sees a change with no origin.
+              previousValue: keepAdmin(fieldSources.previousValue, sql`${input.previousValue || null}`),
               previousSource: keepAdmin(
                 fieldSources.previousSource,
-                restamp
-                  ? sql`${fieldSources.previousSource}`
-                  : input.previousSource
-                    ? sql`${input.previousSource}`
-                    : input.previousValue
-                      ? sql`${fieldSources.source}`
-                      : sql`${null}`
+                input.previousSource
+                  ? sql`${input.previousSource}`
+                  : input.previousValue
+                    ? sql`${fieldSources.source}`
+                    : sql`${null}`
               ),
               // #755 (mirrors packages/shared's PR #753 MAJOR-4 fix): MERGE, never replace. A
               // plain object here REPLACES the whole jsonb column on conflict, so a
