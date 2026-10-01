@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { format } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 import { CategoryTooltip } from './CategoryTooltip';
 import { SubscriptionViewToggle } from './SubscriptionViewToggle';
 import { AnchorInvestorHighlight } from './AnchorInvestorHighlight';
@@ -212,7 +212,7 @@ export function EnhancedSubscriptionView({
               <CardTitle>Subscription Breakdown</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 Last updated:{' '}
-                {format(new Date(subscription.timestamp), 'dd MMM yyyy, HH:mm')}
+                {formatInIst(subscription.timestamp, 'dd MMM yyyy, HH:mm')}
               </p>
             </div>
 

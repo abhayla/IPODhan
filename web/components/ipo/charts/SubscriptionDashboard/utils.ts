@@ -4,7 +4,8 @@
  * Data transformation and calculation utilities for subscription visualizations
  */
 
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 import type { SubscriptionDataRaw } from '@/lib/utils/chart-data';
 import type {
   CategorySubscription,
@@ -66,14 +67,14 @@ export function transformToTimeSeriesData(
   // repeated the identical date on every tick (2026-07-02 reference review)
   const first = parseTimestamp(sorted[0].timestamp)!;
   const last = parseTimestamp(sorted[sorted.length - 1].timestamp)!;
-  const sameDay = format(first, 'yyyy-MM-dd') === format(last, 'yyyy-MM-dd');
+  const sameDay = formatInIst(first, 'yyyy-MM-dd') === formatInIst(last, 'yyyy-MM-dd');
 
   return sorted.map((sub) => {
     const date = parseTimestamp(sub.timestamp)!;
 
     return {
       date,
-      dateLabel: sameDay ? format(date, 'HH:mm') : format(date, 'MMM dd'),
+      dateLabel: sameDay ? formatInIst(date, 'HH:mm') : formatInIst(date, 'MMM dd'),
       totalSubscription: sub.totalSubscription ? Number(sub.totalSubscription) : 0,
       qibSubscription: sub.qibSubscription ? Number(sub.qibSubscription) : null,
       niiSubscription: sub.niiSubscription ? Number(sub.niiSubscription) : null,
@@ -288,7 +289,7 @@ export function transformToHeatmapData(
 
     return {
       date,
-      dateLabel: format(date, 'MMM dd'),
+      dateLabel: formatInIst(date, 'MMM dd'),
       intensity: maxSubscription > 0 ? (subscription / maxSubscription) * 100 : 0,
       subscription,
       dayOfBidding: index + 1,

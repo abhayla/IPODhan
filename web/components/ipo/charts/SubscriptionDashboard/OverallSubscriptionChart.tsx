@@ -10,7 +10,7 @@
 import { AreaChartBase } from '../base/AreaChartBase';
 import { formatSubscription } from './utils';
 import type { OverallSubscriptionChartProps } from './types';
-import { format } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 import { TrendingUp, Calendar, BarChart } from 'lucide-react';
 
 export function OverallSubscriptionChart({
@@ -150,8 +150,8 @@ export function OverallSubscriptionChart({
         {isStillBidding ? 'Current' : 'Final'} {formatSubscription(stats.total)}
         {closeDate
           ? isStillBidding
-            ? ` · closes ${format(closeDate, 'MMM dd')}`
-            : ` · closed ${format(closeDate, 'MMM dd')}`
+            ? ` · closes ${formatInIst(closeDate, 'MMM dd')}`
+            : ` · closed ${formatInIst(closeDate, 'MMM dd')}`
           : ''}
       </p>
 

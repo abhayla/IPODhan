@@ -11,6 +11,8 @@
  * - Null/undefined handling
  */
 
+import { format } from 'date-fns';
+
 /**
  * Format IPO date in standard format (DD MMM YYYY)
  * @param date - Date string or Date object or null
@@ -46,6 +48,58 @@ export function formatIPODate(
     console.error('Error formatting date:', error);
     return options?.fallback || 'Invalid Date';
   }
+}
+
+/**
+ * Format an instant as an IST date and time ("Oct 01, 2026 08:40"), the same text on any host.
+ *
+ * date-fns `format()` and `toLocale*()` without `timeZone` use the RUNNING process's zone: the VPS
+ * renders in UTC and the reader's browser in IST, so a client component that formats a timestamp
+ * that way hydrates with different text (React #418, issue #1347). Pin the zone here instead.
+ */
+export function formatIstDateTime(date: string | Date | null | undefined, options?: { fallback?: string }): string {
+  if (!date) return options?.fallback ?? 'TBA';
+  const at = new Date(date);
+  if (Number.isNaN(at.getTime())) return options?.fallback ?? 'Invalid Date';
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone: 'Asia/Kolkata',
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value])
+  );
+  return `${parts.month} ${parts.day}, ${parts.year} ${parts.hour}:${parts.minute}`;
+}
+
+/**
+ * Format an instant with a date-fns pattern, as IST wall-clock text, the same on any host (#1347).
+ * date-fns `format()` reads the process's local zone; this hands it a Date whose LOCAL fields are
+ * the IST fields of the instant, so the pattern prints IST whether the host is UTC, IST or elsewhere.
+ */
+export function formatInIst(date: string | Date, pattern: string): string {
+  const at = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(at.getTime())) throw new RangeError('Invalid time value');
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hourCycle: 'h23',
+      timeZone: 'Asia/Kolkata',
+    })
+      .formatToParts(at)
+      .map((x) => [x.type, Number(x.value)])
+  );
+  return format(new Date(p.year, p.month - 1, p.day, p.hour, p.minute, p.second), pattern);
 }
 
 /**

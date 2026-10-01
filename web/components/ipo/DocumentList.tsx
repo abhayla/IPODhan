@@ -4,7 +4,7 @@ import { Document } from '@/lib/db/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, FileText } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatIPODate } from '@/lib/utils/date-formatter';
 
 interface DocumentListProps {
   documents: Document[];
@@ -125,7 +125,7 @@ export function DocumentList({ documents }: DocumentListProps) {
                     <span>{formatFileSize(doc.fileSize)}</span>
                     <span>•</span>
                     <span>
-                      Uploaded: {format(new Date(doc.uploadedAt), 'dd MMM yyyy')}
+                      Uploaded: {formatIPODate(doc.uploadedAt)}
                     </span>
                   </div>
                 </div>

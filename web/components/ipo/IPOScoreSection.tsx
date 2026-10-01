@@ -10,7 +10,7 @@
 'use client';
 
 import { AlertCircle, TrendingUp } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatIstDateTime } from '@/lib/utils/date-formatter';
 import type { IPOScoreDisplayModel } from '@/lib/adapters/ipo-score-display-adapter';
 import { ScoreBreakdown } from './ScoreBreakdown';
 
@@ -167,7 +167,7 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
       {/* Metadata */}
       <div className="flex flex-wrap items-center gap-4 pt-4 border-t text-xs text-muted-foreground">
         <span>
-          Calculated: {format(new Date(score.calculatedAt), 'MMM dd, yyyy HH:mm')}
+          Calculated: {formatIstDateTime(score.calculatedAt)} IST
         </span>
         <span className="hidden sm:inline">•</span>
         <span>Algorithm v{score.algorithmVersion}</span>

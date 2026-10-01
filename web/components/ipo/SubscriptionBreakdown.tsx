@@ -2,7 +2,7 @@
 
 import { Subscription } from '@/lib/db/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 
 interface SubscriptionBreakdownProps {
   subscription: Subscription | null;
@@ -78,7 +78,7 @@ export function SubscriptionBreakdown({
         <CardTitle>Subscription Breakdown</CardTitle>
         <p className="text-sm text-muted-foreground">
           Last updated:{' '}
-          {format(new Date(subscription.timestamp), 'dd MMM yyyy, HH:mm')}
+          {formatInIst(subscription.timestamp, 'dd MMM yyyy, HH:mm')}
         </p>
       </CardHeader>
       <CardContent>
