@@ -46,7 +46,8 @@ function withMutatedWorkflow(mutate, fn) {
   const dir = mkdtempSync(join(tmpdir(), 'local-pr-gate-wf-'));
   try {
     const p = join(dir, 'pr-gate.yml');
-    writeFileSync(p, mutate(readFileSync(WORKFLOW, 'utf8')));
+    // A core.autocrlf checkout has CRLF; the mutations anchor on LF.
+    writeFileSync(p, mutate(readFileSync(WORKFLOW, 'utf8').replace(/\r\n/g, '\n')));
     return fn(p);
   } finally {
     rmSync(dir, { recursive: true, force: true });
