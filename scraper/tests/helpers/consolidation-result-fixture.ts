@@ -90,6 +90,8 @@ export function consolidatedChildRowsResultFixture(
     fieldsUpdated: fieldResults?.length ?? 0,
     conflictsDetected: fieldResults?.filter((f) => f.hadConflict).length ?? 0,
     skipped: false,
+    // #1419: the walk passes `writeRow`, so the real writer reports whether the row landed.
+    rowWrite: { written: true, mode: 'UPDATE', dropped: [] },
     ...overrides,
   };
   return {

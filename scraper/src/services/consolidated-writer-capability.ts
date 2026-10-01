@@ -26,6 +26,10 @@ export const STRUCTURAL_WRITE_SKIP_REASONS: ReadonlySet<string> = new Set([
   'CONSOLIDATION_DISABLED',
   'CHILD_TABLE_CONSOLIDATION_DISABLED',
   'MISSING_ROW_KEY',
+  // #1419: refusals of the child-row writer that repeat until its code or the manifest changes.
+  'UNKNOWN_CHILD_TABLE',
+  'MALFORMED_ROW_KEY',
+  'UNKNOWN_CHILD_COLUMN',
 ]);
 
 /**

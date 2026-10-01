@@ -1315,6 +1315,7 @@ describe('field-plan walk -- records SUPPLIED only when the consolidator\'s OWN 
             fieldsUpdated: 1,
             conflictsDetected: 1,
             skipped: false,
+            rowWrite: { written: true, mode: 'UPDATE', dropped: [] },
           },
         ],
       })),
@@ -1326,6 +1327,41 @@ describe('field-plan walk -- records SUPPLIED only when the consolidator\'s OWN 
     expect(result.fieldsSupplied).toBe(0);
     expect(result.fieldsCheckFailed).toBe(1);
     expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+  });
+});
+
+describe('#1419: a child-row write is SUPPLIED only when the row itself landed', () => {
+  const childOrch = (rowExtra: Record<string, unknown>) => ({
+    consolidatedUpsertIPO: vi.fn(),
+    consolidatedUpsertChildRows: vi.fn(async (_i: string, _t: any, rows: any[]) =>
+      consolidatedChildRowsResultFixture(rows[0].rowKey, [fieldResult('issueType', 'BOOK_BUILDING', 'NSE')], rowExtra as any)
+    ),
+  });
+  const plan = () => makeRepo([planRow({ tableName: 'ipo_details', rowKey: '', fieldName: 'issue_type', rank1Source: 'NSE' })]);
+  const nse = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 'BOOK_BUILDING' }));
+
+  it('asks the writer to land the row (writeRow: true)', async () => {
+    const repo = plan();
+    const orch = childOrch({});
+    await walkFieldPlanForIPO(IPO_ID, deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { NSE: nse } as any }), openBudget());
+    expect(orch.consolidatedUpsertChildRows.mock.calls[0][6]).toMatchObject({ writeRow: true });
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+  });
+
+  it('fails closed: no rowWrite reported -> not SUPPLIED', async () => {
+    const repo = plan();
+    const orch = childOrch({ rowWrite: undefined });
+    const result = await walkFieldPlanForIPO(IPO_ID, deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { NSE: nse } as any }), openBudget());
+    expect(result.fieldsSupplied).toBe(0);
+    expect(repo.recorded.every((r: any) => r.state !== 'SUPPLIED')).toBe(true);
+  });
+
+  it('row not written (e.g. a hold landed between probe and write) -> not SUPPLIED', async () => {
+    const repo = plan();
+    const orch = childOrch({ rowWrite: { written: false, reason: 'CHILD_FIELD_HELD', dropped: ['issueType'] } });
+    const result = await walkFieldPlanForIPO(IPO_ID, deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { NSE: nse } as any }), openBudget());
+    expect(result.fieldsSupplied).toBe(0);
+    expect(repo.recorded.every((r: any) => r.state !== 'SUPPLIED')).toBe(true);
   });
 });
 

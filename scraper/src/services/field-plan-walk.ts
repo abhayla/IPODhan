@@ -407,7 +407,7 @@ export interface FieldPlanWalkOrchestrator {
     source: any,
     docType?: string,
     confidence?: number,
-    options?: { planRankWinnerFields?: readonly string[] }
+    options?: { planRankWinnerFields?: readonly string[]; writeRow?: boolean }
   ): Promise<any>;
 }
 
@@ -2135,6 +2135,8 @@ async function runWrite(
     if (isHiddenIpo(await deps.ipoRepository.findById(ipoId))) {
       return { happened: false, skipReason: IPO_HIDDEN_SKIP_REASON };
     }
+    // #1419: the walk holds no repository for any child table, so the consolidated writer lands the
+    // row itself (`writeRow`). Without it provenance was filed and the column never written.
     const r = await deps.orchestrator.consolidatedUpsertChildRows(
       ipoId,
       plan.tableName as any,
@@ -2142,7 +2144,7 @@ async function runWrite(
       writerSource as any,
       answer.documentType,
       undefined,
-      writeOptions
+      { ...(writeOptions ?? {}), writeRow: true }
     );
     // A child-row call returns per-row outcomes; the one row we sent is the
     // only one that can answer for this field.
@@ -2150,6 +2152,11 @@ async function runWrite(
     if (!row || row.skipped) {
       return { happened: false, skipReason: row?.skipReason ?? 'NO_ROW_RETURNED' };
     }
+    // #1419: a row write that did not land is a dropped write, never SUPPLIED -- fail closed when the
+    // writer did not report one at all.
+    const rowWrite = (row as { rowWrite?: { written: boolean; reason?: string } }).rowWrite;
+    if (!rowWrite) return { happened: false, skipReason: 'CHILD_ROW_WRITE_NOT_REPORTED' };
+    if (!rowWrite.written) return { happened: false, skipReason: `CHILD_ROW_NOT_WRITTEN:${rowWrite.reason ?? 'UNKNOWN'}` };
     const verdict = checkConsolidatorAgreed(
       (row as { fieldResults?: ConsolidatorFieldResult[] }).fieldResults,
       camelFieldName,
