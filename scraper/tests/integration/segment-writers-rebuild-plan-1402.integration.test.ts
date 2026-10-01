@@ -222,6 +222,39 @@ describe('#1402 r2: mergeDuplicateInto / unmergeDuplicate rebuild the survivor p
     expect(restored.s).toBe('SME');
     expect(await oldRank1()).toEqual(ranks(smeBse));
   }, 120_000);
+
+  // OD-92 / OD-159: the merge's own plan rebuild is part of the merge, so the unmerge (no log edits,
+  // no --force-fields) must succeed and put back the survivor's pre-merge plan rows exactly. Before
+  // the fix the relaunch capture closed BEFORE the rebuild, and every rebuilt plan row read as a
+  // change made after the merge, refusing the unmerge (#1408).
+  it('an untouched relaunch merge whose refill changed a plan input unmerges and restores the pre-merge plan rows exactly', async () => {
+    const repo = new IPORepository(db as never, noRedis);
+    await mk(repo, OLD, 'merge-rebuild-1402', '2026-06-23', '98402', 'SME', 'POSTPONED');
+    await mk(repo, NEW, 'merge-rebuild-1402-o', '2026-08-19', '98403', 'MAINBOARD', 'UPCOMING');
+    await db.insert(schema.ipoFieldPlan).values(
+      generateFieldPlan(smeBse, manifest).map((r) => ({
+        ipoId: OLD, tableName: r.tableName, rowKey: '', fieldName: r.fieldName,
+        rank1Source: r.rank1Source, rank2Source: r.rank2Source, rank3Source: r.rank3Source,
+        state: 'PENDING' as const, attempts: 0, manifestVersion: r.manifestVersion, policyOrigin: r.policyOrigin,
+      }))
+    );
+    const planRowsText = async () =>
+      (await db.execute(sql`SELECT coalesce(jsonb_agg(to_jsonb(p.*) ORDER BY p.id), '[]'::jsonb)::text AS rows FROM ipo_field_plan p WHERE p.ipo_id = ${OLD}::uuid`))
+        .rows[0].rows as string;
+    const before = await planRowsText();
+    expect(JSON.parse(before).length).toBeGreaterThan(0);
+
+    const { isRelaunchDocumentField } = await import('../../src/services/relaunch-clear');
+    await repo.mergeDuplicateInto(OLD, NEW, { apply: true, mergedBy: 'issue1402.test', isRelaunchDocumentField, planManifest: manifest } as never);
+    expect(await oldRank1()).toEqual(ranks(mainboardBse));
+    expect(await planRowsText()).not.toBe(before);
+
+    const mergeId = (await db.execute(sql`SELECT id::text AS id FROM ipo_merge_log WHERE drop_ipo_id = ${NEW}::uuid`)).rows[0].id;
+    await repo.unmergeDuplicate(mergeId, { apply: true, unmergedBy: 'issue1402.test', planManifest: manifest } as never);
+    const [restored] = await db.select({ s: schema.ipos.segment }).from(schema.ipos).where(eq(schema.ipos.id, OLD));
+    expect(restored.s).toBe('SME');
+    expect(await planRowsText()).toBe(before);
+  }, 120_000);
 });
 
 /**

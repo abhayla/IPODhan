@@ -2544,12 +2544,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // #1298 (§2.9, OD-139): the OD-86 relaunch merge is a relaunch filing. On a POSTPONED survivor
       // the same invalidation as the OD-83 supersede runs here, in the merge transaction and BEFORE the carried values are written (clear, then refill) (admin values
       // per OD-120, non-admin document values and lists, the document plan reopened).
+      let childCapture: Awaited<ReturnType<typeof beginChildRowCapture>> | null = null;
       if (relaunchOfPostponed && supersededKeyIds.length > 0) {
         const { clearAdminValuesOnRelaunch } = await import('../services/relaunch-admin-clear');
         // OD-92 (#1298 round 2): everything the clear changes on the survivor's child rows (holds,
         // provenance, list rows, one-row child values, audit marks, plan and document-fetch rows) is
         // captured whole around it and logged, so the unmerge can put every one back.
-        const childCapture = await beginChildRowCapture(
+        childCapture = await beginChildRowCapture(
           tx,
           keepId,
           direct.filter((t) => t !== 'ipos' && t !== 'ipo_merge_log').map((t) => ({ table: t, col: reach.get(t)!.col }))
@@ -2561,7 +2562,6 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           [],
           opts.isRelaunchDocumentField!
         );
-        relaunchDelta = await childCapture.finish();
         // Refill: every `ipos` value the relaunch emptied takes the NEWER record's value when the
         // survivor is the older, postponed row (the newer row is the relaunch's own terms).
         if (relaunchCleared && olderIdForRelaunch === keepId) {
@@ -2610,6 +2610,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           { segment: keepBefore.segment, listingExchanges: keepBefore.listingExchanges, offeringType: keepBefore.offeringType }
         );
       }
+      // OD-159: the relaunch capture closes AFTER the merge's own plan rebuild. The rebuild is part of
+      // this merge (same transaction), so its plan / queue rows are the "as the merge left it" state the
+      // unmerge drift check compares against, and the unmerge puts back the pre-clear rows. Closing it
+      // before the rebuild read the merge's own rebuild as a later change and refused every unmerge
+      // of a relaunch merge that refilled a plan input (#1408). It still closes before the carried
+      // provenance writes below, which OD-92 rules 1-2 restore on their own.
+      if (childCapture) relaunchDelta = await childCapture.finish();
 
       for (const p of patch) {
         const jsKey = columnToCamelCase(p.column);
@@ -3026,12 +3033,21 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             sql` and `
           );
           const setPk = pkByTable.get(set.table) ?? ['id'];
+          // A row the merge inserted is deleted by step 5 before anything is re-inserted, so it cannot
+          // block a restore (the merge's plan rebuild re-plants rows under the same unique key, #1408).
+          const removedFirst = deltaParts
+            .filter((d) => d.table === set.table)
+            .map(
+              (d) => sql` and not exists (select 1 from jsonb_array_elements(${d.ins}) x
+                          where ${pkIdentitySql(sql`x`, d.pk)} = ${pkIdentitySql(sql`to_jsonb(t.*)`, d.pk)})`
+            );
           const clash = rows<{ id: string }>(
             await tx.execute(sql`
               select distinct ${pkIdentitySql(sql`to_jsonb(t.*)`, setPk)} as id
               from jsonb_populate_recordset(null::${sql.identifier(set.table)}, ${set.rowsExpr}) r
               join ${sql.identifier(set.table)} t on ${match}
               where ${pkIdentitySql(sql`to_jsonb(t.*)`, setPk)} is distinct from ${pkIdentitySql(sql`to_jsonb(r.*)`, setPk)}
+              ${sql.join(removedFirst, sql``)}
             `)
           );
           for (const c of clash) collisions.push(`refused: ${set.table} ${u.name} collides with survivor row ${c.id}`);
