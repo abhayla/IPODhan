@@ -2112,6 +2112,15 @@
       "title": "A value the OD-21 gate refuses is recorded by the pull walk as LOST_TO_HIGHER_PRIORITY, rank 2 is never asked, and rank 1's same bytes are re-written every data slot",
       "detail": "Measured 2026-10-01 on ipodhan_test (scraper/tests/integration/field-plan-walk-rank2-after-refusal-1379.integration.test.ts, run against origin/main c4d7ca02 field-plan-walk.ts with ENABLE_FIELD_EXTRACTION_VALIDATION on in the test and the failures repository injected as #1370 wires it): face_value NSE 3 (rule face_value_equity_enum) with BSE 10 available: 0 fields supplied, face_value stays null, BSE never written; the plan row recorded CHECK_FAILED with reason_code LOST_TO_HIGHER_PRIORITY, not FAILED_VALIDATION as #1379 assumed, because the refusal's field result (stored value, incoming source) reads as a priority loss in the walk's agreement check (field-plan-walk.ts checkConsolidatorAgreed, 'matrix priority'); with only NSE ranked, a later slot claimed the row again and asked NSE again (a second failure row each slot, up to the 5-attempt cap). Class (widened, round 2): EVERY write-time refusal the consolidator can return for the write's own source -- an OD-21 rule (VALIDATION_RULE_FAILED:<rule>), matrix bounds incl. NaN (VALIDATION_FAILED, runs in production with no flag), an incapable source (REJECTED_INCAPABLE_SOURCE), a degenerate price band, an implausible issue size, no incoming value, and the #1229 merged-record date refusal -- on any field with a lower rank (today ipos.face_value DOC/BSE/NSE or DOC/BSE|NSE/CHITTORGARH, ipos.listing_date NSE/BSE/CHITTORGARH, any matrix-bounded ipos field). The reviewer's probe on the OD-21-only fix: matrix-bounds refusal gave ['NSE=3'], expected ['NSE=3','BSE=10']. Fixed on branch fix/1379-rank2-after-refusal (#1379). Cited in spec §5.3 rule 4.",
       "phase1": false
+    },
+    {
+      "id": "F-218",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "E-1 exchange-release coverage (OD-117, OD-141, F-212)",
+      "title": "No exchange fetcher states anchor_investors.bid_date, so OD-117's release of an admin bid date inside an admin-owned anchor list can never fire",
+      "detail": "Measured 2026-10-01 on origin/main f97bf796: NSE_SERVEABLE_FIELDS (scraper/src/services/field-plan-walk-nse-fetcher.ts:48) serves symbol, companyName, openDate, closeDate, priceRangeMin, priceRangeMax, lotSize, isin; BSE_SERVEABLE_FIELDS (scraper/src/services/field-plan-walk-bse-fetcher.ts:46) serves ipos.issueSize only. anchor_investors.bid_date is written only by the anchor persister from the anchor allocation report (scraper/src/services/anchor-persister.ts, source label DRHP). Appendix A row 131 ranks bid_date NSE, BSE, CG, so a rank-1 read would answer NO_FETCHER_REGISTERED, which OD-145 does not name. Same class as F-212 (four other E-1 dates). Open for owner decision (docs/contracts/.run/owner-questions-2026-10-01.md Q-1281): keep #1281 parked until a source is named, build it inert, or narrow OD-117.",
+      "phase1": false
     }
   ],
   "false_assertions": [
