@@ -43,6 +43,7 @@ import {
   redisTimestamp,
   newConflictMarkKey,
   digestLastSentKey,
+  redisSentAuditIds,
   redisConflictPairs,
 } from './services/admin-alerts.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
@@ -2402,6 +2403,7 @@ async function triggerAdminDigest(): Promise<StepResult> {
   const store = redisDigestStore(redis, env);
   const loadAudit = dbAuditEventsLoader(db as unknown as Parameters<typeof dbAuditEventsLoader>[0]);
   const lastSent = redisTimestamp(redis as unknown as Parameters<typeof redisTimestamp>[0], digestLastSentKey(env));
+  const sentAudit = redisSentAuditIds(redis as unknown as Parameters<typeof redisSentAuditIds>[0], env);
   const r = await runAdminDigest({
     lastSentAt: lastSent.get,
     markSent: lastSent.set,
@@ -2410,7 +2412,11 @@ async function triggerAdminDigest(): Promise<StepResult> {
     claim: claims.claim,
     send: sendOwnerAlert,
     loadQueueCounts: dbQueueCountsLoader(db as unknown as Parameters<typeof dbQueueCountsLoader>[0]),
-    loadEvents: async (since) => [...(await store.readSince(since)), ...(await loadAudit(since))],
+    // #1312 item 1: the store is read from the exact window start; audit rows with an overlap, deduped by id.
+    loadEvents: (since) => store.readSince(since),
+    loadAuditEvents: loadAudit,
+    sentAuditIds: sentAudit.get,
+    markSentAuditIds: sentAudit.set,
   });
   logger.info(r, 'Admin digest step');
   if (!r.due) return { status: 'ok', reason: `not due before 09:00 IST (${r.day})` };

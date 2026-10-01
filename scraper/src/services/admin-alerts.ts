@@ -117,6 +117,8 @@ export interface RecordedAdminEvent {
   field: string;
   detail: string;
   companyName?: string;
+  /** audit_logs.id for an audit-row event (the digest dedupes the overlap by it); absent on store events. */
+  auditId?: string;
 }
 
 type Send = (
@@ -301,8 +303,23 @@ export interface AdminDigestDeps {
   claim(key: string): Promise<void>;
   send: Send;
   loadQueueCounts(): Promise<QueueCountRow[]>;
-  /** admin-relevant audit rows and digest-store events since `since`, as RecordedAdminEvent. */
+  /**
+   * Digest-store events (and, when loadAuditEvents is absent, audit rows) since the EXACT `since`.
+   * Store events carry no audit id, so they are never read with an overlap (#1312: a widened store read
+   * repeated them the next day).
+   */
   loadEvents(since: Date): Promise<RecordedAdminEvent[]>;
+  /**
+   * Audit rows since `since` (#1312 item 1). runAdminDigest calls it with `since` minus
+   * DIGEST_AUDIT_OVERLAP_MS: audit_logs.timestamp is on the DB clock and a row can commit after the
+   * previous digest read, so an exact app-clock boundary can miss a save made near 09:00 IST. Rows the
+   * previous digest already listed are dropped by audit id (sentAuditIds).
+   */
+  loadAuditEvents?(since: Date): Promise<RecordedAdminEvent[]>;
+  /** Audit ids the last accepted digest listed. A failed read dedupes nothing: a repeat, never a miss. */
+  sentAuditIds?(): Promise<Set<string>>;
+  /** Records the audit ids this digest listed, after the Notifier accepted it. */
+  markSentAuditIds?(ids: string[]): Promise<void>;
   /** When the last digest was accepted by the Notifier (null: never). The window starts there. */
   lastSentAt?(): Promise<Date | null>;
   markSent?(at: Date): Promise<void>;
@@ -437,7 +454,21 @@ export async function runAdminDigest(deps: AdminDigestDeps): Promise<AdminDigest
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, 'Admin digest: last-sent read failed - using 24 h');
   }
   const since = last && last.getTime() < now.getTime() ? last : new Date(now.getTime() - DAY_MS);
-  const [counts, events] = await Promise.all([deps.loadQueueCounts(), deps.loadEvents(since)]);
+  const auditSince = new Date(since.getTime() - DIGEST_AUDIT_OVERLAP_MS);
+  const [counts, storeEvents, auditEvents, alreadyListed] = await Promise.all([
+    deps.loadQueueCounts(),
+    deps.loadEvents(since),
+    deps.loadAuditEvents ? deps.loadAuditEvents(auditSince) : Promise.resolve([] as RecordedAdminEvent[]),
+    readSentAuditIds(deps),
+  ]);
+  const seen = new Set<string>();
+  const freshAudit = auditEvents.filter((e) => {
+    if (!e.auditId) return true;
+    if (alreadyListed.has(e.auditId) || seen.has(e.auditId)) return false;
+    seen.add(e.auditId);
+    return true;
+  });
+  const events = [...storeEvents, ...freshAudit];
   const digest = buildAdminDigest(counts, events, {
     env,
     day,
@@ -451,11 +482,52 @@ export async function runAdminDigest(deps: AdminDigestDeps): Promise<AdminDigest
   try {
     await deps.claim(key);
     if (deps.markSent) await deps.markSent(now);
+    if (deps.markSentAuditIds) await deps.markSentAuditIds([...seen]);
   } catch (err) {
     logger.warn({ key, reason: err instanceof Error ? err.message : String(err) }, 'Admin digest sent, but its claim / last-sent write FAILED - the Notifier dedupeKey guards a repeat');
   }
   logger.info({ key, ipos: digest.ipos }, 'Admin digest sent (OD-112)');
   return { ...base, due: true, sent: true, ipos: digest.ipos };
+}
+
+/**
+ * #1312 item 1: how far before the window start the audit read reaches. Covers the app-clock vs DB-clock
+ * gap (about 0.3 s measured) and a transaction that commits after its timestamp; rows the previous
+ * digest listed are dropped by audit id, so the overlap never repeats a line.
+ */
+export const DIGEST_AUDIT_OVERLAP_MS = 5 * 60_000;
+
+async function readSentAuditIds(deps: AdminDigestDeps): Promise<Set<string>> {
+  if (!deps.sentAuditIds) return new Set();
+  try {
+    return await deps.sentAuditIds();
+  } catch (err) {
+    logger.warn({ reason: err instanceof Error ? err.message : String(err) }, 'Admin digest: sent-audit-id read failed - the overlap may repeat a line (never drops one)');
+    return new Set();
+  }
+}
+
+export const digestSentAuditIdsKey = (env: string): string => `admin-digest-sent-audit-ids:${env}`;
+
+/** Redis-backed list of the audit ids the last accepted digest listed (replaced on every send). */
+export function redisSentAuditIds(
+  redis: { get(key: string): Promise<string | null>; set(...args: unknown[]): Promise<unknown> },
+  env: string,
+  ttlSeconds = 7 * 86_400
+) {
+  const key = digestSentAuditIdsKey(env);
+  return {
+    get: async (): Promise<Set<string>> => {
+      const v = await redis.get(key);
+      if (!v) return new Set();
+      const parsed: unknown = JSON.parse(v);
+      if (!Array.isArray(parsed)) throw new Error(`${key} is not a JSON array`);
+      return new Set(parsed.map(String));
+    },
+    set: async (ids: string[]): Promise<void> => {
+      await redis.set(key, JSON.stringify(ids), 'EX', ttlSeconds);
+    },
+  };
 }
 
 type Db = { execute(q: ReturnType<typeof sql>): Promise<unknown> };
@@ -517,7 +589,7 @@ export function dbAuditEventsLoader(db: Db) {
     if (actions.length === 0) return [];
     const list = `{${actions.map((x) => `"${x}"`).join(',')}}`;
     const result = await db.execute(sql`
-      SELECT a.timestamp::text AS at, a.action_type, a.ipo_id::text AS ipo_id, a.table_name, a.field_name,
+      SELECT a.id::text AS audit_id, a.timestamp::text AS at, a.action_type, a.ipo_id::text AS ipo_id, a.table_name, a.field_name,
              a.old_value, a.new_value, i.slug, i.company_name, i.status::text AS status
         FROM audit_logs a JOIN ipos i ON i.id = a.ipo_id
        WHERE a.action_type = ANY(${list}::text[]) AND a.timestamp >= ${since.toISOString()}::timestamp
@@ -531,6 +603,7 @@ export function dbAuditEventsLoader(db: Db) {
       field: r.table_name ? `${String(r.table_name)}.${String(r.field_name ?? '')}` : String(r.field_name ?? ''),
       detail: `${String(r.old_value ?? '')} -> ${String(r.new_value ?? '')}`,
       companyName: (r.company_name as string | null) ?? undefined,
+      auditId: String(r.audit_id),
     }));
   };
 }
