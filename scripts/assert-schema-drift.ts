@@ -227,10 +227,8 @@ export const EXPECTED_MATVIEWS: MatviewExpectation[] = [
 // different live type than the one captured here — still FAILS instead of
 // being silently swallowed by a same-column prefix match.
 export const KNOWN_GATED_TYPE_DRIFT: { tableName: string; columnName: string; expected: string; actual: string; gatedFile: string }[] = [
-  { tableName: 'gmp_records', columnName: 'gmp', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'gmp_records', columnName: 'expected_listing_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'gmp_records', columnName: 'subject_rate', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'gmp_records', columnName: 'kostak_rate', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  // #1176: the four gmp_records entries (_gated/B2) were removed when B2 was promoted into the
+  // journal as 20261001031338_gmp_records_int_to_numeric.sql - a journal-built DB now matches schema.ts.
   { tableName: 'listing_performance', columnName: 'listing_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
   { tableName: 'listing_performance', columnName: 'issue_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
   { tableName: 'listing_performance', columnName: 'listing_gain_percent', expected: 'numeric(7,2)', actual: 'numeric(5,2)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
