@@ -22,10 +22,38 @@ import { eq, and } from 'drizzle-orm';
 
 export interface MarketHoliday {
   date: Date;
+  /** The IST calendar date as YYYY-MM-DD — what is stored. Never derived through toISOString (F-220). */
+  dateIso: string;
   description: string;
   exchange: 'NSE' | 'BSE' | 'BOTH';
   type: 'TRADING' | 'SETTLEMENT';
   year: number;
+}
+
+const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+
+/**
+ * NSE's "15-Jan-2026" -> "2026-01-15" from its day/month/year components (F-220: the old code
+ * sent an IST-midnight Date through toISOString and stored the day before). Same rule as
+ * scripts/lib/nse-holiday-calendar.mjs parseNseTradingDate; a parity test over the real NSE
+ * fixture keeps the two from drifting.
+ */
+export function nseTradingDateToIso(text: unknown): string | null {
+  if (typeof text !== 'string') return null;
+  const m = /^\s*(\d{1,2})-([A-Za-z]{3})-(\d{4})\s*$/.exec(text);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = MONTHS[m[2].toLowerCase()];
+  const year = Number(m[3]);
+  if (!month || day < 1) return null;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
+  return `${m[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** A Date's calendar date in IST (Asia/Kolkata), YYYY-MM-DD — for the HTML fallbacks that parse to a Date. */
+export function toIstCalendarDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
 export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
@@ -97,17 +125,20 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
   /**
    * Parse NSE JSON response
    */
-  private parseNSEJSON(data: any, year: number): MarketHoliday[] {
+  parseNSEJSON(data: any, year: number): MarketHoliday[] {
     const holidays: MarketHoliday[] = [];
 
-    if (!data || !data.CBM) return holidays;
+    // CM = the capital-market (equity) segment; CBM is corporate bonds.
+    if (!data || !Array.isArray(data.CM)) return holidays;
 
-    for (const holiday of data.CBM) {
-      const date = parseDate(holiday.tradingDate);
-      if (!date || date.getFullYear() !== year) continue;
+    for (const holiday of data.CM) {
+      const dateIso = nseTradingDateToIso(holiday.tradingDate);
+      if (!dateIso || Number(dateIso.slice(0, 4)) !== year) continue;
+      const [y, m, d] = dateIso.split('-').map(Number);
 
       holidays.push({
-        date,
+        date: new Date(Date.UTC(y, m - 1, d)),
+        dateIso,
         description: cleanText(holiday.description || 'Trading Holiday'),
         exchange: 'NSE',
         type: 'TRADING',
@@ -139,6 +170,7 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
 
       holidays.push({
         date,
+        dateIso: toIstCalendarDate(date),
         description,
         exchange: 'NSE',
         type: 'TRADING',
@@ -179,6 +211,7 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
 
         holidays.push({
           date,
+          dateIso: toIstCalendarDate(date),
           description,
           exchange: 'BSE',
           type: isSettlement ? 'SETTLEMENT' : 'TRADING',
@@ -202,13 +235,13 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
 
     // Add NSE holidays
     for (const holiday of nseHolidays) {
-      const key = `${holiday.date.toISOString().split('T')[0]}-${holiday.type}`;
+      const key = `${holiday.dateIso}-${holiday.type}`;
       holidayMap.set(key, holiday);
     }
 
     // Merge BSE holidays
     for (const holiday of bseHolidays) {
-      const key = `${holiday.date.toISOString().split('T')[0]}-${holiday.type}`;
+      const key = `${holiday.dateIso}-${holiday.type}`;
       const existing = holidayMap.get(key);
 
       if (existing) {
@@ -238,7 +271,7 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
           .from(marketHolidays)
           .where(
             and(
-              eq(marketHolidays.date, holiday.date.toISOString().split('T')[0]),
+              eq(marketHolidays.date, holiday.dateIso),
               eq(marketHolidays.exchange, holiday.exchange)
             )
           )
@@ -254,14 +287,14 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
             })
             .where(
               and(
-                eq(marketHolidays.date, holiday.date.toISOString().split('T')[0]),
+                eq(marketHolidays.date, holiday.dateIso),
                 eq(marketHolidays.exchange, holiday.exchange)
               )
             );
         } else {
           // Insert new
           await db.insert(marketHolidays).values({
-            date: holiday.date.toISOString().split('T')[0],
+            date: holiday.dateIso,
             description: holiday.description,
             exchange: holiday.exchange,
             type: holiday.type,

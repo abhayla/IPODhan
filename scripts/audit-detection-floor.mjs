@@ -37,6 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
+import { fetchNseHolidayMaster, interpretNseHolidayAnswer, compareYearToNse } from './lib/nse-holiday-calendar.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
@@ -4090,6 +4091,43 @@ async function runCheck(fn, ids = []) {
   return runCheckAgainstIds(fn, ids, { record, results });
 }
 
+// F-220 / F-221 (#1380 follow-up): market_holidays is the exchange holiday calendar OD-21's
+// working-day rules count against (spec §4.6, §5.3). This check reads NSE's OWN list live (the same
+// non-ingested cross-check pattern as the ipowatch/chittorgarh oracles above, one polite request
+// after a cookie warm-up) and compares, by date, the distinct TRADING dates stored for the current
+// IST year (every exchange label) with NSE's CM list for that year. Any missing or extra date FAILs.
+// NSE unreachable / malformed / no rows for the year = UNVERIFIABLE (blind, never PASS). Repair:
+// scraper/scripts/repair-market-holidays-from-nse.ts --year <Y>.
+async function checkMarketHolidaysMatchNse() {
+  const id = 'market_holidays_match_nse';
+  const name = "market_holidays for the current year equals NSE's own CM trading-holiday list (by date, every exchange label)";
+  const year = Number(istDayIso().slice(0, 4));
+  const fetched = await fetchNseHolidayMaster();
+  if (!fetched.ok) {
+    record('market_holidays_match_nse', name, 'UNVERIFIABLE', fetched.cause);
+    return;
+  }
+  const answer = interpretNseHolidayAnswer(fetched.body, year);
+  if (answer.state !== 'list') {
+    record('market_holidays_match_nse', name, 'UNVERIFIABLE', `NSE answer for ${year}: ${answer.state}${answer.cause ? ` — ${answer.cause}` : ''}${answer.rows ? ` — ${JSON.stringify(answer.rows).slice(0, 200)}` : ''}`);
+    return;
+  }
+  const rows = await q(
+    `SELECT DISTINCT to_char(date, 'YYYY-MM-DD') AS d FROM market_holidays
+      WHERE type = 'TRADING' AND date >= $1::date AND date <= $2::date`,
+    [`${year}-01-01`, `${year}-12-31`]
+  );
+  const { missing, extra } = compareYearToNse(rows.map((r) => r.d), answer.holidays);
+  for (const d of missing) notify(id, 'P1', `${year}|missing|${d}`, `NSE trading holiday missing from market_holidays: ${d}`, `${d} ${answer.holidays.find((h) => h.date === d)?.description ?? ''}`);
+  for (const d of extra) notify(id, 'P1', `${year}|extra|${d}`, `market_holidays holds a date NSE trades on: ${d}`, d);
+  const tail = `${year}: ${rows.length} stored date(s) vs ${answer.holidays.length} NSE date(s)`;
+  if (missing.length || extra.length) {
+    record('market_holidays_match_nse', name, 'FAIL', `missing ${missing.length} [${missing.slice(0, MAX_OFFENDERS).join(', ')}]; extra ${extra.length} [${extra.slice(0, MAX_OFFENDERS).join(', ')}] | ${tail} | repair: scraper/scripts/repair-market-holidays-from-nse.ts --year ${year}`);
+  } else {
+    record('market_holidays_match_nse', name, 'PASS', tail);
+  }
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   // Item 9: probe data_conflicts.document_id ONCE, before any check builds a predicate that
@@ -4168,6 +4206,7 @@ async function main() {
   await runCheck(checkR_childProvenanceOrphan, ['r_child_provenance_orphan']);
   await runCheck(checkH_marketHolidayShiftedCopy, ['h_market_holiday_shifted_copy']);
   await runCheck(checkP_planNotPrintedOverFailedRead, ['p_plan_not_printed_over_failed_read']);
+  await runCheck(checkMarketHolidaysMatchNse, ['market_holidays_match_nse']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

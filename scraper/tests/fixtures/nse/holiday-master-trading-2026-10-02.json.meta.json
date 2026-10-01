@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/holiday-master?type=trading",
+  "capturedAt": "2026-10-02",
+  "pageType": true,
+  "note": "Raw NSE holiday-master answer, unmodified (sha256 933cf5dc6dd4efe3b8db8ce6ecd6ecb2582929f5e0b4faffdb88e11cf4efdfbe). One request after a homepage cookie warm-up, normal browser User-Agent. Every segment lists 2026 only; CM (capital market / equity) has 20 rows, 16 on weekdays (the 15 broker-published dates of F-221 plus 15-Jan-2026 Municipal Corporation Election - Maharashtra). F-220/F-221."
+}

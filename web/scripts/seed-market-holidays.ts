@@ -319,6 +319,17 @@ const HOLIDAY_DATA: Omit<NewMarketHoliday, 'id' | 'createdAt' | 'updatedAt'>[] =
   },
 
   // ==================== 2026 HOLIDAYS ====================
+  // NSE CM (equity) list, copied from the real holiday-master answer captured 2026-10-02
+  // (scraper/tests/fixtures/nse/holiday-master-trading-2026-10-02.json). The earlier block was typed
+  // from festival dates and was wrong on 8 dates (F-221). Reconcile an existing DB with
+  // scraper/scripts/repair-market-holidays-from-nse.ts --year 2026, not by re-seeding.
+  {
+    date: '2026-01-15',
+    description: 'Municipal Corporation Election - Maharashtra',
+    exchange: 'BOTH',
+    type: 'TRADING',
+    year: 2026,
+  },
   {
     date: '2026-01-26',
     description: 'Republic Day',
@@ -327,8 +338,8 @@ const HOLIDAY_DATA: Omit<NewMarketHoliday, 'id' | 'createdAt' | 'updatedAt'>[] =
     year: 2026,
   },
   {
-    date: '2026-02-16',
-    description: 'Maha Shivratri',
+    date: '2026-02-15',
+    description: 'Mahashivratri',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
@@ -349,14 +360,14 @@ const HOLIDAY_DATA: Omit<NewMarketHoliday, 'id' | 'createdAt' | 'updatedAt'>[] =
   },
   {
     date: '2026-03-26',
-    description: 'Ram Navami',
+    description: 'Shri Ram Navami',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
   },
   {
-    date: '2026-03-30',
-    description: 'Mahavir Jayanti',
+    date: '2026-03-31',
+    description: 'Shri Mahavir Jayanti',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
@@ -383,13 +394,6 @@ const HOLIDAY_DATA: Omit<NewMarketHoliday, 'id' | 'createdAt' | 'updatedAt'>[] =
     year: 2026,
   },
   {
-    date: '2026-05-01',
-    description: 'Buddha Purnima',
-    exchange: 'BOTH',
-    type: 'TRADING',
-    year: 2026,
-  },
-  {
     date: '2026-05-28',
     description: 'Bakri Id',
     exchange: 'BOTH',
@@ -411,7 +415,7 @@ const HOLIDAY_DATA: Omit<NewMarketHoliday, 'id' | 'createdAt' | 'updatedAt'>[] =
     year: 2026,
   },
   {
-    date: '2026-09-05',
+    date: '2026-09-14',
     description: 'Ganesh Chaturthi',
     exchange: 'BOTH',
     type: 'TRADING',
@@ -425,29 +429,29 @@ const HOLIDAY_DATA: Omit<NewMarketHoliday, 'id' | 'createdAt' | 'updatedAt'>[] =
     year: 2026,
   },
   {
-    date: '2026-10-10',
+    date: '2026-10-20',
     description: 'Dussehra',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
   },
   {
-    date: '2026-10-29',
-    description: 'Diwali Laxmi Pujan',
+    date: '2026-11-08',
+    description: 'Diwali Laxmi Pujan*',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
   },
   {
-    date: '2026-10-30',
-    description: 'Diwali Balipratipada',
+    date: '2026-11-10',
+    description: 'Diwali-Balipratipada',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
   },
   {
-    date: '2026-11-25',
-    description: 'Gurunanak Jayanti',
+    date: '2026-11-24',
+    description: 'Prakash Gurpurb Sri Guru Nanak Dev',
     exchange: 'BOTH',
     type: 'TRADING',
     year: 2026,
