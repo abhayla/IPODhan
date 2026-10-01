@@ -205,6 +205,11 @@ it by assuming.
 | OD-150 | *"A hidden row is view-only for admins."* -- 2026-09-30, owner decision relayed with the item 23 round-3 brief (#1289), answering the round-2 SPEC QUESTION "can a hidden row be edited?" (Spec basis: OD-116, OD-118, §9.2 item 23; none on editing a hidden row). **A hidden row is VIEW-ONLY for admins. The editor shows its data read-only with one action, "Unhide to edit"; every admin write to a hidden row (field values and lists) is refused with a clear error (`IPO_HIDDEN`, HTTP 409) until it is unhidden. The scraper writes nothing to a hidden row by one predicate, `scraperWriteBlocked` = `scraper_locked` OR `hidden_at IS NOT NULL`, read by every place that reads the scraper lock, and its candidate selection skips hidden rows; there is no database trigger (a hand-listed trigger broke every `brlm_track_record` write in round 2). A nightly check (`d_hidden_ipo_child_writes`) flags any child row written after its IPO was hidden, with the table list read from the database's own foreign keys.** | 2026-09-30 | §9.2 | §9.2 item 23 states view-only for admins, the one scraper-write predicate and the nightly check |
 | OD-151 | *"The bar is the spec's own words."* -- 2026-09-30, owner decision relayed with the item 23 round-4 brief (#1289, PR #1349), after a third red on the "zero scraper writes" bar (Spec basis: OD-116 "it leaves every public page, the scraper stops walking it, and its identifiers stay so the scraper recognises it instead of recreating it", OD-118, OD-150, §9.2 item 23). **Corrects OD-150's "the scraper writes nothing to a hidden row". The bar for a hidden row is OD-116's own words: it leaves every public page; the scraper stops WALKING it (no candidate selection, no plan walk, no document discovery or stored-zip expansion for it, no price or closed-IPO job); its identifiers stay so it is not recreated; and its data stays for admins, view-only (OD-150). "Zero scraper writes of any kind" is NOT required: a stray child write from a non-walk path (for example a GMP record matched by name and date) may land; it is invisible to readers and the nightly check `d_hidden_ipo_child_writes` flags it for review. A write that reaches a hidden row through the admin hold (`filterPatchUnderHold`) is DROPPED and logged, never thrown, so one hidden row never aborts a job for other IPOs; admin writes to a hidden row are still refused with `IPO_HIDDEN` (HTTP 409).** | 2026-09-30 | §9.2 | §9.2 item 23 states the walk-exclusion bar, drop-not-throw, and that the nightly check flags stray child writes for review |
 | OD-152 | *"Defer past release"* -- 2026-10-01, option (C) of three, chosen over (A) research which E-1 dates NSE/BSE publish and build fetchers for them and (B) a SPEC CHANGE narrowing the exchange release to open/close dates (Spec basis: §1.2.1 E-1, rank NSE > BSE > CG for the timetable fields; OD-106, OD-117, OD-141, OD-145; findings F-212, F-218; real cases: 0 today, because these dates are sourced from the offer document or Chittorgarh). **The exchange-release coverage gap stays open and is NOT part of the first release: the NSE and BSE fetchers serve only open and close dates, so for listing, allotment, basis, refund, credit and the anchor bid date an admin value is never released or alerted by an exchange (F-212, F-218). OD-106/OD-117/OD-141 stand unchanged as the target; the gap is named in the pre-deploy brief as a known limitation. #1281 stays parked behind it.** | 2026-10-01 | §1.2.1, §9.2 | the pre-deploy brief lists F-212/F-218 as a known first-release gap and #1281 stays parked |
+| OD-153 | *"Clear + ask rank 2"* -- 2026-10-01, chosen over keeping the old value marked "stale reader" (#1247 item 3; Spec basis: §6 rule 4 "if that fails too the field is written null with a reason", the #1379 rule-4 table (which governs the plan row, not a value an older reader already stored), OD-62, OD-33; real case: German Green `inventoryTurnover` 23.14 read from its DRHP by the pre-#771 ratio reader, kept today because the filing persister writes non-null values only). **When a re-read of a document by a newer extractor version REFUSES a value that an older read of the SAME document stored, the stored value is cleared to empty with the refusal as its reason (OD-62: a reason, never a bare null), and the next-ranked source is asked in the same pass (rule 4 applied to the stored value). An admin-held value is never cleared by a scraper.** | 2026-10-01 | §6 | a refused re-read leaves no value from the refused reader; the field shows rank 2's value or an empty value with the refusal as its reason |
+| OD-154 | *"Rest = post-issue (Rec.)"* -- 2026-10-01, chosen over (B) non-price fields keep the first stored value and (C) the owner lists the post-issue fields (#1364, PR #1413; Spec basis: §1.3 "Document type order inside rank 1" names two orders but never lists which fields are "final post-issue facts"; OD-30 "the final prospectus is terminal"; "a newer document can heal an older one"; the per-class field count was unmeasured when asked). **A document field is price-dependent when the field manifest ranks a price band advertisement (`PRICE_BAND_AD`) for it, and follows `PRICE_BAND_AD / CORRIGENDUM > RHP > PROSPECTUS > DRHP`. EVERY other document field is a final post-issue fact and follows `PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP`, so the final Prospectus replaces an RHP value. No document field is left without an order.** | 2026-10-01 | §1.3 | every document field resolves to one of the two orders; a Prospectus value replaces a disagreeing RHP value for every non-price field |
+| OD-155 | *"Re-read both (Rec.)"* -- 2026-10-01, chosen over re-reading only the changed document (#1245 item 2; Spec basis: §2 "One download, one read" (OD-33) and §5.3 rule 5 name only a new extractor version or new bytes of THAT document as triggers; OD-66; the spec said nothing about a pair refused together; real cases unmeasured). **When the W-45 cross-document check refuses a price band advertisement and an RHP together because they disagree about the same restated figure, new bytes on EITHER document re-admit BOTH documents of that refused pair for one read. It is an event trigger, not a timer, so OD-33 stands.** | 2026-10-01 | §2, §5.3 | a corrected file on one side of a W-45-refused pair re-reads both sides once |
+| OD-156 | *"Newer doc may remove (Rec.)"* -- 2026-10-01, chosen over never removing (#1166 item 1; Spec basis: §1.7 fields 121-128 DOC 1 / CG 2; §1 `DOC` = best available type; §1.3 "a newer document can heal an older one"; OD-154; OD-107 admin lists never trimmed; the spec said nothing about list membership; real cases: A-One Steels DRHP and RHP list the same 3 peers, no removal case measured). **A document peer list removes a stored document peer it no longer names, but only when the stored row came from the SAME or an OLDER document type (order per OD-154: DRHP < RHP < PROSPECTUS). Each document-written peer row therefore records its real document type (today every such row is stamped DRHP). A peer that came only from Chittorgarh, or that an admin added, is never removed by a document list.** | 2026-10-01 | §1.7 | a newer document's shorter peer list removes the dropped document peers and nothing else |
+| OD-157 | *"Keep, mark retired (Rec.)"* -- 2026-10-01, chosen over deleting the records with the row (#1166 item 3; Spec basis: §2.10 child-table provenance and OD-128 cover writing a child row's source records but not a deleted row's; OD-32 keeps the record and drops the bytes; real cases unmeasured). **When a replacing source set deletes a child row (first case: a document peer table with figures deletes Chittorgarh-only peers), the deleted row's source records are kept and marked retired, with the date and the reason (which set replaced it). Every reader (admin editor provenance view, nightly audits, the walk) skips retired records, so nothing reads a deleted row as live.** | 2026-10-01 | §1.7, §2.10 | no live source record points at a deleted child row; a retired record names when and why its row was removed |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -578,6 +583,10 @@ F-22). The 37 I fields are written by the pipeline itself and are never sourced.
 `PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP`. A newer document can heal an older one; an
 older draft can never overwrite a final advertisement.
 
+**Which fields are which (OD-154, 2026-10-01).** A field is price-dependent when the field manifest ranks
+`PRICE_BAND_AD` for it; every other document field is a final post-issue fact and follows the second order, so
+the final Prospectus replaces a disagreeing RHP value. No document field is left without an order.
+
 Source labels: `DOC` = the IPO's own offer document, best available type · `NSE` · `BSE` ·
 `CG` = Chittorgarh · `MC` = Moneycontrol · `IG` = InvestorGain (grey market) · `REG` = the
 registrar's own site · `ADMIN` = manual, always above every rank.
@@ -883,6 +892,14 @@ place (`scraper/src/services/printed-number.ts`: commas incl. lakh grouping, bra
 suffixes, placeholders as absent); an unparseable cell is stored null and reported with its printed text.
 Measured on the German Green RHP fixture: 5 document peers persist with EPS, diluted EPS, RoNW and NAV.
 
+**Peer list membership (OD-156, 2026-10-01).** A document peer list removes a stored document peer it no
+longer names only when that row came from the same or an older document type; each document-written peer row
+records its real document type. Chittorgarh-only and admin-added peers are never removed by a document list.
+
+**Source records of a deleted row (OD-157, 2026-10-01).** When a replacing source set deletes a child row, the
+row's source records are kept, marked retired with the date and the replacing set; every reader skips retired
+records.
+
 ### 1.8 `documents` — the filing register (15 live fields)
 
 Class **I** throughout except `filing_date`. These describe our own handling of a PDF, and the pull
@@ -909,6 +926,10 @@ enforced by the column type and the CHECK `ck_documents_extraction_status`, and 
 cause, with its attempt number and time, is kept in `document_extraction_attempts` (migration 0065), so a
 document at the `retry_count` ceiling can show whether it failed the same way every time. Attempts made before
 0065 were never recorded and are not reconstructed.
+
+Attempt rows are kept for the life of the `documents` row (#1159 item 4): OD-32 deletes a document's bytes,
+never its record, so the history of a document that never succeeded survives the PDF purge. Growth is bounded
+by the `retry_count` ceiling, about ten rows per document per extractor version.
 
 ### 1.9 Live market data (fields 153–184)
 
@@ -1137,6 +1158,10 @@ Re-measured 2026-09-26 (F-176): 460 BLOCKED_ALL rows remain on 103 real IPOs, 33
 
 Every later re-read (a website disagreement, a fixed extractor) works from the **stored text**, never
 from a fresh download — which is what makes OD-32's seven-day PDF window safe.
+
+**A pair refused together (OD-155, 2026-10-01).** When the W-45 cross-document check refuses a price band
+advertisement and an RHP together, new bytes on either document re-admit both documents of that pair for one
+read. This is an arrival event, like (a) below.
 
 **A document is read once, on arrival**, and again only when (a) a newer document *type* arrives for
 that IPO, (b) the extractor version changes, or (c) the re-read loop of §3 asks for it. There is no
@@ -3240,6 +3265,11 @@ No validation key for the IPO (key source unreadable): charged `CHECK_FAILED`, n
 attempts cap, and the value is re-validated each time. A rank-1 `NOT_AVAILABLE_YET` whose provisional rank
 is refused tries the next lower rank in the same pass, and does not re-write the refused bytes at the next
 slot.
+
+**A value an older reader already stored (OD-153, 2026-10-01).** The table above governs the plan row. When the
+rank-1 value being refused was stored by an OLDER extractor version reading the SAME document, the refusal also
+clears that stored value to empty, with the refusal as its reason, and rank 2 is asked in the same pass as
+above. The refused reader's number is never left on the page. An admin-held value is never cleared.
 
 **Related: F-193** (2026-09-26) measures a consequence of the retry ceiling this rule shares a
 boundary with: the 10-attempt block marker for a stuck extraction overwrote its own

@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-01T09:59:31.845Z",
+  "generated_at": "2026-10-01T11:09:59.966Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 208,
+    "live": 209,
     "retired": 54
   },
-  "next_id": 263,
+  "next_id": 264,
   "rules": [
     {
       "id": "R-151",
@@ -1563,6 +1563,15 @@
       "kind": "prose",
       "text": "1. Every extracted field is validated on its own, before the write. Not the document, not the row — the field. 2. A field that fails is dropped from the write and recorded in a failure row carrying: the IPO, the table and column, the document id and sha256 it came from, the rule id that rejected it, the value as extracted (truncated, never silently reshaped), and the cause in plain words. A failure that cannot be classified from its own row is a defect of the logger (signal-ownership.md R6). 3. The remaining fields are written. Rentomojo's lead managers, dates, registrar and ISIN go in even when fresh_issue is rejected. Nothing is all-or-nothing. 4. The pull loop then asks rank 2 for the dropped field (§2.5), and if that fails too the field is written null with a reason (§2.8) — \"keep that field blank and get it from other sources\". 5. A document is re-extracted only when a new reason exists: a newer document type arrives, the extractor version changes, or the re-read loop asks. Never on a backoff timer. Seven re-extractions of the same bytes becomes impossible by construction rather than by a retry limit somebody remembers to set.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-263",
+      "hash": "4bcf34aa6737",
+      "section": "5.3 O-3 — one bad field must not discard the row, and must not loop",
+      "kind": "prose",
+      "text": "A value an older reader already stored (OD-153, 2026-10-01). The table above governs the plan row. When the rank-1 value being refused was stored by an OLDER extractor version reading the SAME document, the refusal also clears that stored value to empty, with the refusal as its reason, and rank 2 is asked in the same pass as above. The refused reader's number is never left on the page. An admin-held value is never cleared.",
+      "first_seen": "2026-10-01",
       "retired": false
     },
     {
