@@ -18,6 +18,12 @@ import { IPOTimelineWidget } from '@/components/ipo/IPOTimelineWidget';
 import { DocumentList } from '@/components/ipo/DocumentList';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 import { AnchorInvestorsSection } from '@/components/ipo/AnchorInvestorsSection';
+import { OverallSubscriptionChart } from '@/components/ipo/charts/SubscriptionDashboard/OverallSubscriptionChart';
+import {
+  transformToTimeSeriesData,
+  transformToHeatmapData,
+} from '@/components/ipo/charts/SubscriptionDashboard/utils';
+import { transformGMPData } from '@/components/ipo/charts/GMPHistoryChart/utils';
 
 const ORIGINAL_TZ = process.env.TZ;
 afterEach(() => {
@@ -121,5 +127,69 @@ describe('#1347 the IPO page renders the same text on a UTC server and a non-UTC
       />
     ));
     expect(html).toContain('05 Oct 2026');
+  });
+
+  it('OverallSubscriptionChart: "closes" date is the IST calendar day on every host', () => {
+    const html = expectSameOnEveryHost(() => (
+      <OverallSubscriptionChart
+        data={[
+          { dateLabel: 'Oct 02', totalSubscription: 3.2, qibSubscription: 1, niiSubscription: 1, retailSubscription: 1 } as never,
+        ]}
+        stats={{ total: 3.2 } as never}
+        // 20:00 UTC on the 7th is the 8th in IST
+        closeDate={new Date('2026-10-07T20:00:00Z')}
+        status="OPEN"
+      />
+    ));
+    expect(html).toContain('closes Oct 08');
+  });
+
+  it('SubscriptionDashboard utils: tick labels are IST on every host', () => {
+    const rows = [
+      // 18:30 UTC on the 1st = 00:00 IST on the 2nd
+      { id: 'a', timestamp: '2026-10-01T18:30:00Z', totalSubscription: 1 },
+      { id: 'b', timestamp: '2026-10-03T09:00:00Z', totalSubscription: 2 },
+    ];
+    const labels = (tz: string) => {
+      process.env.TZ = tz;
+      return JSON.stringify([
+        transformToTimeSeriesData(rows as never).map((p) => p.dateLabel),
+        transformToHeatmapData(rows as never).map((p) => p.dateLabel),
+        // same-day series gets HH:mm ticks
+        transformToTimeSeriesData([
+          { id: 'c', timestamp: '2026-10-01T03:10:00Z', totalSubscription: 1 },
+          { id: 'd', timestamp: '2026-10-01T05:40:00Z', totalSubscription: 2 },
+        ] as never).map((p) => p.dateLabel),
+      ]);
+    };
+    const server = labels('UTC');
+    for (const browser of ['Asia/Kolkata', 'America/Los_Angeles', 'Asia/Tokyo']) {
+      expect(labels(browser), `labels differ between UTC and ${browser}`).toBe(server);
+    }
+    expect(JSON.parse(server)).toEqual([
+      ['Oct 02', 'Oct 03'],
+      ['Oct 02', 'Oct 03'],
+      ['08:40', '11:10'],
+    ]);
+  });
+
+  it('GMPHistoryChart utils: point labels are IST on every host', () => {
+    const records = [
+      {
+        id: '1', ipoId: 'x', gmp: 10, expectedListingPrice: null, subjectRate: null,
+        kostakRate: null, saudaDetails: null, source: 's',
+        // 20:00 UTC on the 19th is the 20th in IST
+        timestamp: new Date('2026-08-19T20:00:00Z'),
+      },
+    ];
+    const labels = (tz: string) => {
+      process.env.TZ = tz;
+      return transformGMPData(records as never).map((p) => p.date);
+    };
+    const server = labels('UTC');
+    for (const browser of ['Asia/Kolkata', 'America/Los_Angeles', 'Asia/Tokyo']) {
+      expect(labels(browser), `labels differ between UTC and ${browser}`).toEqual(server);
+    }
+    expect(server).toEqual(['20 Aug']);
   });
 });

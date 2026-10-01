@@ -1,0 +1,194 @@
+[
+  {
+    "file": "web/app/admin/(protected)/anchor-investors/page.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/admin/(protected)/audit/page.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/admin/(protected)/dynamic/[table]/list/page.tsx",
+    "kind": "locale-string",
+    "count": 2,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/admin/(protected)/edit/[slug]/page.tsx",
+    "kind": "locale-string",
+    "count": 3,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/admin/(protected)/metrics/page.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/admin/(protected)/notifications/page.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/admin/(protected)/page.tsx",
+    "kind": "locale-string",
+    "count": 3,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/app/mainboard-ipo-calendar/page.tsx",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/app/mainboard-ipo-calendar/page.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/admin/ExtractionResultsViewer.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/components/admin/IPOContextBanner.tsx",
+    "kind": "locale-string",
+    "count": 2,
+    "reason": "Admin screen behind login, read by the owner in IST; not a public page. Pre-existing, baselined in #1347 round 2; convert when touched (follow-up #1390)."
+  },
+  {
+    "file": "web/components/calendar/MainboardIPOCalendarGrid.tsx",
+    "kind": "date-fns-format",
+    "count": 2,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/calendar/MonthNavigation.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/calendar/SMEIPOCalendarGrid.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/history/HistoricalIPOCardList.tsx",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/history/HistoricalIPOTable.tsx",
+    "kind": "date-fns-format",
+    "count": 2,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/home/IPOListTable.tsx",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/home/UpcomingIPOTable.tsx",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/ipo-detail/UPIDeadlineTimer.tsx",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/ipo/FinancialYearEndDisplay.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/ipo/KeyMetricsCards.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/ipo/KeyMetricsCardsEnhanced.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/ipo/PeerComparisonTab.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/listings/IPOListingsTable.tsx",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/market-holidays/HolidayCard.tsx",
+    "kind": "date-fns-format",
+    "count": 2,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/shared/DataTable.tsx",
+    "kind": "date-fns-unresolved",
+    "count": 1,
+    "reason": "Generic admin DataTable render helper using require(); caller supplies the pattern. Pre-existing, baselined in #1347 round 2 (follow-up #1390)."
+  },
+  {
+    "file": "web/components/source-badge.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/components/visualization/TimeSeriesPlayback.tsx",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/lib/seo/metadata.ts",
+    "kind": "locale-string",
+    "count": 1,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/lib/services/mainboard-calendar-service.ts",
+    "kind": "date-fns-format",
+    "count": 7,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/lib/utils/chart-data.ts",
+    "kind": "date-fns-format",
+    "count": 3,
+    "reason": "Pre-existing, outside /ipos/[slug] (the #1347 scope). Date-only parseISO values need a date-only-safe helper, not formatInIst. Tracked in #1390."
+  },
+  {
+    "file": "web/lib/utils/date-formatter.ts",
+    "kind": "date-fns-format",
+    "count": 1,
+    "reason": "The IST helper itself: formatInIst hands date-fns a Date whose local fields are the IST fields of the instant."
+  }
+]

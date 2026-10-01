@@ -5,7 +5,8 @@
  * and volatility computations.
  */
 
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 import type { GMPRecordDB, GMPChartPoint, GMPTrendAnalysis } from './types';
 
 /**
@@ -70,7 +71,7 @@ export function transformGMPData(
     const volatility = calculateVolatility(limited, index);
 
     return {
-      date: format(timestamp, 'dd MMM'),
+      date: formatInIst(timestamp, 'dd MMM'),
       timestamp,
       gmp,
       gmpUpper: gmp * 1.1, // illustrative +10% range — NOT a statistical confidence band
