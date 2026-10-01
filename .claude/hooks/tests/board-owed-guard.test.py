@@ -593,22 +593,26 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, "rc=%s" % p.returncode)
 
     # ---- (t) #1381: publish cutoff, lost update, fail-safe drop ----
-    def publish(self):
+    def publish(self, rendered_offset=0, stamped=True):
+        """Publish a board file whose data-rendered-at is now+rendered_offset s."""
+        path = os.path.join(self.tmp, "board-%s.html" % self._testMethodName)
+        body = "<html><p class=\"stamp\" data-rendered-at=\"%s\">x</p></html>" % iso(rendered_offset) if stamped else "<html>no stamp</html>"
+        open(path, "w", encoding="utf-8").write(body)
         p = self.run_hook("PostToolUseArtifact",
-                          {"tool_name": "Artifact", "tool_input": {"url": BOARD_URL, "file_path": "b.html"}})
+                          {"tool_name": "Artifact", "tool_input": {"url": BOARD_URL, "file_path": path}})
         self.assertEqual(p.returncode, 0, p.stderr)
 
     def test_t1_merge_then_publish_then_stop_does_not_re_owe(self):
         self.bash(self.M + " 1381 --squash")
         self.publish()
-        self.use_gh([{"number": 1381, "mergedAt": iso(-3)}])
+        self.use_gh([{"number": 1381, "mergedAt": iso(-120)}])
         p = self.run_stop()
         self.assertEqual(p.returncode, 0, "a merge the publish covered was re-owed: %s" % p.stderr)
         self.assertFalse(os.path.exists(self.marker))
 
     def test_t1b_computed_number_check_survives_publish_without_re_owing(self):
         self.bash(self.M + ' "$PR" --squash')
-        self.use_gh([{"number": 1382, "mergedAt": iso(-3)}])
+        self.use_gh([{"number": 1382, "mergedAt": iso(-120)}])
         self.assertEqual(self.run_stop().returncode, 2)
         self.publish()
         for _ in range(2):
@@ -618,14 +622,14 @@ class BoardOwedGuardTest(unittest.TestCase):
     def test_t2_merge_a_publish_merge_b_owes_only_b(self):
         self.bash(self.M + ' "$PR" --squash')
         self.publish()
-        self.use_gh([{"number": 1390, "mergedAt": iso(-3)}, {"number": 1391, "mergedAt": iso(30)}])
+        self.use_gh([{"number": 1390, "mergedAt": iso(-120)}, {"number": 1391, "mergedAt": iso(30)}])
         p = self.run_stop()
         self.assertEqual(p.returncode, 2, p.stderr)
         self.assertEqual(self.marker_prs(), ["1391"], "only the merge after the publish is owed")
 
     def test_t3_gh_down_after_publish_does_not_owe_a_covered_foreground_merge(self):
-        self.bash(self.M + " 1383 --squash")
-        self.publish()
+        self.write_pending([{"session_id": "me", "ts": iso(-300), "numbers": ["1383"], "background": False, "command": "x"}])
+        self.publish()  # rendered after the trigger by more than the 60 s margin
         self.use_gh([], fail=True)
         p = self.run_stop()
         self.assertEqual(p.returncode, 0, "unknown-merge record for a covered merge: %s" % p.stderr)
@@ -695,6 +699,54 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.use_gh([], fail=True)
         self.assertEqual(self.run_stop().returncode, 2)
         self.assertFalse(os.path.exists(self.pending))
+
+    def test_t9_merge_between_render_and_publish_is_still_owed(self):
+        self.bash(self.M + " 1392 --squash")
+        self.use_gh([{"number": 1392, "mergedAt": iso(-180)}])  # render 10:00, merge 10:02, publish 10:05
+        self.publish(rendered_offset=-300)
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, "a merge the page never showed was treated as covered: %s" % p.stderr)
+        self.assertEqual(self.marker_prs(), ["1392"])
+
+    def test_t9b_page_without_a_stamp_stores_no_cutoff(self):
+        self.bash(self.M + " 1393 --squash")
+        self.publish(stamped=False)
+        self.assertTrue(os.path.exists(self.stamp), "the publish clock file must still be written")
+        self.assertEqual(open(self.stamp).read().strip(), "", "a cutoff was stored for an unstamped page")
+        self.use_gh([{"number": 1393, "mergedAt": iso(-120)}])
+        self.assertEqual(self.run_stop().returncode, 2, "unstamped page covered a merge")
+        os.remove(self.marker)
+        self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": None, "command": "x"}])
+        self.use_gh([], fail=True)  # gh down: nothing may count as covered
+        self.assertEqual(self.run_stop().returncode, 2)
+
+    def test_t9c_cutoff_is_min_of_render_margin_and_publish(self):
+        self.publish(rendered_offset=0)
+        cut = datetime.datetime.fromisoformat(open(self.stamp).read().strip())
+        want = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=60)
+        self.assertLess(abs((cut - want).total_seconds()), 10, "cutoff is not render-60s")
+
+    def test_t10_concurrent_rewrite_is_not_duplicated_and_removal_sticks(self):
+        mine = {"session_id": "me", "ts": iso(-60), "numbers": ["1600"], "command": "x"}
+        gone = {"session_id": "other", "ts": iso(-30), "numbers": ["1601"], "command": "g", "background": True}
+        self.write_pending([mine, gone])
+        rewritten = dict(mine, recorded=["1600"], unknown_noted=True)
+        self.use_gh([], fail=True, side_append=(self.pending, rewritten))
+        self.assertEqual(self.run_stop("me").returncode, 2)
+        recs = self.read_jsonl(self.pending)
+        mine_recs = [r for r in recs if r.get("numbers") == ["1600"]]
+        self.assertEqual(len(mine_recs), 1, "a rewritten record was duplicated: %r" % recs)
+
+    def test_t6d_24h_limit_keeps_23h_drops_25h_and_logs(self):
+        self.write_pending([{"session_id": "me", "ts": iso(-23 * 3600), "numbers": None, "command": "young23"},
+                            {"session_id": "me", "ts": iso(-25 * 3600), "numbers": None, "command": "old25"}])
+        self.use_gh([], fail=True)
+        self.assertEqual(self.run_stop().returncode, 2)
+        cmds = [r["command"] for r in self.read_jsonl(self.pending)]
+        self.assertEqual(cmds, ["young23"])
+        log = open(self.errlog, encoding="utf-8").read()
+        self.assertIn("pending check dropped after 24h of failed GitHub lookups: old25", log)
+        self.assertNotIn("young23", log)
 
     def test_t7_stale_copy_is_gone(self):
         stale = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..",

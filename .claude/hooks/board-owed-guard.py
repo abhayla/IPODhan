@@ -36,7 +36,7 @@ This one script serves three events, selected by `--event`:
       a truncated answer records an "unknown merge" (fail safe) ONCE per check
       and KEEPS the check (until PENDING_HARD_MAX_HOURS) so a later Stop with a
       working gh still finds the real merge. A merge whose mergedAt is at or
-      before the last board publish (the stamp file) is covered by that publish
+      before the last published page's render cutoff (the stamp file) is covered by that publish
       and never re-owed (#1381). The pending file is rewritten under a short
       lock and entries another session appended meanwhile are kept.
       Then, if the marker exists, exit 2 with the checklist message on stderr
@@ -51,9 +51,10 @@ Known limits (accepted, #1381):
   - A `gh pr merge --auto` that lands MORE THAN 2 h after the command is not
     seen: its check is resolved and dropped (after one last lookup) at 2 h, and
     a later landing creates no new trigger. Publish the board by hand then.
-  - A merge that lands between the Stop-time render and the publish is treated
-    as covered by that publish (mergedAt <= publish time); the 12 h / 24 h
-    staleness checks are the backstop.
+  - The coverage cutoff is the page's own data-rendered-at minus 60 s (capped at
+    the publish time), read from the published file, so a merge between render
+    and publish stays owed. A publish with no readable stamp stores NO cutoff;
+    the 12 h / 24 h staleness checks are the backstop.
 
 Fail-open: every unexpected exception exits 0 and appends one line to
 ~/.claude/.board-owed-guard.errors.log. Never runs for a cwd whose git origin
@@ -104,6 +105,7 @@ LOOKBACK_MINUTES = 15
 PENDING_MAX_AGE_HOURS = 2
 # A check whose lookups keep failing is kept this long (hours), then dropped.
 PENDING_HARD_MAX_HOURS = 24
+RENDER_MARGIN_SECONDS = 60
 GH_LIST_LIMIT = 100
 
 
@@ -301,24 +303,36 @@ def _last_publish():
         return None
 
 
-def _canon(rec):
-    return json.dumps(rec, sort_keys=True, ensure_ascii=False, default=str)
+def _rec_id(rec):
+    """Stable identity of a pending check: session + trigger timestamp + PR
+    list. Survives another session rewriting the record (recorded/unknown_noted
+    change, the identity does not)."""
+    nums = rec.get("numbers")
+    return json.dumps([rec.get("session_id") or "", rec.get("ts") or "",
+                       sorted(str(n) for n in nums) if isinstance(nums, list) else None])
 
 
-def _added_since(snapshot, fresh):
-    """Records in `fresh` beyond the multiset `snapshot` (what another session
-    appended while this one was waiting on gh)."""
-    counts = {}
-    for rec in snapshot:
-        counts[_canon(rec)] = counts.get(_canon(rec), 0) + 1
-    added = []
+def _merge_pending(snapshot, mine, fresh):
+    """What to write back: `mine` (this session's resolved view of `snapshot`)
+    merged by _rec_id with `fresh` (the file as it is now). A record another
+    session appended is added; one another session removed stays removed; one it
+    rewrote is not duplicated."""
+    fresh_ids = {_rec_id(r) for r in fresh}
+    snap_ids = {_rec_id(r) for r in snapshot}
+    out, seen = [], set()
+    for rec in mine:
+        rid = _rec_id(rec)
+        if rid in seen or rid not in fresh_ids:
+            continue
+        seen.add(rid)
+        out.append(rec)
     for rec in fresh:
-        key = _canon(rec)
-        if counts.get(key, 0) > 0:
-            counts[key] -= 1
-        else:
-            added.append(rec)
-    return added
+        rid = _rec_id(rec)
+        if rid in seen or rid in snap_ids:
+            continue
+        seen.add(rid)
+        out.append(rec)
+    return out
 
 
 def _parse_ts(text):
@@ -449,8 +463,7 @@ def _resolve_pending(session_id, cwd):
         keep.append(rec)
     with _PendingLock():
         # gh took up to 25 s; keep whatever another session appended meanwhile.
-        keep.extend(_added_since(snapshot, _read_jsonl(PENDING_PATH)))
-        _write_pending(keep)
+        _write_pending(_merge_pending(snapshot, keep, _read_jsonl(PENDING_PATH)))
 
 
 def handle_bash(data):
@@ -468,6 +481,25 @@ def handle_bash(data):
     }
     with _PendingLock():
         _append_jsonl(PENDING_PATH, entry)
+
+
+_RENDERED_AT_RE = re.compile(r'data-rendered-at="([^"]+)"')
+
+
+def _rendered_cutoff(file_path):
+    """min(data-rendered-at - RENDER_MARGIN_SECONDS, now) from the published
+    file, or None when the file or the stamp is missing or unreadable."""
+    if not isinstance(file_path, str) or not file_path:
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+            m = _RENDERED_AT_RE.search(fh.read(4 * 1024 * 1024))
+    except Exception:
+        return None
+    rendered = _parse_ts(m.group(1)) if m else None
+    if rendered is None:
+        return None
+    return min(rendered - timedelta(seconds=RENDER_MARGIN_SECONDS), datetime.now(timezone.utc))
 
 
 def handle_artifact(data):
@@ -490,9 +522,14 @@ def handle_artifact(data):
             _log_error("board publish looked failed; debt kept. response head: %s" % text[:200])
             return
     _clear_marker()
+    # The page shows origin/main as of its RENDER, not of the publish. The cutoff
+    # is therefore min(rendered_at - margin, publish time); with no readable
+    # render stamp there is NO cutoff (the file is still written: its mtime is
+    # the publish clock the staleness checks read).
+    cutoff = _rendered_cutoff(tool_input.get("file_path"))
     try:
         with open(PUBLISH_STAMP_PATH, "w", encoding="utf-8") as fh:
-            fh.write(datetime.now(timezone.utc).isoformat() + chr(10))
+            fh.write((cutoff.isoformat() if cutoff else "") + chr(10))
     except Exception as exc:
         _log_error("publish stamp: %s" % exc)
 
