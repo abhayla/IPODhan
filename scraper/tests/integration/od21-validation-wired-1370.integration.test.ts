@@ -21,7 +21,8 @@ import { IPORepository } from '@ipodhan/shared/repositories';
  *        matrix bounds alone would accept) is dropped and a field_extraction_failures row records the
  *        rule, the source, the value as extracted and the cause in words;
  *   3.   the other fields on the same write ARE written (lotSize 50);
- *   5.   nothing is scheduled by time: no document_fetch_state row with a next_retry_at appears.
+ *   5.   nothing is scheduled by time: the field's ipo_field_plan row (seeded PENDING) keeps next_due_at, attempts
+ *        and last_attempt_at unset, and no document_fetch_state row appears.
  * And the control: with the flag OFF the same value is written and no failure row appears (the gate
  * is the thing that drops it, so the proof can fail).
  *
@@ -88,6 +89,7 @@ describe.skipIf(!DATABASE_URL)('#1370: OD-21 validation runs on every production
     await db.insert(schema.ipos).values({
       id: IPO, companyName: NAME, slug: SLUG, segment: 'MAINBOARD', offeringType: 'IPO', status: 'UPCOMING', sector: 'Technology',
     } as never);
+    await db.execute(sql`INSERT INTO ipo_field_plan (ipo_id, table_name, row_key, field_name, manifest_version) VALUES (${IPO}::uuid, 'ipos', '', 'faceValue', 1)`);
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -106,9 +108,11 @@ describe.skipIf(!DATABASE_URL)('#1370: OD-21 validation runs on every production
       .where(eq(schema.fieldExtractionFailures.ipoId, IPO));
   }
 
-  async function timedRetries(): Promise<number> {
-    const r = await db.execute(sql`SELECT count(*)::int AS n FROM document_fetch_state WHERE ipo_id = ${IPO}::uuid AND next_retry_at IS NOT NULL`);
-    return Number((r.rows[0] as { n: number }).n);
+  /** The plan row the walk would read for the refused field, plus any document_fetch_state row. */
+  async function retryState() {
+    const plan = await db.execute(sql`SELECT state::text AS state, attempts, next_due_at, last_attempt_at FROM ipo_field_plan WHERE ipo_id = ${IPO}::uuid AND table_name = 'ipos' AND row_key = '' AND field_name = 'faceValue'`);
+    const fetch = await db.execute(sql`SELECT count(*)::int AS n FROM document_fetch_state WHERE ipo_id = ${IPO}::uuid`);
+    return { plan: plan.rows as Array<Record<string, unknown>>, fetchRows: Number((fetch.rows[0] as { n: number }).n) };
   }
 
   async function viaPersister(door: 'primary' | 'fallback') {
@@ -160,7 +164,12 @@ describe.skipIf(!DATABASE_URL)('#1370: OD-21 validation runs on every production
       resolvedAt: null,
     });
     expect(rows[0].cause).toContain('face_value 3 is not one of the equity denominations');
-    expect(await timedRetries(), 'no retry is scheduled by time (spec §5.3 rule 5)').toBe(0);
+    const rs = await retryState();
+    expect(rs.plan.length, 'the seeded plan row for the refused field is still there').toBe(1);
+    expect(rs.plan[0], 'plan row untouched: no next_due_at, no attempt, no last_attempt_at (spec §5.3 rule 5, OD-21)').toMatchObject({
+      state: 'PENDING', attempts: 0, next_due_at: null, last_attempt_at: null,
+    });
+    expect(rs.fetchRows, 'no document_fetch_state row appears').toBe(0);
   }
 
   it('persister consolidation door: faceValue 3 is dropped with a failure row; lotSize is written', async () => {

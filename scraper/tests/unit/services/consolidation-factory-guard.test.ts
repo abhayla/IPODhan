@@ -60,6 +60,15 @@ function findValueBindings(rel: string, text: string): string[] {
         }
       }
     }
+    if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      const ex = node.moduleReference.expression;
+      if (ts.isStringLiteralLike(ex)) {
+        const mod = guardedModule(ex.text);
+        if (mod && !node.isTypeOnly && !allowed(mod)) out.push(`${rel}: import = require of ${mod}`);
+      } else {
+        out.push(`${rel}: unresolvable dynamic load`);
+      }
+    }
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       const mod = guardedModule(node.moduleSpecifier.text);
       if (mod && !node.isTypeOnly && !allowed(mod)) {
@@ -137,6 +146,10 @@ describe('#1370: production consolidators are built only by consolidation-factor
       [`const m = require('./data-consolidation-orchestrator');`, 1],
       [`const p = './data-consolidation-' + 'service.js'; await import(p + '');`, 1],
       [`await import(\`./data-consolidation-service.js\`);`, 1],
+      [`import dcs = require('./data-consolidation-service');`, 1],
+      [`import orch = require('./data-consolidation-orchestrator.js');`, 1],
+      [`import type dcs = require('./data-consolidation-service');`, 0],
+      [`import fs = require('node:fs');`, 0],
       [`import type { DataConsolidationService } from './data-consolidation-service.js';`, 0],
       [`import { type DataConsolidationService, runPreRankChecks } from './data-consolidation-service.js';`, 0],
       [`import { runPreRankChecks } from './data-consolidation-service.js';`, 0],
