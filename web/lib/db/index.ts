@@ -57,15 +57,6 @@ export function resolveDatabaseSsl(env: NodeJS.ProcessEnv = process.env): false 
 }
 
 /**
- * Resolve the discrete-parameter (DATABASE_HOST-branch) connection fields
- * (#640). Previously `database` defaulted to 'ipodhan' (production) and
- * `user` to 'postgres' (superuser) when DATABASE_NAME/DATABASE_USER were
- * unset — a script or env missing either variable connected to prod as the
- * superuser, silently. Now both are REQUIRED once DATABASE_HOST +
- * DATABASE_PASSWORD select this branch: throws a named error identifying
- * which variable is missing, never defaults.
- */
-/**
  * Describe which of DATABASE_HOST/DATABASE_PASSWORD are actually set, from
  * the real env state — never assume both are set just because this function
  * was called (#640 round 1 review).
@@ -80,6 +71,15 @@ function describeHostPasswordState(env: NodeJS.ProcessEnv): string {
   return `${present.join(' and ')} are set`;
 }
 
+/**
+ * Resolve the discrete-parameter (DATABASE_HOST-branch) connection fields
+ * (#640). Previously `database` defaulted to 'ipodhan' (production) and
+ * `user` to 'postgres' (superuser) when DATABASE_NAME/DATABASE_USER were
+ * unset — a script or env missing either variable connected to prod as the
+ * superuser, silently. Now both are REQUIRED once DATABASE_HOST +
+ * DATABASE_PASSWORD select this branch: throws a named error identifying
+ * which variable is missing, never defaults.
+ */
 export function resolveDiscreteDbParams(
   env: NodeJS.ProcessEnv = process.env
 ): { host: string; port: number; database: string; user: string; password: string } {

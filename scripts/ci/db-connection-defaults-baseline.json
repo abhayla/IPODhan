@@ -1,37 +1,100 @@
 [
   {
+    "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
+    "variable": "DATABASE_NAME",
+    "text": "dbName || '(unresolved)'",
+    "kind": "env-default",
+    "reason": "'(unresolved)' is an error-message label inside the _test refusal and the ALLOW-PROD log line, not a connection value; the target is resolved from DATABASE_URL / DATABASE_NAME / PGDATABASE with an empty-string fallback (#1142)."
+  },
+  {
+    "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
+    "variable": "DATABASE_NAME",
+    "text": "dbName || '(unresolved)'",
+    "kind": "env-default",
+    "reason": "'(unresolved)' is an error-message label inside the _test refusal and the ALLOW-PROD log line, not a connection value; the target is resolved from DATABASE_URL / DATABASE_NAME / PGDATABASE with an empty-string fallback (#1142)."
+  },
+  {
     "file": "scripts/assert-merge-log-restores.mjs",
-    "line": 73,
+    "variable": "DATABASE_NAME",
+    "text": "process.env.DATABASE_NAME || 'ipodhan_test'",
+    "kind": "env-default",
     "reason": "Defaults DATABASE_NAME to 'ipodhan_test' — a test database, not production. The script also refuses to run against anything outside DEFAULT_ALLOWED_DBS ['ipodhan_test', 'ipodhan_staging'] before it writes, so this default cannot land on prod."
   },
   {
     "file": "scripts/assert-merge-log-restores.mjs",
-    "line": 74,
+    "variable": "DATABASE_USER",
+    "text": "process.env.DATABASE_USER || 'postgres'",
+    "kind": "env-default",
     "reason": "DATABASE_USER defaults to 'postgres', but the DATABASE_NAME default (above) and the script's own ALLOWED_DBS refusal keep this pinned to the test database — not the DATABASE_NAME-to-production escalation class #640 covers."
   },
   {
     "file": "scripts/audit/fold-collision-report.mjs",
-    "line": 57,
+    "variable": "DATABASE_USER",
+    "text": "process.env.DATABASE_USER ?? 'ipodhan_app'",
+    "kind": "env-default",
     "reason": "DATABASE_USER defaults to 'ipodhan_app' — the least-privilege application role (see CLAUDE.md), not the 'postgres' superuser. The script's DATABASES list is a hardcoded ['ipodhan', 'ipodhan_staging'] read-only audit target, never env-driven, so there is no silent-target-switch risk either."
   },
   {
+    "file": "scripts/ops/collect-board-facts.mjs",
+    "variable": "user",
+    "text": "user: 'ipodhan_app'",
+    "kind": "hardcoded-target",
+    "reason": "Read-only board-facts collector: user is the least-privilege role 'ipodhan_app', never the superuser; database comes from the per-slot SLOTS table (prod/staging, both read by design) and the session is read-only (#1142)."
+  },
+  {
+    "file": "scripts/ops/generate-ipo-type-population.mjs",
+    "variable": "connectionString",
+    "text": "`postgresql://ipodhan_app:${pw}@localhost:15432/ipodhan_staging`",
+    "kind": "hardcoded-target",
+    "reason": "Read-only population report pinned to the staging database through the sanctioned tunnel as the least-privilege role 'ipodhan_app'; it never targets production (#1142)."
+  },
+  {
     "file": "scripts/ops/reassign-test-db-ownership.mjs",
-    "line": 32,
+    "variable": "DATABASE_USER",
+    "text": "env.DATABASE_USER || 'postgres'",
+    "kind": "env-default",
     "reason": "DATABASE_USER defaults to 'postgres', but `database` is hardcoded to the literal 'ipodhan_test' a few lines below (never env-driven) — this tool cannot connect to production regardless of the DATABASE_USER default."
   },
   {
+    "file": "scripts/ops/reassign-test-db-ownership.mjs",
+    "variable": "database",
+    "text": "database: 'ipodhan_test'",
+    "kind": "hardcoded-target",
+    "reason": "Hard-coded to the test database 'ipodhan_test' on purpose: the tool only reassigns ownership on that database and can never target production (#1142)."
+  },
+  {
     "file": "scripts/ops/test-db-lifecycle.mjs",
-    "line": 47,
+    "variable": "DATABASE_USER",
+    "text": "env.DATABASE_USER || 'postgres'",
+    "kind": "env-default",
     "reason": "DATABASE_USER defaults to 'postgres', which this admin tool needs (CREATE DATABASE / DROP DATABASE require superuser-or-owner privileges on the maintenance 'postgres' database it hardcodes as its target). An explicit DENYLIST (['ipodhan', 'ipodhan_staging']) refuses any real database by name before this tool acts."
   },
   {
+    "file": "scripts/ops/test-db-lifecycle.mjs",
+    "variable": "database",
+    "text": "database: 'postgres'",
+    "kind": "hardcoded-target",
+    "reason": "Connects to the maintenance database 'postgres' to CREATE/DROP test databases; a DENYLIST refuses 'ipodhan' and 'ipodhan_staging' by name before any action (#1142)."
+  },
+  {
+    "file": "scripts/ops/walk-proof.mjs",
+    "variable": "user",
+    "text": "user: 'ipodhan_app'",
+    "kind": "hardcoded-target",
+    "reason": "Read-only proof reader: user is the least-privilege role 'ipodhan_app', the database is passed in, and the pool sets default_transaction_read_only=on (#1142)."
+  },
+  {
     "file": "web/scripts/test-db-connection.ts",
-    "line": 27,
+    "variable": "DATABASE_NAME",
+    "text": "process.env.DATABASE_NAME || 'NOT SET'",
+    "kind": "env-default",
     "reason": "`|| 'NOT SET'` is a console.log display label for a diagnostic printout, not a value fed into the Pool a few lines below — that Pool reads process.env.DATABASE_NAME with no fallback at all."
   },
   {
     "file": "web/scripts/test-db-connection.ts",
-    "line": 28,
+    "variable": "DATABASE_USER",
+    "text": "process.env.DATABASE_USER || 'NOT SET'",
+    "kind": "env-default",
     "reason": "Same as line 27 — a console.log display label ('NOT SET'), not the value passed to the Pool."
   }
 ]

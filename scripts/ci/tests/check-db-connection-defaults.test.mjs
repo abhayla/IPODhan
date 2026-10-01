@@ -145,3 +145,107 @@ test('would catch a regression in the exact packages/shared/src/db/index.ts shap
   assert.equal(offenders.length, 2);
   assert.deepEqual(offenders.map((o) => o.variable).sort(), ['DATABASE_NAME', 'DATABASE_USER']);
 });
+
+// #1142: bypass shapes the #640 round-2 reviewer probed. Each returned no
+// offender against the pre-#1142 detector while the control was flagged.
+import { keyOf, compareToBaseline, scanSource } from '../check-db-connection-defaults.mjs';
+
+const BYPASSES = [
+  ['TS as-cast', `const d = (process.env.DATABASE_NAME as string) || 'ipodhan';`, 'fixture.ts'],
+  ['non-null assertion', `const d = process.env.DATABASE_NAME! || 'ipodhan';`, 'fixture.ts'],
+  ['satisfies', `const d = (process.env.DATABASE_NAME satisfies string | undefined) || 'ipodhan';`, 'fixture.ts'],
+  ['angle-bracket assertion', `const d = (<string>process.env.DATABASE_NAME) || 'ipodhan';`, 'fixture.ts'],
+  ['parentheses', `const d = (process.env.DATABASE_NAME) || 'ipodhan';`, 'fixture.mjs'],
+  ['intermediate const', `const n = process.env.DATABASE_NAME;\nconst d = n || 'ipodhan';`, 'fixture.mjs'],
+  ['intermediate let via destructure without default', `const { DATABASE_NAME } = process.env;\nconst d = DATABASE_NAME ?? 'ipodhan';`, 'fixture.mjs'],
+  ['process.env alias not named env', `const e = process.env;\nconst d = e.DATABASE_NAME || 'ipodhan';`, 'fixture.mjs'],
+  ['alias via destructure of process', `const { env: vars } = process;\nconst d = vars.DATABASE_NAME || 'ipodhan';`, 'fixture.mjs'],
+  ['||= on an env-read variable', `let d = process.env.DATABASE_NAME;\nd ||= 'ipodhan';`, 'fixture.mjs'],
+  ['??= directly on process.env', `process.env.DATABASE_USER ??= 'postgres';`, 'fixture.mjs'],
+  ['optional chaining', `const d = process?.env?.DATABASE_NAME || 'ipodhan';`, 'fixture.mjs'],
+  ['PGDATABASE', `const d = process.env.PGDATABASE || 'ipodhan';`, 'fixture.mjs'],
+  ['PGUSER', `const u = process.env.PGUSER || 'postgres';`, 'fixture.mjs'],
+  ['function-parameter destructuring default', `function connect({ DATABASE_NAME = 'ipodhan' } = process.env) { return DATABASE_NAME; }`, 'fixture.mjs'],
+  ['function-parameter env alias', `function connect(vars = process.env) { return vars.DATABASE_NAME || 'ipodhan'; }`, 'fixture.mjs'],
+  ['nested destructure off process', `const { env: { DATABASE_NAME = 'ipodhan' } } = process;`, 'fixture.mjs'],
+  ['env helper called with a literal default', `const d = getEnv('DATABASE_NAME', 'ipodhan');`, 'fixture.mjs'],
+];
+
+for (const [name, source, file] of BYPASSES) {
+  test(`#1142 bypass is flagged: ${name}`, () => {
+    const offenders = findOffenders(file, source);
+    assert.ok(offenders.length >= 1, `expected an offender for ${name}, got none`);
+  });
+}
+
+test('#1142 hard-coded connection target in a pg config object is flagged', () => {
+  const source = `
+    const client = new Client({
+      host: '103.118.16.189', port: 5432, user: 'postgres',
+      password: process.env.DB_PASSWORD, database: 'ipodhan',
+    });
+  `;
+  const offenders = findOffenders('database/create-schema.js', source);
+  assert.deepEqual(offenders.map((o) => o.variable).sort(), ['database', 'user']);
+  assert.ok(offenders.every((o) => o.kind === 'hardcoded-target'));
+});
+
+test('#1142 hard-coded database in a connection-string literal is flagged', () => {
+  const offenders = findOffenders('x.mjs', "const url = 'postgres://app:pw@127.0.0.1:15432/ipodhan';");
+  assert.equal(offenders.length, 1);
+  assert.equal(offenders[0].kind, 'hardcoded-target');
+  const tmpl = findOffenders('x.mjs', 'const url = `postgresql://${u}:${p}@${h}:5432/ipodhan_staging`;');
+  assert.equal(tmpl.length, 1);
+});
+
+test('#1142 a non-db object with a user/database key is not flagged (no connection keys)', () => {
+  const source = `const row = { user: 'alice', role: 'admin' }; const meta = { database: 'docs' };`;
+  assert.deepEqual(findOffenders('x.mjs', source), []);
+});
+
+test('#1142 an unresolvable fallback fails closed (imported identifier / call)', () => {
+  const imported = findOffenders('x.mjs', `import { DEFAULT_DB } from './c.mjs';\nconst d = process.env.DATABASE_NAME || DEFAULT_DB;`);
+  assert.equal(imported.length, 1);
+  assert.equal(imported[0].kind, 'unresolved');
+  const called = findOffenders('x.mjs', `const d = process.env.DATABASE_NAME || pickDefault();`);
+  assert.equal(called.length, 1);
+  assert.equal(called[0].kind, 'unresolved');
+});
+
+test('#1142 a fallback to another env read, undefined, or a throw helper is clean', () => {
+  const source = `
+    const a = process.env.DATABASE_NAME || process.env.PGDATABASE;
+    const b = process.env.DATABASE_NAME ?? undefined;
+    const c = (process.env.DATABASE_USER as string) || '';
+  `;
+  assert.deepEqual(findOffenders('x.ts', source), []);
+});
+
+test('#1142 a file that cannot be parsed fails closed (offender, not skip)', () => {
+  const offenders = scanSource('broken.ts', 'const d = process.env.DATABASE_NAME || ;;; }}}', () => {
+    throw new Error('boom');
+  });
+  assert.equal(offenders.length, 1);
+  assert.equal(offenders[0].kind, 'parse-error');
+});
+
+test('#1142 baseline key is file + normalised expression, not the line number', () => {
+  const before = findOffenders('s.mjs', `const u = process.env.DATABASE_USER || 'postgres';`);
+  const after = findOffenders('s.mjs', `\n\n\nconst u =\n  process.env.DATABASE_USER   ||   'postgres';`);
+  assert.equal(keyOf(before[0]), keyOf(after[0]));
+  assert.notEqual(before[0].line, after[0].line);
+});
+
+test('#1142 baseline compare counts occurrences: a second identical offender is new', () => {
+  const src = `const u = process.env.DATABASE_USER || 'postgres';\nconst v = process.env.DATABASE_USER || 'postgres';`;
+  const offenders = findOffenders('s.mjs', src);
+  const baseline = [{ file: 's.mjs', variable: 'DATABASE_USER', text: offenders[0].text, reason: 'r' }];
+  const { newOffenders, gone } = compareToBaseline(offenders, baseline);
+  assert.equal(newOffenders.length, 1);
+  assert.equal(gone.length, 0);
+});
+
+test('#1142 a baseline entry without a reason is refused', () => {
+  const offenders = findOffenders('s.mjs', `const u = process.env.DATABASE_USER || 'postgres';`);
+  assert.throws(() => compareToBaseline(offenders, [{ file: 's.mjs', variable: 'DATABASE_USER', text: offenders[0].text }]), /reason/);
+});
