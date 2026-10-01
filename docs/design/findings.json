@@ -2148,6 +2148,15 @@
       "title": "The staging 2026 holiday calendar misses three upcoming NSE trading holidays (14 Sep, 20 Oct, 10 Nov), has two on the wrong day and three that are not holidays",
       "detail": "Measured 2026-10-02 on ipodhan_staging (read-only, market_holidays year=2026, 20 BOTH/TRADING rows) against NSE's 2026 equity-segment list as published by brokers (upstox.com/stocks-market/nse-holidays and smallcase / bajajbroking / ventura, which agree on the same 15 weekday dates: Jan 26, Mar 3, Mar 26, Mar 31, Apr 3, Apr 14, May 1, May 28, Jun 26, Sep 14, Oct 2, Oct 20, Nov 10, Nov 24, Dec 25; Diwali Laxmi Pujan Sun Nov 8 is a Muhurat session, not a closure). Staging differs on weekdays: Mahavir Jayanti stored Mon 2026-03-30 (NSE Tue 03-31); Ganesh Chaturthi stored Sat 09-05 (NSE Mon 09-14: missing); Dussehra stored Sat 10-10 (NSE Tue 10-20: missing); Diwali stored Thu 10-29 + Fri 10-30 (NSE Tue 11-10: missing, and two false holidays); Guru Nanak stored Wed 11-25 (NSE Tue 11-24); Maha Shivratri stored Mon 02-16 (not an NSE 2026 holiday). This is not the F-220 one-day shift: the dates look like a calendar typed from festival dates, not the exchange circular. Impact once #1380 (PR #1444) is live: a correct T+3 listing that spans a missing holiday counts one working day too many and is refused from every source (an IPO closing Fri 2026-10-16 that lists Thu 10-22 counts 4); a false holiday makes a late listing look on time. Not yet measured: the official NSE circular itself (nseindia.com blocks plain fetches) and whether prod holds the same rows. Must be corrected before a staging deploy carries #1444.",
       "phase1": false
+    },
+    {
+      "id": "F-222",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "NSE holiday-master API (source of the exchange holiday calendar, F-220/F-221)",
+      "title": "NSE's holiday API publishes only the current year, and the old writer read the corporate-bonds segment (CBM) instead of equity (CM)",
+      "detail": "Measured 2026-10-02 by the PR #1448 builder: one live call (homepage cookie visit, then https://www.nseindia.com/api/holiday-master?type=trading) returned HTTP 200, 34,022 bytes, saved unchanged as scraper/tests/fixtures/nse/holiday-master-trading-2026-10-02.json. The CM (equity) list for 2026 has 20 dates, 16 on weekdays: the 15 broker-published dates of F-221 plus 2026-01-15 (Maharashtra municipal-election closure), which the broker lists omitted. The response carries no 2025 rows, so NSE's API cannot repair the 23 shifted 2025 rows of F-220 (PR #1444's repair-shifted-market-holidays.ts covers those) and cannot seed a past year. web/lib/scrapers/sources/market-holidays-scraper.ts read segment CBM (corporate bonds), not CM; the two lists are identical today, so the wrong segment produced correct dates by coincidence. Implication: a year's calendar must be reconciled from NSE while that year is current; a past year can only be checked against a saved NSE answer.",
+      "phase1": false
     }
   ],
   "false_assertions": [
