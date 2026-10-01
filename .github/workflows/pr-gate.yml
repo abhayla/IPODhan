@@ -557,6 +557,7 @@ jobs:
             scripts/tests/check-ledger-rows-for-done-cards.test.mjs \
             scripts/tests/details-row-coverage.test.mjs \
             scripts/tests/document-state-checks-name-their-entity.test.mjs \
+            scripts/tests/field-extraction-failures-split.test.mjs \
             scripts/tests/field-plan-slot.test.mjs \
             scripts/tests/floor-delta-notifier.test.mjs \
             scripts/tests/floor-delta.test.mjs \
