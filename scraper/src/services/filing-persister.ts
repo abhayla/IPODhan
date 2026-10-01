@@ -71,6 +71,7 @@ import { createChildRowNoter } from './child-row-unresolved-noter.js';
 import { documentMayWriteField, fieldDocumentFamily } from './document-family-gate.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 import { scaleToRupees } from '../utils/rupee-amount.js';
+import { parsePrintedNumber } from './printed-number.js';
 
 // ---------------------------------------------------------------- extraction
 
@@ -797,10 +798,6 @@ function numOrNullNum(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
-}
-
-function numOrNull(v: unknown): string | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v.toString() : null;
 }
 
 function asNumeric(v: unknown): string | null {
@@ -3024,7 +3021,27 @@ export async function persistFilingExtraction(
         }
         return true;
       })
-      .map((p) => ({
+      .map((p) => {
+        // #1165: the table reader returns printed text ('1,19,694.32', '22.85%',
+        // '(3.45)'); parsePrintedNumber is the one place it becomes a number. A
+        // combined "EPS (basic and diluted)" column fills both EPS columns, and a
+        // P/E printed as "P/E (basic)" is the peer's P/E when no bare P/E column exists.
+        const fig = (col: string, ...keys: string[]): string | null => {
+          for (const k of keys) {
+            const parsed = parsePrintedNumber(p[k]);
+            if (parsed.value !== null) return parsed.value;
+            if (parsed.reason === 'unparseable') {
+              skippedFailedCheck.push(`peer_companies.${col} unparseable '${String(parsed.printed)}' (${p.companyName})`);
+              logger.warn(
+                { ipoId, table: 'peer_companies', peer: p.companyName, column: col, printed: parsed.printed },
+                '[FilingPersister] peer figure printed in a form that does not parse; stored as null'
+              );
+              return null;
+            }
+          }
+          return null;
+        };
+        return {
         ipoId,
         companyName: p.companyName,
         // Item 1 slice s1 (row-key prep, F-74): the future row key.
@@ -3035,15 +3052,16 @@ export async function persistFilingExtraction(
         // carries no group). Undefined keeps the stored value, else true: the
         // ICDR basis-for-price comparison is of LISTED industry peers.
         isListed: typeof p.is_listed === 'boolean' ? p.is_listed : undefined,
-        peRatio: numOrNull(p.pe),
-        eps: numOrNull(p.eps_basic),
-        dilutedEps: numOrNull(p.eps_diluted),
-        ronw: numOrNull(p.ronw_pct),
-        nav: numOrNull(p.nav),
-        pbvRatio: numOrNull(p.pb),
+        peRatio: fig('peRatio', 'pe', 'pe_basic'),
+        eps: fig('eps', 'eps_basic', 'eps_basic_and_diluted'),
+        dilutedEps: fig('dilutedEps', 'eps_diluted', 'eps_basic_and_diluted'),
+        ronw: fig('ronw', 'ronw_pct'),
+        nav: fig('nav', 'nav'),
+        pbvRatio: fig('pbvRatio', 'pb'),
         dataSource: source,
         lastUpdated: new Date(),
-      }));
+        };
+      });
     // #545 round 2: a peer set that carries NO figure at all (the prospectus
     // text path reads names only) is not a replacement for a stored set. It
     // only fills gaps: rows another source stored - Chittorgarh's, with their
@@ -3073,7 +3091,16 @@ export async function persistFilingExtraction(
           // Provenance is filed only for what the document PRINTED: a column
           // it left empty is not a DOC claim of null, so it is dropped from the
           // claim rather than offered to the consolidator as a value.
-          const claims = peerRows.map((row) => ({
+          // #1166 (2): a names-only set never touches a stored row (fillGapsOnly
+          // below inserts unseen keys only), so filing DOC provenance for a row
+          // it leaves alone would make field_sources say DOC while the row still
+          // holds another source's (Chittorgarh's) value. Claim only the keys the
+          // repository will actually insert.
+          const storedKeys =
+            nameOnly && deps.peerCompanies.findByIPOId
+              ? new Set((await deps.peerCompanies.findByIPOId(ipoId)).map((r) => r.normalizedName))
+              : new Set<string>();
+          const claims = peerRows.filter((row) => !storedKeys.has(row.normalizedName)).map((row) => ({
             rowKey: row.normalizedName,
             row: Object.fromEntries(
               Object.entries(row).filter(([, v]) => v !== null && v !== undefined)
@@ -3085,12 +3112,15 @@ export async function persistFilingExtraction(
             ['companyName', 'isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'],
             ['isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio']
           );
-          claims.forEach((claim, i) => {
+          const rowByKey = new Map(peerRows.map((row) => [row.normalizedName, row as Record<string, unknown>]));
+          for (const claim of claims) {
+            const target = rowByKey.get(claim.rowKey);
+            if (!target) continue;
             for (const col of ['isListed', ...PEER_VALUE_COLUMNS] as const) {
               const v = claim.row[col];
-              if (v !== null && v !== undefined) (peerRows[i] as Record<string, unknown>)[col] = v;
+              if (v !== null && v !== undefined) target[col] = v;
             }
-          });
+          }
           await deps.peerCompanies.replaceForIpo(ipoId, peerRows as never, {
             nullNeverOverwrites: true,
             fillGapsOnly: nameOnly,

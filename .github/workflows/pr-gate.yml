@@ -1401,6 +1401,17 @@ jobs:
           tests/integration/status-forward-only.integration.test.ts
           tests/integration/hide-row-scraper-writes.integration.test.ts
           tests/integration/exchange-override-od106.integration.test.ts
+      # #1166 (5): the step above runs the #545/#1165 document-peer persist proof with child
+      # consolidation ON (the file's default). Production runs it OFF, so run it OFF too.
+      - name: Document peer persist proof with child consolidation OFF (production mode, #1166)
+        working-directory: ./scraper
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+          REDIS_URL: redis://localhost:6379
+          ENABLE_CHILD_TABLE_CONSOLIDATION: 'false'
+        run: >-
+          npx vitest run -c vitest.integration.config.ts
+          tests/integration/rhp-promoters-peers-persist.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under

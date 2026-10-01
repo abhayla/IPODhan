@@ -47,8 +47,9 @@ type DataConsolidationOrchestratorCtor =
  * cover-pages.json` and `a-one-steels-india-ltd-rhp-peer-pages.json` —
  * concatenated so one `FilingExtraction` envelope carries both fields. Round 2
  * dropped the recorded copy: it went stale whenever the extractor changed, and
- * it was one more identity-unchecked fixture. Needs `python` on PATH; skipped
- * (never failed) without it, like stage-5-extract.test.ts arm B.
+ * it was one more identity-unchecked fixture. Needs `python` on PATH: without
+ * it the suite is skipped on a developer machine and FAILS in CI (the `CI`
+ * guard below), because a skipped proof reads as a green one (#1166 item 4).
  *
  * Follows the REAL-orchestrator pattern of
  * field-plan-walk-real-writer.integration.test.ts (real Pool + real ioredis +
@@ -110,8 +111,23 @@ const EXTRACT_PY = [
 
 let extractionJson = '';
 
-function runRealExtractor(): string {
-  const res = spawnSync(PYTHON as string, ['-c', EXTRACT_PY, FIXTURE_DIR], {
+// #1165: the German Green Steel and Power RHP peer table is read by the TABLE
+// path, which returns the figures as the strings the document printed
+// ('18.94', '1,19,694.32'). Same real-extractor rule as above: produced at test time.
+const EXTRACT_GG_PY = [
+  'import json, sys',
+  'from extract_filing import run',
+  'd = sys.argv[1]',
+  "peer = json.load(open(d + '/german-green-steel-and-power-ltd-rhp-peer-pages.json', encoding='utf-8'))",
+  "pages = [tuple(p) for p in peer['pages']]",
+  "tables = {int(k): v for k, v in peer['tables'].items()}",
+  "out = run(pages, 'RHP', 'german-green-rhp', 'MAINBOARD', tables_for_page=lambda i: tables.get(i, []))",
+  'sys.stdout.write(json.dumps(out))',
+].join('\n');
+let germanGreenJson = '';
+
+function runRealExtractor(script: string = EXTRACT_PY): string {
+  const res = spawnSync(PYTHON as string, ['-c', script, FIXTURE_DIR], {
     cwd: SCRIPTS_DIR,
     encoding: 'utf-8',
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
@@ -154,6 +170,7 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
   beforeAll(async () => {
     if (!DATABASE_URL) return;
     extractionJson = runRealExtractor();
+    germanGreenJson = runRealExtractor(EXTRACT_GG_PY);
     pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
     const dbCheck = await pool.query('select current_database()');
     const currentDb = dbCheck.rows[0].current_database as string;
@@ -445,9 +462,9 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
     const extraction = loadExtraction();
     const peers = (extraction.fields.peer_companies as unknown as { value: Record<string, unknown>[] }).value;
     const msp = peers.find((p) => p.name === 'MSP Steel and Power Limited')!;
-    // A printed P/E, as a number: the persister's numOrNull takes numbers only
-    // (the ad path emits floats); every other column left empty.
-    msp.pe = 70.01;
+    // A printed P/E, as the table path prints it (#1165: the persister parses
+    // printed text); every other column left empty.
+    msp.pe = '70.01';
 
     await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
 
@@ -457,6 +474,55 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
       expect(row[col], col).not.toBeNull();
       expect(Number(row[col])).toBeCloseTo(Number(CHITTORGARH_ROWS[0][col]), 2);
     }
+  });
+
+  // ---------------------------------------------------------------- #1165
+  it('a real RHP peer TABLE (German Green) persists its printed figures as numbers', async () => {
+    const extraction = JSON.parse(germanGreenJson) as FilingExtraction;
+    const printed = (extraction.fields.peer_companies as unknown as { value: Record<string, unknown>[] }).value;
+    // The real payload carries the figures as printed TEXT - the shape that was dropped before #1165.
+    expect(printed.find((p) => p.name === 'Beekay Steel Industries Ltd')).toMatchObject({ eps_basic: '18.94', nav: '548.18' });
+
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const after = await storedPeers();
+    expect(after).toHaveLength(5);
+    const byName = new Map(after.map((r) => [r.companyName, r]));
+    const expected: Record<string, [string, string, string, string]> = {
+      // name: [eps, dilutedEps, ronw, nav] as printed in the RHP
+      'Beekay Steel Industries Ltd': ['18.94', '18.94', '3.49', '548.18'],
+      'Gallant Ispat Limited': ['20.07', '20.07', '14.60', '137.44'],
+      'Kamdhenu Limited': ['2.78', '2.72', '19.77', '14.06'],
+      'MSP Steel & Power Limited': ['0.60', '0.56', '3.28', '18.18'],
+      'VMS TMT Limited': ['4.95', '4.95', '9.22', '45.97'],
+    };
+    for (const [name, [eps, dil, ronw, nav]] of Object.entries(expected)) {
+      const row = byName.get(name);
+      expect(row, name).toBeDefined();
+      expect(Number(row!.eps), `${name}.eps`).toBeCloseTo(Number(eps), 2);
+      expect(Number(row!.dilutedEps), `${name}.dilutedEps`).toBeCloseTo(Number(dil), 2);
+      expect(Number(row!.ronw), `${name}.ronw`).toBeCloseTo(Number(ronw), 2);
+      expect(Number(row!.nav), `${name}.nav`).toBeCloseTo(Number(nav), 2);
+      expect(row!.dataSource).toBe('DRHP');
+    }
+  });
+
+  it.skipIf(!CHILD_CONSOLIDATION)('#1166 (2): a name-only DOC set files no DOC provenance for a peer it left as Chittorgarh stored it', async () => {
+    await seedChittorgarhPeers();
+    await persistFilingExtraction(IPO_ID, loadExtraction(), { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const perRow = (
+      await db
+        .select()
+        .from(schema.fieldSources)
+        .where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')))
+    ).filter((r) => r.fieldName !== 'rows');
+    const docKeys = new Set(perRow.filter((r) => r.source === 'DRHP').map((r) => r.rowKey));
+    // MSP was stored by Chittorgarh and left untouched: no DOC claim on it.
+    expect(docKeys.has(rowKeyForName('MSP Steel and Power Limited') as string)).toBe(false);
+    // The two peers the document added do carry DOC provenance.
+    expect(docKeys.has(rowKeyForName('Jai Balaji Industries Ltd.') as string)).toBe(true);
+    expect(docKeys.has(rowKeyForName('Shyam Metallics and Energy Ltd.') as string)).toBe(true);
   });
   }
 );
