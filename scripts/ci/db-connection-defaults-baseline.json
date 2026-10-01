@@ -7,6 +7,13 @@
     "reason": "Design-probe helper: read-only tunnel probe as ipodhan_app. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
   {
+    "file": "docs/design/probes/_lib.mjs",
+    "variable": "non-literal module",
+    "text": "createRequire(root)(name)",
+    "kind": "unresolved",
+    "reason": "Loader req(name) is called only as req('pg') in this file; it builds a Pool whose user/database are pinned and reviewed under this file's other baseline entries (read-only probe). Fixed-name loader, not a connection default (#1142 polish)."
+  },
+  {
     "file": "scraper/scripts/audit/classify-suspect-ipos.ts",
     "variable": "new",
     "text": "new Client({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATAB",
@@ -33,6 +40,20 @@
     "text": "new Client({ host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'), user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATAB",
     "kind": "construction",
     "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
+    "variable": "DATABASE_NAME",
+    "text": "dbName || '(unresolved)'",
+    "kind": "env-default",
+    "reason": "'(unresolved)' is an error-message label inside the _test refusal and the ALLOW-PROD log line, not a connection value; the target is resolved from DATABASE_URL / DATABASE_NAME / PGDATABASE with an empty-string fallback (#1142)."
+  },
+  {
+    "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
+    "variable": "DATABASE_NAME",
+    "text": "dbName || '(unresolved)'",
+    "kind": "env-default",
+    "reason": "'(unresolved)' is an error-message label inside the _test refusal and the ALLOW-PROD log line, not a connection value; the target is resolved from DATABASE_URL / DATABASE_NAME / PGDATABASE with an empty-string fallback (#1142)."
   },
   {
     "file": "scraper/scripts/probe-doc-fetcher.ts",
@@ -282,21 +303,21 @@
   {
     "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
     "variable": "new",
+    "text": "new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
+    "variable": "new",
+    "text": "new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
+    "variable": "new",
     "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
-    "kind": "construction",
-    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
-  },
-  {
-    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
-    "variable": "new",
-    "text": "new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
-    "kind": "construction",
-    "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
-  },
-  {
-    "file": "scraper/tests/integration/admin-plan-invalidating-rebuild.integration.test.ts",
-    "variable": "new",
-    "text": "new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
     "kind": "construction",
     "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
   },
@@ -665,6 +686,13 @@
     "reason": "Integration test builds its own pool for the test database; every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
   },
   {
+    "file": "scraper/tests/integration/od21-validation-wired-1370.integration.test.ts",
+    "variable": "new",
+    "text": "new Pool({ connectionString: DATABASE_URL, options: '-c timezone=UTC' })",
+    "kind": "construction",
+    "reason": "Integration test builds its own pool for the test database (added by #1382 after this lint branched); every integration run is behind the global prod/staging refusal (scraper/vitest.integration.setup.ts -> assertSafeIntegrationTargets). Move to scraper/tests/test-utils/db.ts when the file is next touched (#1142 follow-up)."
+  },
+  {
     "file": "scraper/tests/integration/od73-settled-field.integration.test.ts",
     "variable": "new",
     "text": "new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' })",
@@ -861,6 +889,27 @@
     "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
   {
+    "file": "scripts/assert-merge-log-restores.mjs",
+    "variable": "DATABASE_NAME",
+    "text": "process.env.DATABASE_NAME || 'ipodhan_test'",
+    "kind": "env-default",
+    "reason": "Defaults DATABASE_NAME to 'ipodhan_test' — a test database, not production. The script also refuses to run against anything outside DEFAULT_ALLOWED_DBS ['ipodhan_test', 'ipodhan_staging'] before it writes, so this default cannot land on prod."
+  },
+  {
+    "file": "scripts/assert-merge-log-restores.mjs",
+    "variable": "DATABASE_USER",
+    "text": "process.env.DATABASE_USER || 'postgres'",
+    "kind": "env-default",
+    "reason": "DATABASE_USER defaults to 'postgres', but the DATABASE_NAME default (above) and the script's own ALLOWED_DBS refusal keep this pinned to the test database — not the DATABASE_NAME-to-production escalation class #640 covers."
+  },
+  {
+    "file": "scripts/assert-row-key-constraints.ts",
+    "variable": "new",
+    "text": "new Client({ ...resolveDiscreteDbParams(), })",
+    "kind": "construction",
+    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
     "file": "scripts/assert-row-key-constraints.ts",
     "variable": "new",
     "text": "new Client({ connectionString: argOrUrl })",
@@ -868,7 +917,7 @@
     "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
   {
-    "file": "scripts/assert-row-key-constraints.ts",
+    "file": "scripts/assert-schema-drift.ts",
     "variable": "new",
     "text": "new Client({ ...resolveDiscreteDbParams(), })",
     "kind": "construction",
@@ -882,7 +931,7 @@
     "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
   {
-    "file": "scripts/assert-schema-drift.ts",
+    "file": "scripts/audit-consensus-verdict.ts",
     "variable": "new",
     "text": "new Client({ ...resolveDiscreteDbParams(), })",
     "kind": "construction",
@@ -892,13 +941,6 @@
     "file": "scripts/audit-consensus-verdict.ts",
     "variable": "new",
     "text": "new Client({ connectionString: argOrUrl })",
-    "kind": "construction",
-    "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
-  },
-  {
-    "file": "scripts/audit-consensus-verdict.ts",
-    "variable": "new",
-    "text": "new Client({ ...resolveDiscreteDbParams(), })",
     "kind": "construction",
     "reason": "TypeScript audit script picks a Client from an argv URL or discrete env; createUtcPool() is the .mjs helper and this file predates a TS equivalent. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
@@ -910,11 +952,32 @@
     "reason": "Read-only report pool (-c default_transaction_read_only=on); createUtcPool() replaces options, which would drop the read-only pin. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
   {
+    "file": "scripts/audit/fold-collision-report.mjs",
+    "variable": "DATABASE_USER",
+    "text": "process.env.DATABASE_USER ?? 'ipodhan_app'",
+    "kind": "env-default",
+    "reason": "DATABASE_USER defaults to 'ipodhan_app' — the least-privilege application role (see CLAUDE.md), not the 'postgres' superuser. The script's DATABASES list is a hardcoded ['ipodhan', 'ipodhan_staging'] read-only audit target, never env-driven, so there is no silent-target-switch risk either."
+  },
+  {
     "file": "scripts/check-stage3-dod.mjs",
     "variable": "new",
     "text": "new pg.Pool({ connectionString, ssl: false, max: 1 })",
     "kind": "construction",
     "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/ops/collect-board-facts.mjs",
+    "variable": "user",
+    "text": "user: 'ipodhan_app'",
+    "kind": "hardcoded-target",
+    "reason": "Read-only board-facts collector: user is the least-privilege role 'ipodhan_app', never the superuser; database comes from the per-slot SLOTS table (prod/staging, both read by design) and the session is read-only (#1142)."
+  },
+  {
+    "file": "scripts/ops/generate-ipo-type-population.mjs",
+    "variable": "connectionString",
+    "text": "`postgresql://ipodhan_app:${pw}@localhost:15432/ipodhan_staging`",
+    "kind": "hardcoded-target",
+    "reason": "Read-only population report pinned to the staging database through the sanctioned tunnel as the least-privilege role 'ipodhan_app'; it never targets production (#1142)."
   },
   {
     "file": "scripts/ops/reassign-test-db-ownership.mjs",
@@ -924,6 +987,20 @@
     "reason": "Test-database admin tool: connects to localhost:15432 (the sanctioned tunnel) to create/own ipodhan_test; it needs the admin role the shared pool never uses."
   },
   {
+    "file": "scripts/ops/reassign-test-db-ownership.mjs",
+    "variable": "DATABASE_USER",
+    "text": "env.DATABASE_USER || 'postgres'",
+    "kind": "env-default",
+    "reason": "DATABASE_USER defaults to 'postgres', but `database` is hardcoded to the literal 'ipodhan_test' a few lines below (never env-driven) — this tool cannot connect to production regardless of the DATABASE_USER default."
+  },
+  {
+    "file": "scripts/ops/reassign-test-db-ownership.mjs",
+    "variable": "database",
+    "text": "database: 'ipodhan_test'",
+    "kind": "hardcoded-target",
+    "reason": "Hard-coded to the test database 'ipodhan_test' on purpose: the tool only reassigns ownership on that database and can never target production (#1142)."
+  },
+  {
     "file": "scripts/ops/test-db-lifecycle.mjs",
     "variable": "new",
     "text": "new Client({ host: 'localhost', port: 15432, user, password, database: 'postgres', options: '-c timezone=UTC' })",
@@ -931,11 +1008,39 @@
     "reason": "Test-database admin tool: connects to localhost:15432 (the sanctioned tunnel) to create/own ipodhan_test; it needs the admin role the shared pool never uses."
   },
   {
+    "file": "scripts/ops/test-db-lifecycle.mjs",
+    "variable": "DATABASE_USER",
+    "text": "env.DATABASE_USER || 'postgres'",
+    "kind": "env-default",
+    "reason": "DATABASE_USER defaults to 'postgres', which this admin tool needs (CREATE DATABASE / DROP DATABASE require superuser-or-owner privileges on the maintenance 'postgres' database it hardcodes as its target). An explicit DENYLIST (['ipodhan', 'ipodhan_staging']) refuses any real database by name before this tool acts."
+  },
+  {
+    "file": "scripts/ops/test-db-lifecycle.mjs",
+    "variable": "database",
+    "text": "database: 'postgres'",
+    "kind": "hardcoded-target",
+    "reason": "Connects to the maintenance database 'postgres' to CREATE/DROP test databases; a DENYLIST refuses 'ipodhan' and 'ipodhan_staging' by name before any action (#1142)."
+  },
+  {
     "file": "scripts/ops/walk-proof.mjs",
     "variable": "new",
     "text": "new Pool({ host: '127.0.0.1', port: 15432, user: 'ipodhan_app', password, database, max: 2, options: '-c timezone=UTC -c default_transaction_read_only=on', statement_timeout: 60_000, })",
     "kind": "construction",
     "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+  },
+  {
+    "file": "scripts/ops/walk-proof.mjs",
+    "variable": "user",
+    "text": "user: 'ipodhan_app'",
+    "kind": "hardcoded-target",
+    "reason": "Read-only proof reader: user is the least-privilege role 'ipodhan_app', the database is passed in, and the pool sets default_transaction_read_only=on (#1142)."
+  },
+  {
+    "file": "scripts/ops/walk-proof.mjs",
+    "variable": "non-literal module",
+    "text": "createRequire(root)(name)",
+    "kind": "unresolved",
+    "reason": "Loader req(name) is called only as req('pg') in this file; it builds a Pool whose user/database are pinned and reviewed under this file's other baseline entries (read-only probe). Fixed-name loader, not a connection default (#1142 polish)."
   },
   {
     "file": "scripts/tests/assert-schema-drift.test.ts",
@@ -1197,6 +1302,20 @@
     "reason": "Operator-run one-off script with its own pool/client (not a server or cron path). Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
   },
   {
+    "file": "web/scripts/test-db-connection.ts",
+    "variable": "DATABASE_NAME",
+    "text": "process.env.DATABASE_NAME || 'NOT SET'",
+    "kind": "env-default",
+    "reason": "`|| 'NOT SET'` is a console.log display label for a diagnostic printout, not a value fed into the Pool a few lines below — that Pool reads process.env.DATABASE_NAME with no fallback at all."
+  },
+  {
+    "file": "web/scripts/test-db-connection.ts",
+    "variable": "DATABASE_USER",
+    "text": "process.env.DATABASE_USER || 'NOT SET'",
+    "kind": "env-default",
+    "reason": "Same as line 27 — a console.log display label ('NOT SET'), not the value passed to the Pool."
+  },
+  {
     "file": "web/scripts/verify-anchor-table.ts",
     "variable": "new",
     "text": "new Pool({ connectionString: process.env.DATABASE_URL, })",
@@ -1279,117 +1398,5 @@
     "text": "new Pool({ connectionString: testDbUrl })",
     "kind": "construction",
     "reason": "Test outside tests/integration builds its own client from a test-database URL or fixed ipodhan_test target; not verified to be behind the integration global guard. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
-  },
-  {
-    "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
-    "variable": "DATABASE_NAME",
-    "text": "dbName || '(unresolved)'",
-    "kind": "env-default",
-    "reason": "'(unresolved)' is an error-message label inside the _test refusal and the ALLOW-PROD log line, not a connection value; the target is resolved from DATABASE_URL / DATABASE_NAME / PGDATABASE with an empty-string fallback (#1142)."
-  },
-  {
-    "file": "scraper/scripts/backfill-anchor-investor-list-json.ts",
-    "variable": "DATABASE_NAME",
-    "text": "dbName || '(unresolved)'",
-    "kind": "env-default",
-    "reason": "'(unresolved)' is an error-message label inside the _test refusal and the ALLOW-PROD log line, not a connection value; the target is resolved from DATABASE_URL / DATABASE_NAME / PGDATABASE with an empty-string fallback (#1142)."
-  },
-  {
-    "file": "scripts/assert-merge-log-restores.mjs",
-    "variable": "DATABASE_NAME",
-    "text": "process.env.DATABASE_NAME || 'ipodhan_test'",
-    "kind": "env-default",
-    "reason": "Defaults DATABASE_NAME to 'ipodhan_test' — a test database, not production. The script also refuses to run against anything outside DEFAULT_ALLOWED_DBS ['ipodhan_test', 'ipodhan_staging'] before it writes, so this default cannot land on prod."
-  },
-  {
-    "file": "scripts/assert-merge-log-restores.mjs",
-    "variable": "DATABASE_USER",
-    "text": "process.env.DATABASE_USER || 'postgres'",
-    "kind": "env-default",
-    "reason": "DATABASE_USER defaults to 'postgres', but the DATABASE_NAME default (above) and the script's own ALLOWED_DBS refusal keep this pinned to the test database — not the DATABASE_NAME-to-production escalation class #640 covers."
-  },
-  {
-    "file": "scripts/audit/fold-collision-report.mjs",
-    "variable": "DATABASE_USER",
-    "text": "process.env.DATABASE_USER ?? 'ipodhan_app'",
-    "kind": "env-default",
-    "reason": "DATABASE_USER defaults to 'ipodhan_app' — the least-privilege application role (see CLAUDE.md), not the 'postgres' superuser. The script's DATABASES list is a hardcoded ['ipodhan', 'ipodhan_staging'] read-only audit target, never env-driven, so there is no silent-target-switch risk either."
-  },
-  {
-    "file": "scripts/ops/collect-board-facts.mjs",
-    "variable": "user",
-    "text": "user: 'ipodhan_app'",
-    "kind": "hardcoded-target",
-    "reason": "Read-only board-facts collector: user is the least-privilege role 'ipodhan_app', never the superuser; database comes from the per-slot SLOTS table (prod/staging, both read by design) and the session is read-only (#1142)."
-  },
-  {
-    "file": "scripts/ops/generate-ipo-type-population.mjs",
-    "variable": "connectionString",
-    "text": "`postgresql://ipodhan_app:${pw}@localhost:15432/ipodhan_staging`",
-    "kind": "hardcoded-target",
-    "reason": "Read-only population report pinned to the staging database through the sanctioned tunnel as the least-privilege role 'ipodhan_app'; it never targets production (#1142)."
-  },
-  {
-    "file": "scripts/ops/reassign-test-db-ownership.mjs",
-    "variable": "DATABASE_USER",
-    "text": "env.DATABASE_USER || 'postgres'",
-    "kind": "env-default",
-    "reason": "DATABASE_USER defaults to 'postgres', but `database` is hardcoded to the literal 'ipodhan_test' a few lines below (never env-driven) — this tool cannot connect to production regardless of the DATABASE_USER default."
-  },
-  {
-    "file": "scripts/ops/reassign-test-db-ownership.mjs",
-    "variable": "database",
-    "text": "database: 'ipodhan_test'",
-    "kind": "hardcoded-target",
-    "reason": "Hard-coded to the test database 'ipodhan_test' on purpose: the tool only reassigns ownership on that database and can never target production (#1142)."
-  },
-  {
-    "file": "scripts/ops/test-db-lifecycle.mjs",
-    "variable": "DATABASE_USER",
-    "text": "env.DATABASE_USER || 'postgres'",
-    "kind": "env-default",
-    "reason": "DATABASE_USER defaults to 'postgres', which this admin tool needs (CREATE DATABASE / DROP DATABASE require superuser-or-owner privileges on the maintenance 'postgres' database it hardcodes as its target). An explicit DENYLIST (['ipodhan', 'ipodhan_staging']) refuses any real database by name before this tool acts."
-  },
-  {
-    "file": "scripts/ops/test-db-lifecycle.mjs",
-    "variable": "database",
-    "text": "database: 'postgres'",
-    "kind": "hardcoded-target",
-    "reason": "Connects to the maintenance database 'postgres' to CREATE/DROP test databases; a DENYLIST refuses 'ipodhan' and 'ipodhan_staging' by name before any action (#1142)."
-  },
-  {
-    "file": "scripts/ops/walk-proof.mjs",
-    "variable": "user",
-    "text": "user: 'ipodhan_app'",
-    "kind": "hardcoded-target",
-    "reason": "Read-only proof reader: user is the least-privilege role 'ipodhan_app', the database is passed in, and the pool sets default_transaction_read_only=on (#1142)."
-  },
-  {
-    "file": "web/scripts/test-db-connection.ts",
-    "variable": "DATABASE_NAME",
-    "text": "process.env.DATABASE_NAME || 'NOT SET'",
-    "kind": "env-default",
-    "reason": "`|| 'NOT SET'` is a console.log display label for a diagnostic printout, not a value fed into the Pool a few lines below — that Pool reads process.env.DATABASE_NAME with no fallback at all."
-  },
-  {
-    "file": "web/scripts/test-db-connection.ts",
-    "variable": "DATABASE_USER",
-    "text": "process.env.DATABASE_USER || 'NOT SET'",
-    "kind": "env-default",
-    "reason": "Same as line 27 — a console.log display label ('NOT SET'), not the value passed to the Pool."
-  },
-  {
-    "file": "docs/design/probes/_lib.mjs",
-    "variable": "non-literal module",
-    "text": "createRequire(root)(name)",
-    "kind": "unresolved",
-    "reason": "Loader req(name) is called only as req('pg') in this file; it builds a Pool whose user/database are pinned and reviewed under this file's other baseline entries (read-only probe). Fixed-name loader, not a connection default (#1142 polish)."
-  },
-  {
-    "file": "scripts/ops/walk-proof.mjs",
-    "variable": "non-literal module",
-    "text": "createRequire(root)(name)",
-    "kind": "unresolved",
-    "reason": "Loader req(name) is called only as req('pg') in this file; it builds a Pool whose user/database are pinned and reviewed under this file's other baseline entries (read-only probe). Fixed-name loader, not a connection default (#1142 polish)."
   }
 ]
