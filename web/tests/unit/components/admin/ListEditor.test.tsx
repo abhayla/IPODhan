@@ -90,7 +90,7 @@ describe('ListEditor (OD-107)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add a row' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Late Kumar' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add row' }));
-    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/someone else changed this list/));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/someone else changed this list/));
     // the next save carries the reloaded token
     fireEvent.click(screen.getByRole('button', { name: 'Add row' }));
     await waitFor(() => expect(posts).toHaveLength(2));

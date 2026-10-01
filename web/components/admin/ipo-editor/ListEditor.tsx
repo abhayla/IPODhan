@@ -8,6 +8,7 @@
  * one column, 44px tap targets, as the field editor.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { adminFailureReason, NETWORK_FAILURE_REASON, notSavedText, readJsonBody } from '@/lib/admin/admin-save-failure';
 
 export type ListName =
   | 'lead_managers'
@@ -61,6 +62,21 @@ interface ListRow {
 }
 
 type Draft = Record<string, string>;
+
+/** Where a refused save is shown: inside the row it was for, or under the add form (#1348). */
+interface Failure {
+  at: string;
+  reason: string;
+}
+
+function FailureLine({ failure, at }: { failure: Failure | null; at: string }) {
+  if (!failure || failure.at !== at) return null;
+  return (
+    <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+      {notSavedText(failure.reason)}
+    </p>
+  );
+}
 
 function toRow(list: ListName, draft: Draft): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -130,6 +146,7 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const url = `/api/admin/ipos/${ipoId}/lists/${list}`;
 
   const load = useCallback(async () => {
@@ -148,24 +165,32 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
     void load();
   }, [load]);
 
-  const save = async (op: Record<string, unknown>): Promise<boolean> => {
+  /** `at` is the row key the save is for, or 'add'; a refusal is shown there (#1348). */
+  const save = async (op: Record<string, unknown>, at: string): Promise<boolean> => {
     setBusy(true);
     setMessage(null);
+    setFailure(null);
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ op, expectedVersion: version }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { reason?: string };
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op, expectedVersion: version }),
+        });
+      } catch {
+        setFailure({ at, reason: NETWORK_FAILURE_REASON });
+        return false;
+      }
+      const body = await readJsonBody(res);
       if (res.status === 409) {
-        setMessage(body.reason ?? 'Someone else changed this list. It has been reloaded; make your change again.');
+        setFailure({ at, reason: typeof body.reason === 'string' ? body.reason : 'someone else changed this list. It has been reloaded; make your change again.' });
         await load();
         return false;
       }
-      if (!res.ok) {
-        setMessage(body.reason ?? `Not saved (HTTP ${res.status})`);
+      if (!res.ok || body.success === false) {
+        setFailure({ at, reason: adminFailureReason(res.status, body) });
         return false;
       }
       await load();
@@ -190,6 +215,7 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
         {(rows ?? []).map((r) => (
           <li key={r.key} className="flex flex-col gap-2 rounded-md border border-gray-200 p-3" data-testid="list-row">
             <span className="text-sm text-gray-900">{r.label}</span>
+            <FailureLine failure={failure} at={r.key} />
             {editing === r.key ? (
               <RowForm
                 list={list}
@@ -197,7 +223,7 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
                 submitLabel="Save row"
                 busy={busy}
                 onSubmit={async (d) => {
-                  if (await save({ kind: 'edit', rowKey: r.key, row: toRow(list, d) })) setEditing(null);
+                  if (await save({ kind: 'edit', rowKey: r.key, row: toRow(list, d) }, r.key)) setEditing(null);
                 }}
                 onCancel={() => setEditing(null)}
               />
@@ -206,7 +232,7 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
                 className="flex flex-col gap-2"
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (await save({ kind: 'remove', rowKeys: [r.key], reason })) {
+                  if (await save({ kind: 'remove', rowKeys: [r.key], reason }, r.key)) {
                     setRemoving(null);
                     setReason('');
                   }
@@ -242,6 +268,7 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
           </li>
         ))}
       </ul>
+      <FailureLine failure={failure} at="add" />
       {adding ? (
         <RowForm
           list={list}
@@ -249,7 +276,7 @@ export function ListEditor({ ipoId, list, onSaved }: { ipoId: string; list: List
           submitLabel="Add row"
           busy={busy}
           onSubmit={async (d) => {
-            if (await save({ kind: 'add', row: toRow(list, d) })) setAdding(false);
+            if (await save({ kind: 'add', row: toRow(list, d) }, 'add')) setAdding(false);
           }}
           onCancel={() => setAdding(false)}
         />
