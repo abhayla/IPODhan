@@ -216,7 +216,10 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     expect(second.ipoId).toBe(first.ipoId);
 
     const savedIPO = await ipoRepository!.findById(first.ipoId);
-    expect(savedIPO?.lotSize).toBe(130);
+    // #1196: the create now records provenance for every column it sets, so the matrix's same-source
+    // rule applies to the second write. lotSize refreshes from DRHP only (sameSourceRefreshSources), so
+    // NSE's 130 does not replace the tracked NSE 100. The test's claim is one row, updated in place.
+    expect(savedIPO?.lotSize).toBe(100);
   }, 10000);
 
   it('5: consolidates multiple IPOs efficiently (< 500ms per IPO)', async () => {
