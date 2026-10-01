@@ -4130,7 +4130,7 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
    | read when a new document arrives | D | 162 | **yes -- the full per-source panel (OD-102)** |
    | read many times a day | X, W, M and `ipos.status` | 19 | no |
    | calculated | C | 13 | no (read-only; OD-102 "derived") |
-   | the exchange timetable, never from the document (E-1) | T except status | 9 | **yes, per-source panel; a newer, different NSE or BSE date replaces the admin value and alerts the admin (OD-106); this holds for the anchor bid date even inside an admin-owned anchor list, and for `listing_exchanges` "newer" means the exchange now publishes a different value than when the admin saved (OD-117)** |
+   | the exchange timetable, never from the document (E-1) | T except status | 9 | **yes, per-source panel; a newer, different NSE or BSE date replaces the admin value and alerts the admin (OD-106); this holds for the anchor bid date even inside an admin-owned anchor list, and for `listing_exchanges` "newer" means the exchange now publishes a different value than when the admin saved (OD-117)**. See F-218: no NSE or BSE fetcher states the anchor bid date, so that release cannot fire today -- open for owner decision |
    | our own bookkeeping | I | 37 | no, except the two `ADMIN` settings on the IPO (`ipos.rating_override`, `ipos.scraper_locked`), which show a plain value or on/off control; `registrars.active` stays in the existing registrar admin screen (OD-110) |
 
 
