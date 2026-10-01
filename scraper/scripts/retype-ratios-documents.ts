@@ -25,6 +25,7 @@
  * Run (from scraper/):
  *   npx tsx scripts/retype-ratios-documents.ts            # dry run (default)
  *   npx tsx scripts/retype-ratios-documents.ts --apply     # apply the retype
+ *   (production also needs --allow-prod; --expect-db <name> asserts the target — openRepairDb, #1150)
  */
 
 import { db } from '@ipodhan/shared/db';
@@ -33,6 +34,7 @@ import { DocumentRepository } from '@ipodhan/shared';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { and, eq, ilike } from 'drizzle-orm';
 import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
+import { openRepairDb, readExpectDbFlag } from './lib/repair-tool.js';
 
 /** NSE's own `RATIOS_<SYMBOL>.zip` naming — see document-classifier.ts `isNseRatiosArchiveUrl`. */
 export const RATIOS_URL_PATTERN = /RATIOS_/i;
@@ -54,8 +56,17 @@ export function isRetypeCandidate(url: string | null | undefined, type: string |
 }
 
 const APPLY = process.argv.includes('--apply');
+const ALLOW_PROD = process.argv.includes('--allow-prod');
 
 async function main() {
+  // #1150: prod guard + --expect-db before any read or write.
+  await openRepairDb(db as never, {
+    apply: APPLY,
+    allowProd: ALLOW_PROD,
+    toolName: 'retype-ratios-documents',
+    expectDb: readExpectDbFlag(process.argv),
+  });
+
   const rows = await db
     .select({
       id: documents.id,

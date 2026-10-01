@@ -1,0 +1,101 @@
+{
+  "_comment": "#1150: DB-writing scripts that do not yet open the DB through openRepairDb(). Shrink-only: scripts/ci/require-db-writer-guard.mjs fails when a listed file is guarded, exempted or deleted, so remove the entry in the same change. Never add an entry to make a NEW script pass.",
+  "entries": [
+    {
+      "file": "scraper/scripts/audit/classify-suspect-ipos.ts",
+      "reason": "Audit tool whose --apply branch runs 'update ipos set offering_type'; it prints current_database() itself but has no prod refusal or --expect-db. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/audit/oracle-date-matrix.ts",
+      "reason": "Oracle cross-check whose apply branch runs a built 'update ipos set ...' over a pg client; no prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/dedup-bse-mainboard.ts",
+      "reason": "#16 duplicate-cluster diagnostic that merges through data-persister.js (indirect writer); no --apply/--allow-prod model to hang a guard on. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/merge-duplicate-ipos.ts",
+      "reason": "#16 merge tool with its own --apply/--allow-prod gate; executes sql.raw() statements the lint cannot resolve, so it is a writer until it adopts the shared guard. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/persist-filing.ts",
+      "reason": "Walk step G4 harness that persists one filing through filing-persister.js (indirect writer); has --apply but no prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/reclassify-trust-shape-ipos-t277.ts",
+      "reason": "T-277 one-shot db.update(ipos) reclassification with no dry-run flag at all; guarding it means adding a dry-run model first (or deleting it as done). Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/reresolve-registrar-id-t300.ts",
+      "reason": "T-300 one-shot repair that writes through registrar-reresolve.js (indirect); has --apply but no prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/reset-document.ts",
+      "reason": "W-158 reset of one documents row; carries its own --allow-prod guard, not yet proven equivalent to openRepairDb (no --expect-db). Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/run-document-discovery.ts",
+      "reason": "T-403 acceptance harness; --reset runs DELETE FROM document_fetch_state/documents for four fixed IPOs with no prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/scripts/migrate-financial-data-to-ipo-financials.ts",
+      "reason": "T-477 migration with its own --apply/--allow-prod flags and db.insert(); not yet routed through the shared guard (no --expect-db). Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-clean-company-names.ts",
+      "reason": "Legacy src/scripts backfill (outside the filename lint's directory) running raw UPDATE ipos SET over pg; no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-demand-graph.ts",
+      "reason": "Legacy Stage D backfill writing through data-persister.js (indirect); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-description-sector.ts",
+      "reason": "Legacy backfill writing through data-persister.js (indirect); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-historical-ipos.ts",
+      "reason": "Story 11.4 legacy backfill with db.update(); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-isin-from-nse.ts",
+      "reason": "Legacy backfill running raw UPDATE ipos SET over pg; no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-stuck-listing.ts",
+      "reason": "#70/#36 legacy backfill advancing CLOSED to LISTED through data-persister.js (indirect); no prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/backfill-subscription.ts",
+      "reason": "Legacy backfill writing through data-persister.js (indirect); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/force-nse-scrape.ts",
+      "reason": "Debug scrape that persists through data-persister.js (indirect); likely dead, delete-or-guard decision pending. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/ingest-historical-ipo.ts",
+      "reason": "Legacy ingest writing through data-persister.js (indirect); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/reclassify-corporate-actions.ts",
+      "reason": "Legacy reclassification running raw UPDATE ipos SET over pg; no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/retype-misclassified-documents.ts",
+      "reason": "Retype tool running raw UPDATE documents SET via db.execute; no prod refusal. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/run-migration.ts",
+      "reason": "Legacy hand-run DDL (ALTER TABLE / CREATE INDEX) predating drizzle migrations; likely dead, delete-or-guard decision pending. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/scrape-coolcaps.ts",
+      "reason": "One-off scrape for a single IPO with db.update()/db.insert(); likely dead, delete-or-guard decision pending. Migration to openRepairDb tracked in #1384."
+    },
+    {
+      "file": "scraper/src/scripts/test-nse-transform.ts",
+      "reason": "Manual NSE transform check that imports data-persister.js (indirect, possible writer); likely dead, delete-or-guard decision pending. Migration to openRepairDb tracked in #1384."
+    }
+  ]
+}

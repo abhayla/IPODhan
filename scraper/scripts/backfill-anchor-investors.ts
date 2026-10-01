@@ -259,7 +259,7 @@ export async function main() {
 
 // Auto-run if this is the main module (guards against side effects on
 // import, e.g. from a unit test importing buildAnchorInvestorsIposConditions).
-const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 if (isMain) {
   main().catch((error) => {
     logger.error('[Backfill Anchor Investors] Unhandled error:', error);

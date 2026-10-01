@@ -704,6 +704,20 @@ jobs:
         # Needs node_modules (#694 fix round 1) — see the self-test above.
         run: node scripts/ci/require-repair-tool-module.mjs
 
+      - name: DB-writer guard lint self-test (#1150)
+        # Mutation-proof: imports the real classifier; dropping a DB source pattern, a
+        # write shape or a fail-closed branch turns a named case red. Needs node_modules
+        # (parses with the typescript compiler API), so it runs after npm ci.
+        run: node --test scripts/ci/tests/require-db-writer-guard.test.mjs
+
+      - name: DB-writer guard - every DB-writing script opens the DB through openRepairDb (#1150)
+        # The repair-tool lint above only checks repair|backfill|refresh|requeue-*.ts. This
+        # finds writers by what they DO (DB-client import by source + a write call, raw DML,
+        # or a call into a module that reaches a DB client) under scraper/scripts and
+        # scraper/src/scripts, whatever their name. Shrink-only baseline with a reason per
+        # entry: scripts/ci/db-writer-guard-baseline.json (migration tracked in #1384).
+        run: node scripts/ci/require-db-writer-guard.mjs
+
       - name: Repair ledger calls lint self-test (#457)
         # Mutation-proof: imports the real predicate; each of the three measured holes
         # (tsconfig-excluded caller, `payload: unknown` passthrough, `as unknown as` cast)

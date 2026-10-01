@@ -18,13 +18,16 @@
  *
  * Idempotent: matches by exact `name`, skips (no insert) if a row with that
  * name already exists. dry-run by default; --apply writes.
+ * Production writes also need --allow-prod (openRepairDb, #1150); --expect-db <name> asserts the target.
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
+import { openRepairDb, readExpectDbFlag } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
+const ALLOW_PROD = process.argv.includes('--allow-prod');
 
 interface NewRegistrar {
   name: string;
@@ -71,6 +74,14 @@ const NEW_REGISTRARS: NewRegistrar[] = [
 ];
 
 async function main() {
+  // #1150: prod guard + --expect-db before any read or write.
+  await openRepairDb(db as never, {
+    apply: APPLY,
+    allowProd: ALLOW_PROD,
+    toolName: 'add-missing-registrars-t300',
+    expectDb: readExpectDbFlag(process.argv),
+  });
+
   console.log('='.repeat(80));
   console.log(`ADD MISSING REGISTRARS (P2-4, T-300, round-5) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
