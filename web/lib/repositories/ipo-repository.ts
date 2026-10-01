@@ -454,7 +454,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             this.db
               .select()
               .from(documents)
-              .where(eq(documents.ipoId, ipo.id)),
+              .where(eq(documents.ipoId, ipo.id))
+              // #1395: heap order flips after an UPDATE; keep in step with DocumentRepository.findByIPO.
+              .orderBy(
+                documents.type,
+                documents.sequenceNumber,
+                documents.partNumber,
+                documents.createdAt,
+                documents.id
+              ),
             this.db
               .select()
               .from(subscriptions)
