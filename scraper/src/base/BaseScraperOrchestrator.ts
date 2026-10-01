@@ -51,7 +51,9 @@ import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
 import type { ScraperSource } from '../services/types.js';
-import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
+import type { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
+import { createConsolidationOrchestrator } from '../services/consolidation-factory.js';
+import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { computeBlankFieldStats, evaluateAndRecordDegradation } from '../services/selector-degradation-monitor.js';
 import type Redis from 'ioredis';
@@ -925,13 +927,17 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // Phase 1: Data consolidation services
     this.fieldSourcesRepository = new FieldSourcesRepositoryClass(db, redis);
     this.dataConflictsRepository = new DataConflictsRepositoryClass(db, redis);
-    this.consolidationOrchestrator = new DataConsolidationOrchestrator(
+    // #1370 (OD-21, spec §5.3): built through the factory, which requires the failures repository.
+    this.consolidationOrchestrator = createConsolidationOrchestrator(
       this.ipoRepository,
-      this.fieldSourcesRepository,
-      this.dataConflictsRepository,
-      redis,
-      // W-145 round 2: listing-record evidence for the SME single-exchange collapse.
-      new ListingPerformanceRepositoryClass(db, redis)
+      {
+        fieldSourcesRepository: this.fieldSourcesRepository,
+        dataConflictsRepository: this.dataConflictsRepository,
+        // W-145 round 2: listing-record evidence for the SME single-exchange collapse.
+        listingPerformanceRepository: new ListingPerformanceRepositoryClass(db, redis),
+        fieldExtractionFailuresRepository: new FieldExtractionFailuresRepository(db, redis),
+      },
+      redis
     );
   }
 
