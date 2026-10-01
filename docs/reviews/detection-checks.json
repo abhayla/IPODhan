@@ -1140,6 +1140,16 @@
       "note": "Detection upgrade for T-999 (source-local-time-parsed-in-utc-process class). scripts/repair-bse-subscription-ist-shift.ts repairs the EXISTING rows this check flags (dry-run default, --apply on staging/ipodhan_test only). A future member of the class (a different source, or a different BSE field parsed the same wrong way) is caught by extending the same time-of-day / scope predicate, not by re-typing a new check."
     },
     {
+      "id": "u_create_column_without_provenance",
+      "findingClass": "an ipos row holds a value in a sourced column (companyName, offeringType, segment, status, sector, companyDescription, issueSize, faceValue, priceRangeMin/Max, lotSize, open/close/allotment/listingDate, isin, symbol, cin) with NO field_sources row naming ANY source for it, on any status, segment or offering type - the create door wrote the row and did not track what it set, so r_published_without_provenance (7 date/price columns, offering_type IPO only) could not see companyName",
+      "round7Findings": [],
+      "sourceTask": "#1196 (2026-09-26): ipodhan_staging, 47 of 396 IPOs have no companyName provenance; the 6 recent ones were created by one Chittorgarh discovery cycle through DataConsolidationOrchestrator.consolidatedUpsertIPO, which consolidates with ipoId 'new' (provenance skipped) and created the row without tracking. Fixed by writing the create and its provenance in one transaction; legacy rows repaired by scraper/scripts/repair-create-provenance-1196.ts.",
+      "registryClass": "absence-that-looks-like-a-value",
+      "failThreshold": "any ipos row (any status, segment, offering_type) with a non-NULL value (issue_size > 0) in a column of scripts/lib/create-provenance-checks.mjs CREATE_PROVENANCE_COLUMNS and no field_sources row (table_name='ipos', row_key='') for that field",
+      "severity": "P2",
+      "unverifiableWhen": "ipos or field_sources is not readable, or field_sources.row_key is not yet migrated on this database (PASS, not-applicable, when the migration is confirmed absent) - reported as UNVERIFIABLE with the error otherwise, never as a PASS"
+    },
+    {
       "id": "zip_member_rows",
       "findingClass": "A multi-member exchange zip (NSE/BSE offer-document archive) produced a document row for only one of its members: every other non-GID member (a corrigendum, a price-band notice, an addendum) was dropped by the unwrap, so OD-30 precedence can never apply to it (F-154, failure class container-unwrapped-to-one-member).",
       "round7Findings": [],

@@ -30,8 +30,10 @@ vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@ipodhan/shared/repositories')>();
   return {
     ...actual,
+    // #1196: provenance is written through withDb(tx) inside the create's own transaction.
     FieldSourcesRepository: vi.fn().mockImplementation(() => ({
       bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock,
+      withDb: () => ({ bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock }),
     })),
     DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
     RegistrarRepository: vi.fn().mockImplementation(() => ({
@@ -80,7 +82,11 @@ function makeIpoRepository(createReturn: any) {
     // looks for an existing row with that symbol before inserting. The #654
     // positive controls are the first tests here to supply one.
     findBySymbol: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue(createReturn),
+    // The real repository runs `inTx` inside its create transaction; the fake runs it right after the insert.
+    create: vi.fn(async (_data: unknown, options?: { inTx?: (tx: unknown, created: unknown) => Promise<void> }) => {
+      await options?.inTx?.({ tag: 'create-tx' }, createReturn);
+      return createReturn;
+    }),
     update: vi.fn(),
   } as any;
 }

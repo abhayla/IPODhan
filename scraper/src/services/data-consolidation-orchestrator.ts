@@ -31,6 +31,7 @@ import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-n
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
 import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
+import { createProvenanceFields } from './create-provenance.js';
 import { DataConsolidationService } from './data-consolidation-service.js';
 import type { ConsolidationResult, FieldConsolidationResult } from './data-consolidation-service.js';
 import {
@@ -454,12 +455,29 @@ export class DataConsolidationOrchestrator {
       // `data-persister.ts` `upsertIPO`).
       if (isNew) {
         // Create new IPO
+        // #1196 (OD-88): consolidation ran with ipoId 'new', where provenance is skipped, so the create
+        // writes a field_sources row for every column it set - INSIDE the create's own transaction. A
+        // failed provenance write rolls the row back and fails the call (cause logged by the caller),
+        // so a row with no provenance can never be committed by this door.
+        const provenanceFields = FEATURE_FLAGS.ENABLE_SOURCE_TRACKING
+          ? createProvenanceFields(consolidatedIPOData as Record<string, unknown>, source)
+          : [];
         const newIPO = await this.ipoRepository.create({
           ...consolidatedIPOData,
           slug,
           createdAt: new Date(),
           updatedAt: new Date(),
-        } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
+        } as IPOInsert, {
+          sourceKeys: (scrapedIPO as any).sourceKeys ?? null,
+          boundBy: `scraper:${source}`,
+          ...(provenanceFields.length > 0
+            ? {
+                inTx: async (tx: unknown, created: { id: string }) => {
+                  await this.fieldSourcesRepository.withDb(tx).bulkTrackFieldUpdates(created.id, 'ipos', provenanceFields);
+                },
+              }
+            : {}),
+        });
 
         ipoId = newIPO.id;
 

@@ -2597,3 +2597,4 @@ test('(upcoming_source_drift) mutation guard: inverting the diff>tolerance check
 // they run in the pr-gate detection-floor step, which names only this file.
 import './zip-member-rows.test.mjs';
 import './hidden-ipo-child-writes.test.mjs';
+import './create-provenance-checks.test.mjs';

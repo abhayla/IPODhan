@@ -1544,7 +1544,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    */
   async create(
     data: IPOInsert,
-    options?: { identityHoldOverride?: { by: string; reason: string }; sourceKeys?: SourceKeyRef[] | null; boundBy?: string }
+    options?: {
+      identityHoldOverride?: { by: string; reason: string };
+      sourceKeys?: SourceKeyRef[] | null;
+      boundBy?: string;
+      /** #1196: work that commits or rolls back WITH the row (its provenance). A throw rolls the create back. */
+      inTx?: (tx: unknown, created: IPO) => Promise<void>;
+    }
   ): Promise<IPO> {
     // #860: an IPO's segment decides which manifest ranks its fields get
     // (`ipoTypeKey` needs it), so an IPO created without one has every ranked
@@ -1618,12 +1624,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // create. A concurrent create of the same record loses on the keys' unique index, and its row
       // insert rolls back with it — so two concurrent creates leave one row.
       const keys = normalizeSourceKeyRefs(options?.sourceKeys ?? []);
-      const ipo = keys.length === 0
+      const inTx = options?.inTx;
+      const ipo = keys.length === 0 && !inTx
         ? (await this.db.insert(ipos).values(data).returning())[0]
         : await this.db.transaction(async (tx) => {
             const [created] = await tx.insert(ipos).values(data).returning();
-            const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
-            noteSourceKeyBind(created.id, rec.insertedIds);
+            if (keys.length > 0) {
+              const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
+              noteSourceKeyBind(created.id, rec.insertedIds);
+            }
+            if (inTx) await inTx(tx, created);
             return created;
           });
 

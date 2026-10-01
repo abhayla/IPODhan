@@ -32,6 +32,7 @@ import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories'
 import { createConsolidationService, type FieldExtractionFailuresRecorder } from './consolidation-factory.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { readDocumentFilingDates } from './document-filing-dates.js';
+import { createProvenanceFields } from './create-provenance.js';
 import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
 import { eq as eqOp, and as andOp, or as orOp, isNull as isNullOp } from 'drizzle-orm';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
@@ -2467,31 +2468,27 @@ async function upsertIPOInScope(
           companyName: scrapedIPO.companyName,
         });
         const createData = lotGuardedIpoData as typeof ipoData;
+        // P3-11 (T-292) + #1196: lineage was previously written only on the UPDATE path (inside
+        // consolidation, above) - a brand-new row had ZERO field_sources rows. Track every field this
+        // scrape actually supplied, at full confidence, with no prior value (there is no prior row),
+        // INSIDE the create's own transaction: a failed provenance write rolls the row back.
+        const fieldsToTrack = FEATURE_FLAGS.ENABLE_SOURCE_TRACKING
+          ? createProvenanceFields(createData as Record<string, unknown>, source)
+          : [];
         const newIPO = await ipoRepository.create({
           ...createData,
           createdAt: new Date()
-        } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
-
-        // P3-11 (T-292): lineage was previously written only on the UPDATE path
-        // (inside consolidation, above) — a brand-new row had ZERO field_sources
-        // rows, which is exactly why P2-5's Priority Jewels row had no provenance
-        // to show it was single-sourced. Track every field this scrape actually
-        // supplied, at full confidence, with no prior value (there is no prior row).
-        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-          const fieldsToTrack = Object.entries(createData)
-            .filter(([, value]) => value !== undefined && value !== null)
-            .map(([fieldName]) => ({
-              fieldName,
-              source,
-              confidence: 100,
-              previousValue: null,
-            }));
-
-          if (fieldsToTrack.length > 0) {
-            const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
-            await fieldSourcesRepo.bulkTrackFieldUpdates(newIPO.id, 'ipos', fieldsToTrack);
-          }
-        }
+        } as IPOInsert, {
+          sourceKeys: (scrapedIPO as any).sourceKeys ?? null,
+          boundBy: `scraper:${source}`,
+          ...(fieldsToTrack.length > 0
+            ? {
+                inTx: async (tx: unknown, created: { id: string }) => {
+                  await new FieldSourcesRepository(db, getRedisClient()).withDb(tx).bulkTrackFieldUpdates(created.id, 'ipos', fieldsToTrack);
+                },
+              }
+            : {}),
+        });
 
         ledgerFacts = {
           source,
