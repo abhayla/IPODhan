@@ -36,7 +36,7 @@ export interface HolidayLookup {
 export const defaultHolidayLookup: HolidayLookup = {
   async isHoliday(dateIso: string): Promise<boolean> {
     const redis = getRedisClient();
-    const repo = new MarketHolidayRepository(db as never, redis as never);
+    const repo = new MarketHolidayRepository(db, redis);
     const rows = await repo.findByDateRange(dateIso, dateIso);
     return rows.some((r) => r.exchange === 'NSE' || r.exchange === 'BOTH');
   },

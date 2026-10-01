@@ -2495,8 +2495,8 @@ const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
  */
 async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceResult> {
   const redis = getRedisClient();
-  const fieldPlanRepository = new IpoFieldPlanRepository(db as never, redis as never);
-  const overrides = createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db as never }));
+  const fieldPlanRepository = new IpoFieldPlanRepository(db, redis);
+  const overrides = createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db }));
 
   const result = await resourceClosedIpo(ipoId, {
     countPlanRows: async (id) => {
@@ -2519,7 +2519,7 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
           overrides,
           fieldPlanRepository: fieldPlanRepository as never,
           // Tier A MAJOR-1 (§2.8): the type is re-read under the ipos lock inside the plant.
-          lockIpoType: createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, redis as never)),
+          lockIpoType: createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, redis)),
         }
       );
     },
@@ -2537,7 +2537,7 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
           sourceFetchers,
           // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
           gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
-          ipoRepository: new IPORepository(db as never, redis as never) as never,
+          ipoRepository: new IPORepository(db, redis) as never,
           overrides,
           trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
           ...buildFieldPlanWalkReopenDeps(),

@@ -227,7 +227,7 @@ export async function reopenPlanRowsForCompletedDocument(
     }
   }
   if (toReopen.length === 0 && unordered.length === 0) return { reopenedIds: [], unordered };
-  const repo = new IpoFieldPlanRepository(tx as never, null as never);
+  const repo = new IpoFieldPlanRepository(tx as never, null);
   const { reopenedIds } = await repo.reopenSuperseded(toReopen);
   logger.info(
     {

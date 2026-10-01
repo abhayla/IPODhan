@@ -1,0 +1,10 @@
+{
+  "_doc": "Constructor arguments still passed through a type-erasing cast (#1187). Each entry needs a reason; the check fails on any new one and on any entry no longer present. Keyed by file + expression text, with an optional count.",
+  "entries": [
+    { "file": "scraper/src/index.ts", "text": "tx as never", "reason": "createIpoTypeShareLock types its writer callback (tx: unknown) (field-plan-planting.ts:66); retyping TxCapableDb's transaction handle is a separate types change." },
+    { "file": "scraper/src/services/document-cycle.ts", "text": "tx as never", "reason": "createIpoTypeShareLock types its writer callback (tx: unknown) (field-plan-planting.ts:66); retyping TxCapableDb's transaction handle is a separate types change." },
+    { "file": "scraper/src/services/plan-supersession.ts", "text": "tx as never", "reason": "the transaction arrives as the narrow ExecuteLike interface, not a NodePgDatabase; retyping the caller chain is a separate types change." },
+    { "file": "packages/shared/src/services/admin-ipo-create.ts", "text": "redis ?? noRedis", "reason": "noRedis is a deliberate no-op stub of the five Redis methods the repository cache path calls, used when the admin create runs without a Redis client." },
+    { "file": "packages/shared/src/services/admin-ipo-create.ts", "text": "noRedis", "reason": "noRedis is a deliberate no-op stub of the five Redis methods the repository cache path calls, used inside the create transaction." }
+  ]
+}

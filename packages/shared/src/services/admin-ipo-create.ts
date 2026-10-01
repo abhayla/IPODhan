@@ -45,6 +45,7 @@ import { generateIPOSlug } from '../utils/slug';
 import { logger } from '../logger';
 import { lockIdentifierValues } from './admin-identifier-alias';
 
+import type Redis from 'ioredis';
 type Db = NodePgDatabase<typeof schema>;
 
 export type AdminIdentifierKind =
@@ -181,7 +182,7 @@ const noRedis = {
   keys: async () => [], scan: async () => ['0', []],
 } as never;
 
-export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis?: unknown): Promise<AdminIpoCreateResult> {
+export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis?: Redis): Promise<AdminIpoCreateResult> {
   const companyName = typeof input.companyName === 'string' ? input.companyName.replace(/\s+/g, ' ').trim() : '';
   if (!companyName || companyName.length > 255) return { kind: 'INVALID', reason: 'The company name is required (up to 255 characters).' };
   if (!(OFFERING_TYPES as readonly string[]).includes(input.offeringType)) {
@@ -199,7 +200,7 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
   if (!parsed.ok || !parsed.identity) return { kind: 'INVALID', reason: parsed.reason ?? 'The identifiers are not valid.' };
   const { cin, symbol, keys } = parsed.identity;
 
-  const repo = new IPORepository(db as never, (redis ?? noRedis) as never);
+  const repo = new IPORepository(db, redis ?? noRedis);
   const slug = generateIPOSlug(companyName);
 
   // Tier A MINOR 2: the uniqueness checks and the insert run in ONE transaction that first takes a
@@ -217,7 +218,7 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
     // Every hold recorded inside this scope is tagged admin-create (#1299), whichever path reaches it.
     outcome = await withHoldOrigin('admin-create', () => db.transaction(async (tx) => {
       await lockIdentifierValues(tx as never, lockKeys);
-      const txRepo = new IPORepository(tx as never, noRedis);
+      const txRepo = new IPORepository(tx, noRedis);
       // A refusal RETURNS (the transaction commits), so a hold the resolver records stays recorded.
       const refusal = await refuseIfAlreadyThere(tx as never, txRepo, {
         companyName, slug, cin, symbol, segment, offeringType: input.offeringType, keys,
