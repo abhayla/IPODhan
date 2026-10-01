@@ -3014,6 +3014,8 @@ The holiday calendar is reference data the schema already carries; a working-day
 name its holiday source is not implementable, and the two rules that use this were written for a day
 without naming it.
 
+**F-220 (2026-10-02, open):** the calendar the schema carries is not clean. On staging the 23 NSE-only 2025 trading-holiday rows are each one day early (Good Friday on Thursday 2025-04-17; the BOTH row has 2025-04-18), and they are the only NSE-vs-BSE difference in `market_holidays`. NSE and BSE trading holidays are one set; a working-day rule reads the trading holidays of either exchange only after those 23 rows are retired (#1380).
+
 #### Why this is a section and not a finding
 
 A finding gets fixed once. This is a **question to ask of every rule**, including the ones written

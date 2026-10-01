@@ -1,0 +1,116 @@
+{
+  "measuredAt": "2026-10-01T19:03:35.025Z",
+  "database": "ipodhan_staging",
+  "byYear": [
+    {
+      "year": 2024,
+      "exchange": "BOTH",
+      "type": "TRADING",
+      "n": 18
+    },
+    {
+      "year": 2025,
+      "exchange": "BOTH",
+      "type": "TRADING",
+      "n": 20
+    },
+    {
+      "year": 2025,
+      "exchange": "NSE",
+      "type": "TRADING",
+      "n": 23
+    },
+    {
+      "year": 2026,
+      "exchange": "BOTH",
+      "type": "TRADING",
+      "n": 20
+    }
+  ],
+  "nseBseDifferences": [
+    {
+      "d": "2025-01-25",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-02-18",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-02-25",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-03-13",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-03-29",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-03-30",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-04-05",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-04-09",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-04-13",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-04-17",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-04-30",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-05-11",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-06-06",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-07-05",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-08-14",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-08-26",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-09-07",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-10-01",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-10-20",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-11-04",
+      "side": "NSE_ONLY"
+    },
+    {
+      "d": "2025-12-24",
+      "side": "NSE_ONLY"
+    }
+  ]
+}
