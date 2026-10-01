@@ -303,3 +303,42 @@ def test_ambiguous_short_headings_are_still_refused(heading):
                            "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 12.00%"),
                      "current_ratio", (2025, 3, 31))
     assert got["value"] is None, got
+
+
+# ------------------------------------------------ #1420 / F-219: wrapped labels
+# A printed row whose LABEL wraps around its value line was read as absent
+# (ratio_row_not_in_note). Two real notes print it that way:
+#   German Green p440: "Inventory Turnover <prose>" / "5 Total Revenue ... 5.63
+#   6.02 8.85 -6.41% (31.97)%" / "Ratio <prose>"
+#   Water Infra p427:  "Inventory Turnover" / "over Average 3.00 3.57 4.67
+#   (16.02%) (23.51%) - -" / "Ratio"
+
+
+@pytest.mark.parametrize("fixture,latest,value", [
+    ("german-green-steel-ratio-analysis.txt", FY26, 5.63),
+    ("german-green-steel-ratio-analysis.txt", FY25, 6.02),
+    ("water-infra-ratios-analysis.txt", FY25, 3.00),
+])
+def test_a_wrapped_inventory_turnover_label_is_read(fixture, latest, value):
+    got = read_ratio(pages(fixture), "inventory_turnover", latest)
+    assert got.get("value") == value, got
+
+
+def test_a_wrapped_label_is_not_stitched_across_another_ratios_row():
+    """The join is bounded to head / ONE values line / tail. A values line that
+    carries another ratio's label belongs to that ratio, not to the wrapped one."""
+    note = _note(_HEAD.format("FY 25-26 FY 24-25"),
+                 "Inventory Turnover",
+                 "6 Trade Receivables Turnover Ratio Revenue Receivables 7.10 6.90 2.90%",
+                 "Ratio")
+    got = read_ratio(note, "inventory_turnover", FY26)
+    assert got.get("value") is None and got["reason"] == "ratio_row_not_in_note", got
+
+
+def test_a_wrapped_label_with_values_on_the_head_line_is_read():
+    """Synthetic layout (no real fixture yet): the serial, the label head and
+    the values on one line, the label's last word alone on the next."""
+    note = _note(_HEAD.format("FY 25-26 FY 24-25"),
+                 "5 Inventory Turnover Cost of goods sold Average inventory 4.40 4.10 7.32%",
+                 "Ratio")
+    assert read_ratio(note, "inventory_turnover", FY26).get("value") == 4.40

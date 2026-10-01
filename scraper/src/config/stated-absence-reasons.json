@@ -1,0 +1,30 @@
+{
+  "$comment": "#1420 / F-219 / OD-158. The ONE list of extractor reasons that mean the document itself STATES a field does not apply or is not printed. Read by scraper/scripts/answer_states.py (state STATED_NOT_PRINTED) and by scraper/src/config/stated-absence-reasons.ts. A reason belongs here only when the extractor emits it after reading a printed statement of absence; a reason emitted because a pattern found nothing (a *_not_in_document / *_not_found miss) never does, because OD-158 clears a stored value on a stated absence and keeps it on a miss.",
+  "reasons": [
+    {
+      "reason": "not_ascertainable_loss",
+      "emittedBy": "scraper/scripts/extract_filing.py (pe_at_floor, pe_at_cap)",
+      "printedStatement": "PRICE TO EARNINGS RATIO IS NOT ASCERTAINABLE"
+    },
+    {
+      "reason": "not_priced_yet",
+      "emittedBy": "scraper/scripts/extract_filing.py (issue_price)",
+      "printedStatement": "AT A PRICE OF followed by a [*] placeholder (price fixed only in the Prospectus)"
+    },
+    {
+      "reason": "bonus_nil",
+      "emittedBy": "scraper/scripts/extract_filing.py (waca_last_1y)",
+      "printedStatement": "the last-one-year WACA row prints Nil"
+    },
+    {
+      "reason": "not_applicable_no_qualifying_transaction",
+      "emittedBy": "scraper/scripts/extract_filing.py (waca_last_3y, cap_multiple_last_3y)",
+      "printedStatement": "the last-three-years row prints Not Applicable"
+    },
+    {
+      "reason": "peer_comparison_issuer_states_no_listed_peers",
+      "emittedBy": "scraper/scripts/peer_companies.py NO_LISTED_PEERS (peer_companies)",
+      "printedStatement": "there are no listed peers / companies comparable to the issuer"
+    }
+  ]
+}
