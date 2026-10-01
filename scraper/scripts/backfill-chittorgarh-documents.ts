@@ -28,6 +28,7 @@ import type { DocumentInsert } from '@ipodhan/shared/repositories/types';
 import {
   fetchChittorgarhProspectusRows,
   type ChittorgarhProspectusRow,
+  resolveProspectusRowType,
 } from '../src/scrapers/chittorgarh-document-scraper.js';
 import logger from '../src/utils/logger.js';
 
@@ -114,6 +115,33 @@ export async function main() {
     }
     plans.push({ ipo, row, via });
     matchedIpoIds.add(ipo.id);
+  }
+
+  // #1417: a row whose file name names no DRHP/RHP/PROSPECTUS is typed by its cover page;
+  // one that cannot be proven an offer document is reported and NOT stored (never defaulted).
+  const unresolved: Array<{ company: string; url: string; reason: string }> = [];
+  for (let i = plans.length - 1; i >= 0; i--) {
+    const p = plans[i];
+    if (p.row.docType) continue;
+    const res = await resolveProspectusRowType(p.row, {
+      fetchPdf: async (u) => {
+        try {
+          const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(60000) });
+          return r.ok ? Buffer.from(await r.arrayBuffer()) : null;
+        } catch {
+          return null;
+        }
+      },
+    });
+    if (res.ok === true) p.row = { ...p.row, docType: res.docType };
+    else if (res.ok === false) {
+      unresolved.push({ company: p.ipo.companyName, url: p.row.pdfUrl, reason: res.reason });
+      plans.splice(i, 1);
+    }
+  }
+  if (unresolved.length) {
+    console.log(`  NOT STORED (file name names no offer type and the cover does not prove one): ${unresolved.length}`);
+    for (const u of unresolved) console.log(`   - [${u.reason}] ${u.company} -> ${u.url}`);
   }
 
   const viaCounts = plans.reduce<Record<string, number>>((a, p) => ((a[p.via] = (a[p.via] || 0) + 1), a), {});

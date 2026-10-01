@@ -11,8 +11,17 @@ import {
   extractAnchorHref,
   detectProspectusDocType,
   parseProspectusReportRows,
+  resolveProspectusRowType,
   type ChittorgarhProspectusRow,
 } from '../../../src/scrapers/chittorgarh-document-scraper.js';
+import { classifyOfferDocumentCover } from '../../../src/services/document-classifier.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+// #1417: REAL cover text (pdf-parse page 1) of Chittorgarh-linked PDFs whose URL file name names no
+// offer-document type, captured from the live links 2026-10-02 (staging rows, stored PROSPECTUS by default).
+const FIXTURE_DIR = fileURLToPath(new URL('../../fixtures/chittorgarh-untyped-covers/', import.meta.url));
+const fixture = (name: string): string => readFileSync(FIXTURE_DIR + name, 'utf8');
 
 // Verbatim row from report 20 (2026-06-16)
 const REAL_ROW = {
@@ -63,9 +72,19 @@ describe('chittorgarh-document-scraper', () => {
     it('#1116: a draft file name still wins over a folder name', () => {
       expect(detectProspectusDocType('https://x.com/RHP/Company_DRHP.pdf', 'BSE')).toBe('DRHP');
     });
-    it('#1116: a file name that names no type is NOT typed from the folder (RHP/Annual_Report -> default PROSPECTUS)', () => {
-      expect(detectProspectusDocType('https://x.com/RHP/Annual_Report_2026.pdf', 'BSE')).toBe('PROSPECTUS');
-      expect(detectProspectusDocType('https://x.com/DRHP/Annual_Report_2026.pdf', 'BSE')).toBe('PROSPECTUS');
+    it('#1116/#1417: a file name that names no type is NOT typed from the folder and NOT defaulted (null)', () => {
+      expect(detectProspectusDocType('https://x.com/RHP/Annual_Report_2026.pdf', 'BSE')).toBeNull();
+      expect(detectProspectusDocType('https://x.com/DRHP/Annual_Report_2026.pdf', 'BSE')).toBeNull();
+    });
+    it('#1417: real staging file names that name no type are null (never defaulted to PROSPECTUS)', () => {
+      for (const u of [
+        'https://hemadmin.hemsecurities.com/images/Files/offer/997.pdf',
+        'https://nsearchives.nseindia.com/corporate/FP_INE0P8B01020_25FEB2026.pdf',
+        'https://www.manilam.com//uploads/investors/42/42.pdf',
+        'https://www.sebi.gov.in/web/?file=https://www.sebi.gov.in/sebi_data/attachdocs/feb-2026/1770955551279.pdf#page=1&zoom=page-width,-16,842',
+      ]) {
+        expect(detectProspectusDocType(u, 'NSE')).toBeNull();
+      }
     });
     it('defaults to PROSPECTUS for a generic prospectus pdf', () => {
       expect(detectProspectusDocType('https://beelinemb.com/PROSPECTUS_MODERN.pdf', 'BSE')).toBe(
@@ -97,6 +116,102 @@ describe('chittorgarh-document-scraper', () => {
     it('handles an empty report safely', () => {
       expect(parseProspectusReportRows([])).toEqual([]);
       expect(parseProspectusReportRows(null as unknown as any[])).toEqual([]);
+    });
+  });
+
+  describe('classifyOfferDocumentCover (#1417, real covers)', () => {
+    it('types a real final-prospectus cover whose URL name was "997.pdf" as PROSPECTUS', () => {
+      expect(classifyOfferDocumentCover(fixture('adisoft-997.cover.txt'))).toBe('PROSPECTUS');
+    });
+    it('types a real final-prospectus cover whose URL name was "FP_INE...pdf" as PROSPECTUS', () => {
+      expect(classifyOfferDocumentCover(fixture('gaudium-fp-ine0p8b01020.cover.txt'))).toBe('PROSPECTUS');
+    });
+    it('a real cover that names no offer-document type in its title position is null (QR note only)', () => {
+      expect(classifyOfferDocumentCover(fixture('fractal-sebi-viewer.cover.txt'))).toBeNull();
+    });
+    it('a QR note naming "Draft Red Herring Prospectus" does not type a non-offer cover', () => {
+      expect(classifyOfferDocumentCover('ANNUAL REPORT 2025-26\nACME LIMITED\nNotice of AGM')).toBeNull();
+      expect(classifyOfferDocumentCover('')).toBeNull();
+    });
+    it('types DRHP / RHP covers by their title, ahead of the bare word Prospectus', () => {
+      expect(classifyOfferDocumentCover('DRAFT RED HERRING PROSPECTUS\nDated: May 1, 2026\nACME LIMITED')).toBe('DRHP');
+      expect(classifyOfferDocumentCover('RED HERRING PROSPECTUS\nDated: May 1, 2026\nACME LIMITED')).toBe('RHP');
+    });
+    it('types three more real final-prospectus covers (pdftotext page 1) as PROSPECTUS', () => {
+      expect(classifyOfferDocumentCover(fixture('kwick-forensic-prospectus.cover.txt'))).toBe('PROSPECTUS');
+      expect(classifyOfferDocumentCover(fixture('digilogic-prospectus.cover.txt'))).toBe('PROSPECTUS');
+      expect(classifyOfferDocumentCover(fixture('modern-diagnostic-prospectus.cover.txt'))).toBe('PROSPECTUS');
+    });
+    it('types a real RHP cover as RHP (QR note says "view the RHP")', () => {
+      expect(classifyOfferDocumentCover(fixture('dove-soft-rhp.cover.txt'))).toBe('RHP');
+    });
+    it('a final prospectus whose cover says "to be read with the Red Herring Prospectus dated" stays PROSPECTUS (own title decides)', () => {
+      // LF-normalised: a Windows checkout stores the fixture with CRLF, and the inserted line must still land.
+      const real = fixture('adisoft-997.cover.txt').replace(/\r\n/g, '\n');
+      const withRef = real.replace(
+        'Dated: April 28, 2026\n',
+        'Dated: April 28, 2026\nThis Prospectus is to be read with the Red Herring Prospectus dated April 10, 2026\n'
+      );
+      expect(withRef).not.toBe(real);
+      expect(classifyOfferDocumentCover(withRef)).toBe('PROSPECTUS');
+    });
+    it('a notice / annual report / addendum that merely mentions the RHP is never an offer document', () => {
+      expect(classifyOfferDocumentCover('NOTICE\nACME LIMITED\nThe Red Herring Prospectus dated May 1, 2026 has been filed with the RoC')).toBeNull();
+      expect(classifyOfferDocumentCover('ANNUAL REPORT 2025-26\nACME LIMITED\nRed Herring Prospectus\nDated: May 1, 2026')).toBeNull();
+      expect(classifyOfferDocumentCover('CORRIGENDUM\nto the Red Herring Prospectus dated May 1, 2026')).toBeNull();
+      expect(classifyOfferDocumentCover('ADVERTISEMENT\nACME LIMITED\nthe Red Herring Prospectus dated May 1, 2026')).toBeNull();
+    });
+    it('an addendum / abridged prospectus / advertisement cover is not an offer document', () => {
+      expect(classifyOfferDocumentCover('ADDENDUM TO THE PROSPECTUS\nDated: May 1, 2026')).toBeNull();
+      expect(classifyOfferDocumentCover('ABRIDGED PROSPECTUS\nACME LIMITED')).toBeNull();
+    });
+  });
+
+  describe('resolveProspectusRowType (#1417): untyped file name is typed by the cover, never defaulted', () => {
+    const row = (pdfUrl: string): ChittorgarhProspectusRow => ({
+      companyName: 'X Ltd', slug: 'x', isin: null, bseScripCode: null, nseSymbol: null,
+      exchange: 'NSE', issueType: null, openDate: null, pdfUrl, docType: null,
+    });
+    const pdf = Buffer.from('%PDF-1.7 fake');
+    it('types the row from the cover text', async () => {
+      const out = await resolveProspectusRowType(row('https://h.com/997.pdf'), {
+        fetchPdf: async () => pdf,
+        coverText: async () => ({ usable: true, text: fixture('adisoft-997.cover.txt'), alnum: 999 }),
+      });
+      expect(out).toEqual({ ok: true, docType: 'PROSPECTUS' });
+    });
+    it('a real HTML maintenance page behind a .pdf link is not a document (reason not_pdf)', async () => {
+      const out = await resolveProspectusRowType(row('https://www.manilam.com//uploads/investors/42/42.pdf'), {
+        fetchPdf: async () => readFileSync(FIXTURE_DIR + 'manilam-42.html'),
+        coverText: async () => { throw new Error('must not read the cover of a non-PDF'); },
+      });
+      expect(out).toEqual({ ok: false, reason: 'not_pdf' });
+    });
+    it('an unreadable or title-less cover is unclassified, not PROSPECTUS', async () => {
+      const noText = await resolveProspectusRowType(row('https://h.com/a.pdf'), {
+        fetchPdf: async () => pdf,
+        coverText: async () => ({ usable: false, reason: 'no_text_layer', detail: 'x' }),
+      });
+      expect(noText).toEqual({ ok: false, reason: 'cover_unreadable' });
+      const noTitle = await resolveProspectusRowType(row('https://h.com/a.pdf'), {
+        fetchPdf: async () => pdf,
+        coverText: async () => ({ usable: true, text: fixture('fractal-sebi-viewer.cover.txt'), alnum: 999 }),
+      });
+      expect(noTitle).toEqual({ ok: false, reason: 'cover_names_no_offer_type' });
+    });
+    it('a download failure is reported, never typed', async () => {
+      const out = await resolveProspectusRowType(row('https://h.com/a.pdf'), {
+        fetchPdf: async () => null,
+        coverText: async () => { throw new Error('unused'); },
+      });
+      expect(out).toEqual({ ok: false, reason: 'fetch_failed' });
+    });
+    it('a row already typed by its file name is returned as-is without any fetch', async () => {
+      const out = await resolveProspectusRowType({ ...row('https://x.com/a_DRHP.pdf'), docType: 'DRHP' }, {
+        fetchPdf: async () => { throw new Error('no fetch'); },
+        coverText: async () => { throw new Error('no cover'); },
+      });
+      expect(out).toEqual({ ok: true, docType: 'DRHP' });
     });
   });
 });

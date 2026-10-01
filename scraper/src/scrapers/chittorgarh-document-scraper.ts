@@ -17,7 +17,9 @@
  * is a separate, deferred concern (C3b). We store the real external PDF URL — never a fabricated one.
  */
 import logger from '../utils/logger.js';
-import { classifyByTitle, fileNameFromUrl } from '../services/document-classifier.js';
+import { classifyByTitle, classifyOfferDocumentCover, fileNameFromUrl } from '../services/document-classifier.js';
+import { looksLikePdf } from '../services/primary-source-discovery.js';
+import { extractCoverText, type CoverTextResult } from '../services/pdf-cover-text.js';
 
 export type ProspectusDocType = 'DRHP' | 'RHP' | 'PROSPECTUS';
 
@@ -31,7 +33,8 @@ export interface ChittorgarhProspectusRow {
   issueType: string | null;
   openDate: string | null;
   pdfUrl: string;
-  docType: ProspectusDocType;
+  /** null = the file name names no offer-document type; resolve by cover (#1417), never default. */
+  docType: ProspectusDocType | null;
 }
 
 const CHITTORGARH_API_BASE = 'https://webnodejs.chittorgarh.com/cloud/report/data-read';
@@ -55,17 +58,50 @@ export function extractAnchorHref(html: string | null | undefined): string | nul
  * Classify a prospectus PDF by its FILE NAME only, through the shared classifier
  * (#1116: Gabion's final Prospectus sat at '/RHP/Final%20Prospectus.pdf' and the
  * whole-URL test typed it RHP from the folder name). The folder and host never
- * decide: a file name that names none of the three types gets the default for
- * this source (report 20 is the prospectus list), PROSPECTUS.
+ * decide. A file name that names none of the three returns null (#1417): the old
+ * default of PROSPECTUS typed a non-offer PDF (an annual report) as the terminal,
+ * top-ranked final prospectus (OD-30, OD-154). Such a row is typed by its cover
+ * (`resolveProspectusRowType`) or not stored.
  */
 export function detectProspectusDocType(
   url: string,
   _exchange?: string | null,
   _issueType?: string | null
-): ProspectusDocType {
+): ProspectusDocType | null {
   const fromName = classifyByTitle(fileNameFromUrl(url));
   if (fromName === 'DRHP' || fromName === 'RHP' || fromName === 'PROSPECTUS') return fromName;
-  return 'PROSPECTUS';
+  return null;
+}
+
+export type ProspectusTypeResolution =
+  | { ok: true; docType: ProspectusDocType }
+  | { ok: false; reason: 'fetch_failed' | 'not_pdf' | 'cover_unreadable' | 'cover_names_no_offer_type' };
+
+export interface ProspectusTypeResolverDeps {
+  fetchPdf: (url: string) => Promise<Buffer | null>;
+  coverText?: (pdf: Buffer) => Promise<CoverTextResult>;
+}
+
+/**
+ * Type a Chittorgarh row whose file name named no type, from the downloaded PDF's cover
+ * page (#1417). Anything that is not provably an offer document (download failed, not a
+ * PDF, unreadable cover, cover names no DRHP/RHP/PROSPECTUS title) is reported with its
+ * reason and is NOT stored under a guessed type (same convention as an unclassified zip
+ * member, document-download-verifier.ts).
+ */
+export async function resolveProspectusRowType(
+  row: ChittorgarhProspectusRow,
+  deps: ProspectusTypeResolverDeps
+): Promise<ProspectusTypeResolution> {
+  if (row.docType) return { ok: true, docType: row.docType };
+  const pdf = await deps.fetchPdf(row.pdfUrl);
+  if (!pdf) return { ok: false, reason: 'fetch_failed' };
+  if (!looksLikePdf(pdf)) return { ok: false, reason: 'not_pdf' };
+  const cover = await (deps.coverText ?? extractCoverText)(pdf);
+  if (!cover.usable) return { ok: false, reason: 'cover_unreadable' };
+  const t = classifyOfferDocumentCover(cover.text);
+  if (t === 'DRHP' || t === 'RHP' || t === 'PROSPECTUS') return { ok: true, docType: t };
+  return { ok: false, reason: 'cover_names_no_offer_type' };
 }
 
 function str(v: unknown): string | null {

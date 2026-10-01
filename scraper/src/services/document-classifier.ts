@@ -128,6 +128,55 @@ export function classifyByTitle(rawTitle: string | null | undefined): DocumentTy
 }
 
 /**
+ * How many leading non-empty cover lines may hold the document's own title (#1417).
+ * Measured on 17 real Chittorgarh-linked prospectus covers (2026-10-02) plus the DRHP/RHP
+ * covers in the fixtures: the title is the first or second line once the leading
+ * "(Please scan this QR code to view the ...)" note is removed; 12 leaves room for the
+ * issuer name and CIN lines that sometimes precede it.
+ */
+const COVER_TITLE_LINES = 12;
+
+/** A line that IS an offer-document title: the title phrase alone, optionally "Dated: <date>". */
+const COVER_TITLE_LINE = /^(draft red herring prospectus|red herring prospectus|prospectus)(?:\s+(?:dated|date)\b.*)?$/;
+
+/** Covers that are never an offer document, however they quote one. */
+const NON_OFFER_COVER = /\b(annual report|notice|addendum|corrigendum|abridged|advertisement)\b/;
+
+/**
+ * Type an OFFER document (DRHP / RHP / PROSPECTUS) from its COVER PAGE text (#1417), for a
+ * file whose URL name names no type ("997.pdf", "FP_INE0P8B01020_25FEB2026.pdf").
+ * Returns null when the cover names no offer-document type: a caller must never default
+ * to PROSPECTUS (OD-30 makes the final prospectus terminal, OD-154 ranks it first, so a
+ * wrongly typed annual report would outrank the real RHP).
+ *
+ * The document's OWN title decides: a line that is only "PROSPECTUS" / "RED HERRING
+ * PROSPECTUS" / "DRAFT RED HERRING PROSPECTUS" (optionally "Dated: ..."). A later reference
+ * to another document ("to be read with the Red Herring Prospectus dated ...", "filed with",
+ * a notice quoting the RHP) is a sentence, never a title line, so it never decides. The
+ * parenthesised QR note is dropped first. A cover with an annual report / notice / addendum /
+ * corrigendum / abridged prospectus / advertisement marker at or before the title is not an
+ * offer document. Pure: no IO.
+ */
+export function classifyOfferDocumentCover(coverText: string | null | undefined): DocumentType | null {
+  if (typeof coverText !== 'string') return null;
+  const lines = coverText
+    .replace(/\([^)]*\)/g, ' ')
+    .split(/\r?\n/)
+    .map((l) => l.toLowerCase().replace(/[_\-.:]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((l) => l !== '')
+    .slice(0, COVER_TITLE_LINES);
+  for (const line of lines) {
+    if (NON_OFFER_COVER.test(line)) return null;
+    const m = COVER_TITLE_LINE.exec(line);
+    if (!m) continue;
+    if (m[1] === 'draft red herring prospectus') return 'DRHP';
+    if (m[1] === 'red herring prospectus') return 'RHP';
+    return 'PROSPECTUS';
+  }
+  return null;
+}
+
+/**
  * The BSE core-API (`GetMkt_ISSUE_BBS_IPO`) fields that carry document links,
  * with the type each field means BY DEFAULT. Verified live 2026-08-28 against
  * IPO_NO=7903 (Skyways): all four are populated, `Anchor_Details` is empty.
