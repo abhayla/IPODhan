@@ -9,6 +9,7 @@ import { sql, inArray, eq } from 'drizzle-orm';
 // node_modules junctions resolve the alias back to the PRIMARY checkout, which
 // does not yet carry this slice's edits).
 import * as schema from '../../../packages/shared/src/db/schema';
+import { decideBackwardMove } from '../../../packages/shared/src/utils/ipo-status-ladder';
 import { FieldSourcesRepository as SharedFieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 // The web copy is a BYTE-PARALLEL repository (same class, same line numbers)
 // that the Next.js app and `web/tests/integration/data-flow/*` actually
@@ -428,6 +429,48 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
       const byNewKey = await repo!.findByField(IPO_ID, 'ipo_gmp_cache_check', 'gmpValue', 'CACHE_B');
       expect(byNewKey?.rowKey).toBe('CACHE_B');
       expect(byNewKey?.source).toBe('NSE');
+    });
+
+    it('#1311: a write with previousValue but no previousSource carries the stored row source as previous_source', async () => {
+      const tdb = drizzle(pool!, { schema });
+      await tdb.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'NSE', previousValue: null });
+      // The fallback persister's shape: previousValue set, previousSource omitted.
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'NSE', previousValue: '2026-09-10' });
+      const [r] = await tdb.select({ pv: schema.fieldSources.previousValue, ps: schema.fieldSources.previousSource }).from(schema.fieldSources)
+        .where(sql`${schema.fieldSources.ipoId} = ${IPO_ID} AND ${schema.fieldSources.fieldName} = 'closeDate'`);
+      expect(r).toEqual({ pv: '2026-09-10', ps: 'NSE' });
+    });
+
+    it('#1311 / OD-73: an identical incoming value changes nothing (source, confidence, updated_at, previous_*) and the ladder still refuses the backward move', async () => {
+      const tdb = drizzle(pool!, { schema });
+      await tdb.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+      const read = async (field: string) => {
+        const [r] = await tdb.select().from(schema.fieldSources)
+          .where(sql`${schema.fieldSources.ipoId} = ${IPO_ID} AND ${schema.fieldSources.fieldName} = ${field}`);
+        return r;
+      };
+      // An exchange extension: NSE moved the close date 2026-09-10 -> 2026-09-12.
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'NSE', confidence: 95, previousValue: '2026-09-10', previousSource: 'NSE', incomingValue: '2026-09-12' } as never);
+      await new Promise((r) => setTimeout(r, 60));
+      // The status was written AFTER the extension.
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'status', source: 'NSE', previousValue: null });
+      await new Promise((r) => setTimeout(r, 60));
+      const before = await read('closeDate');
+      // A later write of the SAME value from another source (previous = stored = new).
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'BSE', confidence: 60, previousValue: '2026-09-12', previousSource: 'NSE', incomingValue: '2026-09-12' } as never);
+      const after = await read('closeDate');
+      expect(after.source).toBe('NSE');
+      expect(after.confidence).toBe(95);
+      expect(after.previousValue).toBe('2026-09-10');
+      expect(after.previousSource).toBe('NSE');
+      expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
+      const status = await read('status');
+      const evidence = [after, status].map((r) => ({
+        fieldName: r.fieldName, source: r.source, previousValue: r.previousValue, previousSource: r.previousSource, updatedAt: r.updatedAt,
+      }));
+      const decision = decideBackwardMove('CLOSED', 'OPEN', { closeDate: '2026-09-12' } as never, evidence);
+      expect(decision.allowed).toBe(false);
     });
   });
 });

@@ -39,6 +39,11 @@ export interface TrackFieldUpdateInput {
   confidence?: number;
   previousValue?: string | null;
   previousSource?: ScraperSource | null;
+  /** #1311: the serialized value this write stores, in the same form as `previousValue`. When it
+   *  equals `previousValue` the write is an identical restamp and keeps the stored
+   *  previous_value/previous_source (the evidence of the last real change, e.g. an exchange
+   *  moving a date later, §2.9). Omitted: no restamp detection. */
+  incomingValue?: string | null;
   dataLineage?: Record<string, unknown>;
   updatedBy?: string;
 }
@@ -167,11 +172,16 @@ export class FieldSourcesRepository extends BaseRepository {
    * Records which source provided the field value
    */
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
+    const restamp =
+      input.incomingValue !== undefined && input.previousValue != null && input.incomingValue === input.previousValue;
     const keepAdmin = (column: unknown, incoming: SQL) =>
       input.source === 'ADMIN'
         ? incoming
         : sql`CASE WHEN ${fieldSources.source} = 'ADMIN' THEN ${column} ELSE ${incoming} END`;
     const rowKey = input.rowKey ?? '';
+    const restampSet = {
+      rowKey,
+    };
 
     // rowKey is part of the ON CONFLICT target below (item 1 slice s18), so an
     // upsert can never move an existing row from one rowKey to another: a
@@ -208,14 +218,27 @@ export class FieldSourcesRepository extends BaseRepository {
               fieldSources.rowKey,
               fieldSources.fieldName,
             ],
-            set: {
+            // #1311 / OD-73: an identical incoming value is never written and never re-stamps
+            // provenance. Nothing else is touched: source, confidence, previous_* and updated_at stay put, so
+            // an old date extension cannot look newer than the IPO's status to the ladder.
+            set: restamp ? restampSet : {
               rowKey,
               // §9.2 item 19 / OD-131: a non-ADMIN write never takes over an ADMIN provenance row
               // (same rule as packages/shared's trackFieldUpdate).
               source: keepAdmin(fieldSources.source, sql`${input.source}`),
               confidence: keepAdmin(fieldSources.confidence, sql`${input.confidence ?? 100}`),
+              // #1311: a write that names a previous value but not its source carries the
+              // stored row's source (assumption: the stored row's source set that previous value),
+              // so a later reader never sees a change with no origin.
               previousValue: keepAdmin(fieldSources.previousValue, sql`${input.previousValue || null}`),
-              previousSource: keepAdmin(fieldSources.previousSource, sql`${input.previousSource || null}`),
+              previousSource: keepAdmin(
+                fieldSources.previousSource,
+                input.previousSource
+                  ? sql`${input.previousSource}`
+                  : input.previousValue
+                    ? sql`${fieldSources.source}`
+                    : sql`${null}`
+              ),
               // #755 (mirrors packages/shared's PR #753 MAJOR-4 fix): MERGE, never replace. A
               // plain object here REPLACES the whole jsonb column on conflict, so a
               // provenance-only write (e.g. `{policyOrigin}`) silently destroyed whatever
