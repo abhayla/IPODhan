@@ -22,10 +22,6 @@
       "reason": "Walk step G4 harness that persists one filing through filing-persister.js (indirect writer); has --apply but no prod refusal. Migration to openRepairDb tracked in #1384."
     },
     {
-      "file": "scraper/scripts/reclassify-trust-shape-ipos-t277.ts",
-      "reason": "T-277 one-shot db.update(ipos) reclassification with no dry-run flag at all; guarding it means adding a dry-run model first (or deleting it as done). Migration to openRepairDb tracked in #1384."
-    },
-    {
       "file": "scraper/scripts/reresolve-registrar-id-t300.ts",
       "reason": "T-300 one-shot repair that writes through registrar-reresolve.js (indirect); has --apply but no prod refusal. Migration to openRepairDb tracked in #1384."
     },
@@ -76,10 +72,6 @@
     {
       "file": "scraper/src/scripts/ingest-historical-ipo.ts",
       "reason": "Legacy ingest writing through data-persister.js (indirect); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
-    },
-    {
-      "file": "scraper/src/scripts/reclassify-corporate-actions.ts",
-      "reason": "Legacy reclassification running raw UPDATE ipos SET over pg; no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
     },
     {
       "file": "scraper/src/scripts/retype-misclassified-documents.ts",
