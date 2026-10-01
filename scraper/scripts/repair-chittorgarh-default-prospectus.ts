@@ -15,10 +15,10 @@
  * `classifyOfferDocumentCover`); nothing here classifies text:
  *   cover says PROSPECTUS            -> KEEP (confirmed by cover), nothing written
  *   cover says RHP / DRHP            -> RETYPE to it and re-open the plan rows chosen from it (OD-154)
- *   not a PDF (HTML / 404 / page)    -> RETIRE: is_active=false (the codebase's superseded/retired
+ *   dead link (HTTP 404 / 410 ONLY)  -> RETIRE: is_active=false (the codebase's superseded/retired
  *                                       flag, honoured by plan supersession and the walk's document
  *                                       fetcher, shown by the admin page) + reason in extraction_error
- *   fetch failed / unreadable cover  -> NO CHANGE, listed as a known-data issue
+ *   HTML-200 / 5xx / timeout / network error, unreadable cover  -> NO CHANGE, listed as a known-data issue
  *   / cover names no offer type
  * A COMPLETED row (ranked fields already written) is listed separately and is NOT written unless
  * `--include-completed` is given. Never defaults to PROSPECTUS.
@@ -33,7 +33,10 @@ import { sql } from 'drizzle-orm';
 import { db } from '@ipodhan/shared';
 import { getDocumentsKey } from '@ipodhan/shared/cache/cache-keys';
 import { IpoFieldPlanRepository } from '@ipodhan/shared/repositories';
+import { heldStatesSqlList } from '../src/services/document-state-machine.js';
+import { looksLikePdf } from '../src/services/primary-source-discovery.js';
 import {
+  chittorgarhDocumentTitle,
   detectProspectusDocType,
   resolveProspectusRowType,
   type ChittorgarhProspectusRow,
@@ -51,6 +54,7 @@ import {
 export type RepairAction = 'KEEP_CONFIRMED' | 'RETYPE' | 'RETIRE' | 'NO_CHANGE';
 
 export interface SelectedRow {
+  companyName: string;
   documentId: string;
   ipoId: string;
   slug: string;
@@ -72,6 +76,8 @@ export interface PlannedRow extends SelectedRow {
 }
 
 export interface RepairDeps extends ProspectusTypeResolverDeps {
+  /** why a fetch changed nothing (HTTP 503, timeout, HTML page ...), recorded in the NO_CHANGE reason */
+  fetchNote?: (url: string) => string | undefined;
   /** pause between downloads (politeness); tests pass 0 */
   delayMs?: number;
 }
@@ -94,7 +100,7 @@ const rowsOf = (r: unknown): Record<string, any>[] => ((r as { rows?: Record<str
 export async function selectDefaultTypedRows(d: DbLike, ipoIds: string[] = []): Promise<SelectedRow[]> {
   const scope = buildIpoScopeCondition(ipoIds, 'd.ipo_id');
   const res = await d.execute(sql`
-    SELECT d.id, d.ipo_id, i.slug, d.url, d.title, d.type::text AS type, d.extraction_status
+    SELECT d.id, d.ipo_id, i.slug, i.company_name, d.url, d.title, d.type::text AS type, d.extraction_status
       FROM documents d JOIN ipos i ON i.id = d.ipo_id
      WHERE d.type = 'PROSPECTUS'
        AND d.is_active IS NOT FALSE
@@ -106,6 +112,7 @@ export async function selectDefaultTypedRows(d: DbLike, ipoIds: string[] = []): 
       documentId: String(r.id),
       ipoId: String(r.ipo_id),
       slug: String(r.slug ?? ''),
+      companyName: String(r.company_name ?? ''),
       url: String(r.url),
       title: String(r.title),
       currentType: String(r.type),
@@ -139,9 +146,11 @@ export async function planRepair(d: DbLike, deps: RepairDeps, ipoIds: string[] =
     } else if (res.ok) {
       planned = { ...base, cover: res.docType, action: 'RETYPE', newType: res.docType as 'RHP' | 'DRHP', reason: `cover says ${res.docType}` };
     } else if ((res as { reason: string }).reason === 'not_pdf') {
-      planned = { ...base, cover: 'not_pdf', action: 'RETIRE', reason: 'not a PDF (HTML / dead link / maintenance page): not a document' };
+      planned = { ...base, cover: 'not_pdf', action: 'RETIRE', reason: 'dead link (HTTP 404 / 410): not a document' };
     } else {
-      planned = { ...base, cover: (res as { reason: string }).reason, action: 'NO_CHANGE', reason: `known-data issue, left unchanged: ${(res as { reason: string }).reason}` };
+      const why = (res as { reason: string }).reason;
+      const note = deps.fetchNote?.(s.url);
+      planned = { ...base, cover: why, action: 'NO_CHANGE', reason: `known-data issue, left unchanged: ${why}${note ? ` (${note})` : ''}` };
     }
     const planRowsToReopen = planned.action === 'RETYPE' || planned.action === 'RETIRE' ? await countPlanRows(d, s.documentId) : 0;
     out.push({ ...planned, planRowsToReopen });
@@ -152,8 +161,30 @@ export async function planRepair(d: DbLike, deps: RepairDeps, ipoIds: string[] =
 export interface ApplyOutcome {
   documentId: string;
   slug: string;
-  status: 'APPLIED' | 'SKIPPED_COMPLETED' | 'FAILED';
+  status: 'APPLIED' | 'SKIPPED_COMPLETED' | 'NO_CHANGE' | 'FAILED';
   detail: string;
+}
+
+/** The unique_doc_per_ipo violation, however the driver / drizzle wrapped it. */
+export function isUniqueDocPerIpoViolation(err: unknown): boolean {
+  for (let e: any = err, depth = 0; e && depth < 5; e = e.cause, depth++) {
+    if (e.code === '23505' && (e.constraint === undefined || e.constraint === 'unique_doc_per_ipo')) return true;
+    if (typeof e.message === 'string' && e.message.includes('unique_doc_per_ipo')) return true;
+  }
+  return false;
+}
+
+/** The row the retype collided with: same IPO, new type, and the same media type / exchange / sequence. */
+async function existingOfferDocument(d: DbLike, p: PlannedRow): Promise<string | null> {
+  const res = await d.execute(sql`
+    SELECT o.id FROM documents me JOIN documents o
+      ON o.ipo_id = me.ipo_id AND o.type = ${p.newType!}::document_type AND o.id <> me.id
+     AND o.media_type IS NOT DISTINCT FROM me.media_type
+     AND o.exchange IS NOT DISTINCT FROM me.exchange
+     AND o.sequence_number IS NOT DISTINCT FROM me.sequence_number
+     WHERE me.id = ${p.documentId}::uuid ORDER BY o.id LIMIT 1`);
+  const id = rowsOf(res)[0]?.id;
+  return id ? String(id) : null;
 }
 
 /** One transaction per row: a failed row never half-changes. Re-reads each changed row. */
@@ -170,11 +201,15 @@ export async function applyRepair(d: DbLike, planned: PlannedRow[], opts: Repair
       await d.transaction(async (tx) => {
         const upd =
           p.action === 'RETYPE'
-            ? await tx.execute(sql`UPDATE documents SET type = ${p.newType!}::document_type, updated_at = now()
+            ? await tx.execute(sql`UPDATE documents SET type = ${p.newType!}::document_type, title = ${chittorgarhDocumentTitle(p.newType!, p.companyName)}, updated_at = now()
                  WHERE id = ${p.documentId}::uuid AND type = 'PROSPECTUS' AND is_active IS NOT FALSE RETURNING id`)
             : await tx.execute(sql`UPDATE documents SET is_active = false, extraction_error = ${`RETIRED_NOT_A_DOCUMENT (#1442): ${p.reason}`}, updated_at = now()
                  WHERE id = ${p.documentId}::uuid AND type = 'PROSPECTUS' AND is_active IS NOT FALSE RETURNING id`);
         if (rowsOf(upd).length !== 1) throw new Error('row changed since it was read; nothing written');
+        // A held (ipo, doc type) fetch-state row that points at this document would read as FOUND
+        // forever: put it back to WANTED the way demoteMissingFiles does (state, retry clock, pointer).
+        await tx.execute(sql`UPDATE document_fetch_state SET state = 'WANTED', next_retry_at = NULL, document_id = NULL, updated_at = now()
+             WHERE document_id = ${p.documentId}::uuid AND state IN (${sql.raw(heldStatesSqlList())})`);
         const plan = await tx.execute(
           sql`SELECT id FROM ipo_field_plan WHERE chosen_document_id = ${p.documentId}::uuid AND state = 'SUPPLIED'`
         );
@@ -195,7 +230,12 @@ export async function applyRepair(d: DbLike, planned: PlannedRow[], opts: Repair
       cacheKeys.add(`${opts.slotPrefix}${getDocumentsKey(p.ipoId)}`);
       outcomes.push({ documentId: p.documentId, slug: p.slug, status: 'APPLIED', detail: p.action === 'RETYPE' ? `PROSPECTUS -> ${p.newType}; ${p.planRowsToReopen} plan row(s) re-opened` : `retired (is_active=false); ${p.planRowsToReopen} plan row(s) re-opened` });
     } catch (err) {
-      outcomes.push({ documentId: p.documentId, slug: p.slug, status: 'FAILED', detail: err instanceof Error ? err.message : String(err) });
+      const dup = p.action === 'RETYPE' && isUniqueDocPerIpoViolation(err) ? await existingOfferDocument(d, p) : null;
+      if (dup) {
+        outcomes.push({ documentId: p.documentId, slug: p.slug, status: 'NO_CHANGE', detail: `NO_CHANGE: an RHP/DRHP row already exists for this IPO (document ${dup})` });
+      } else {
+        outcomes.push({ documentId: p.documentId, slug: p.slug, status: 'FAILED', detail: err instanceof Error ? err.message : String(err) });
+      }
     }
   }
   return { outcomes, cacheKeys: [...cacheKeys] };
@@ -215,18 +255,49 @@ export function formatReport(planned: PlannedRow[]): string[] {
   return lines;
 }
 
-/** Real fetch: 2xx -> bytes; 404/410 -> a non-PDF marker (dead link, retire); anything else -> null (change nothing). */
-export function makeLiveFetchPdf(timeoutMs = 60_000): (url: string) => Promise<Buffer | null> {
-  return async (url) => {
+export type FetchClass = { kind: 'pdf' | 'dead_link' | 'not_changed'; note?: string };
+
+/**
+ * Decide what one HTTP answer means. RETIRE needs proof the link is dead: ONLY HTTP 404 / 410.
+ * A 200 that is not a PDF (Cloudflare challenge, maintenance page), any 5xx / 3xx / 4xx other than
+ * 404 and 410, a timeout or a network error is transient and changes nothing (stays on the
+ * known-data list, with the reason).
+ */
+export function classifyFetchAnswer(status: number, body: Buffer | null): FetchClass {
+  if (status === 404 || status === 410) return { kind: 'dead_link', note: `HTTP ${status}` };
+  if (status >= 200 && status < 300) {
+    if (body && looksLikePdf(body)) return { kind: 'pdf' };
+    return { kind: 'not_changed', note: `HTTP ${status} but the body is not a PDF (challenge or maintenance page?)` };
+  }
+  return { kind: 'not_changed', note: `HTTP ${status}` };
+}
+
+/** Real fetch (same browser User-Agent the backfill sends). Notes explain every no-change answer. */
+export function makeLiveFetch(
+  timeoutMs = 60_000,
+  fetchImpl: typeof fetch = fetch
+): { fetchPdf: (url: string) => Promise<Buffer | null>; fetchNote: (url: string) => string | undefined } {
+  const notes = new Map<string, string>();
+  const fetchPdf = async (url: string): Promise<Buffer | null> => {
+    notes.delete(url);
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' });
-      if (res.status === 404 || res.status === 410) return Buffer.from(`HTTP ${res.status}`);
-      if (!res.ok) return null;
-      return Buffer.from(await res.arrayBuffer());
-    } catch {
+      const res = await fetchImpl(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' });
+      const ok = res.status >= 200 && res.status < 300;
+      const body = ok ? Buffer.from(await res.arrayBuffer()) : null;
+      const c = classifyFetchAnswer(res.status, body);
+      if (c.kind === 'dead_link') return Buffer.from(c.note!); // a non-PDF marker: the resolver reads it as not_pdf -> RETIRE
+      if (c.kind === 'not_changed') {
+        notes.set(url, c.note!);
+        return null;
+      }
+      return body;
+    } catch (err) {
+      const name = err instanceof Error ? err.name : '';
+      notes.set(url, name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : `network error: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
   };
+  return { fetchPdf, fetchNote: (u) => notes.get(u) };
 }
 
 async function main(): Promise<number> {
@@ -251,7 +322,8 @@ async function main(): Promise<number> {
   const slot = repairToolRedisSlot(dbName).slot;
   const slotPrefix = slot === 'unknown' ? '' : `${slot}:`;
   const d = db as unknown as DbLike;
-  const planned = await planRepair(d, { fetchPdf: makeLiveFetchPdf(), delayMs: 1500 }, scope.ipoIds);
+  const live = makeLiveFetch();
+  const planned = await planRepair(d, { fetchPdf: live.fetchPdf, fetchNote: live.fetchNote, delayMs: 1500 }, scope.ipoIds);
   console.log(`mode: ${apply ? 'APPLY' : 'DRY RUN'} on ${dbName}; ${planned.length} row(s) selected by rule`);
   for (const l of formatReport(planned)) console.log(l);
   if (!apply) {

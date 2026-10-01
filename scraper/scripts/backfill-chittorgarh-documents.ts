@@ -28,6 +28,8 @@ import type { DocumentInsert } from '@ipodhan/shared/repositories/types';
 import {
   fetchChittorgarhProspectusRows,
   type ChittorgarhProspectusRow,
+  type ProspectusDocType,
+  chittorgarhDocumentTitle,
   resolveProspectusRowType,
 } from '../src/scrapers/chittorgarh-document-scraper.js';
 import logger from '../src/utils/logger.js';
@@ -184,7 +186,7 @@ export async function main() {
     const docs: DocumentInsert[] = ps.map((p) => ({
       ipoId,
       type: p.row.docType as DocumentInsert['type'],
-      title: `${p.row.docType} — ${p.ipo.companyName} (Chittorgarh)`,
+      title: chittorgarhDocumentTitle(p.row.docType as ProspectusDocType, p.ipo.companyName),
       url: p.row.pdfUrl,
       exchange: mapExchange(p.row.exchange) as DocumentInsert['exchange'],
       mediaType: 'PDF',

@@ -15,10 +15,12 @@ import {
   type PlannedRow,
   type RepairDeps,
 } from '../../scripts/repair-chittorgarh-default-prospectus';
+import { chittorgarhDocumentTitle } from '../../src/scrapers/chittorgarh-document-scraper';
+import { planRetype } from '../../src/scripts/retype-misclassified-documents';
 
 const FIX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'chittorgarh-untyped-covers');
 const cover = (f: string) => readFileSync(path.join(FIX, f), 'utf8');
-const manilamHtml = readFileSync(path.join(FIX, 'manilam-42.html'));
+const DEAD_LINK_MARKER = Buffer.from('HTTP 404'); // what makeLiveFetch hands the resolver for a 404/410
 
 const U = (n: number) => `00000000-0000-4000-9442-${String(n).padStart(12, '0')}`;
 const D = (n: number) => `00000000-0000-4000-9443-${String(n).padStart(12, '0')}`;
@@ -59,7 +61,7 @@ const PDF = (key: string) => Buffer.from(`${MAGIC}${key}`);
 const BYTES: Record<string, Buffer | null> = {
   'a997.pdf': PDF('adisoft-997.cover.txt'),
   'b201.pdf': PDF('dove-soft-rhp.cover.txt'),
-  'c42.pdf': manilamHtml,
+  'c42.pdf': DEAD_LINK_MARKER,
   'd301.pdf': PDF('fractal-sebi-viewer.cover.txt'),
   'e401.pdf': PDF('UNREADABLE'),
   'f501.pdf': null,
@@ -84,7 +86,7 @@ const OPTS = { apply: true, includeCompleted: false, ipoIds: IDS, slotPrefix: 't
 let db: Awaited<ReturnType<typeof getTestDb>>;
 const q = async (s: ReturnType<typeof sql>) => ((await db.execute(s)) as unknown as { rows: Record<string, any>[] }).rows;
 const docRow = async (n: number) =>
-  (await q(sql`SELECT type::text AS type, is_active, extraction_error FROM documents WHERE id = ${D(n)}::uuid`))[0];
+  (await q(sql`SELECT type::text AS type, title, url, is_active, extraction_error FROM documents WHERE id = ${D(n)}::uuid`))[0];
 const planRow = async (n: number) =>
   (await q(sql`SELECT state::text AS state FROM ipo_field_plan WHERE id = ${D(n + 1000)}::uuid`))[0];
 
@@ -102,11 +104,16 @@ beforeAll(async () => {
       VALUES (${U(s.n)}::uuid, ${s.slug}, ${s.slug}, 'IPO', 'SME', 'LISTED', '2026-08-01')`);
     await db.execute(sql`INSERT INTO documents (id, ipo_id, type, title, url, extraction_status, is_active, exchange)
       VALUES (${D(s.n)}::uuid, ${U(s.n)}::uuid, 'PROSPECTUS',
-              ${s.title ?? `PROSPECTUS - ${s.slug} (Chittorgarh)`}, ${urlOf(s)}, ${s.status ?? 'PENDING'}, ${s.active ?? true}, ${s.exchange ?? null})`);
+              ${s.title ?? chittorgarhDocumentTitle('PROSPECTUS', s.slug)}, ${urlOf(s)}, ${s.status ?? 'PENDING'}, ${s.active ?? true}, ${s.exchange ?? null})`);
   }
   // a real RHP already on the collide IPO (same type/exchange/sequence: the retype must collide and roll back)
   await db.execute(sql`INSERT INTO documents (id, ipo_id, type, title, url, extraction_status, exchange)
     VALUES (${COLLIDE_RHP_DOC}::uuid, ${U(11)}::uuid, 'RHP', 'RHP - collide', ${`${HOST}real-rhp-collide.pdf`}, 'PENDING', 'NSE')`);
+  // fetch-state rows (PROSPECTUS) that hold documents 2 (retype) and 3 (retire) as FOUND
+  for (const n of [2, 3]) {
+    await db.execute(sql`INSERT INTO document_fetch_state (ipo_id, doc_type, state, document_id)
+      VALUES (${U(n)}::uuid, 'PROSPECTUS', 'FOUND', ${D(n)}::uuid)`);
+  }
   // plan rows SUPPLIED from documents 2 (RHP retype), 3 (retire) and 7 (completed)
   for (const n of [2, 3, 7]) {
     await db.execute(sql`INSERT INTO ipo_field_plan (id, ipo_id, table_name, row_key, field_name, rank1_source, state, manifest_version, chosen_source, chosen_document_id)
@@ -170,9 +177,17 @@ describe('repair-chittorgarh-default-prospectus (#1442) on real Postgres', () =>
     expect(st['zz-t1442-unlisted-rule-only'].status).toBe('APPLIED');
     expect(st['t1442-notpdf'].status).toBe('APPLIED');
     expect(st['t1442-completed'].status).toBe('SKIPPED_COMPLETED');
-    expect(st['t1442-collide'].status).toBe('FAILED');
+    expect(st['t1442-collide']).toMatchObject({ status: 'NO_CHANGE', detail: `NO_CHANGE: an RHP/DRHP row already exists for this IPO (document ${COLLIDE_RHP_DOC})` });
 
     expect((await docRow(2)).type).toBe('RHP');
+    // the title is rewritten with the type, so retype-misclassified-documents proposes NO change (it falls back to the title)
+    const r2 = await docRow(2);
+    expect(r2.title).toBe(chittorgarhDocumentTitle('RHP', 't1442-rhp'));
+    expect(planRetype({ id: D(2), url: r2.url, title: r2.title, type: r2.type })).toBeNull();
+    // fetch-state rows that held these documents are back to WANTED, pointer cleared (not FOUND forever)
+    for (const n of [2, 3]) {
+      expect((await q(sql`SELECT state::text AS state, document_id FROM document_fetch_state WHERE ipo_id = ${U(n)}::uuid`))[0]).toMatchObject({ state: 'WANTED', document_id: null });
+    }
     expect((await planRow(2)).state).toBe('PENDING'); // re-opened so the field re-ranks (OD-154)
     expect((await docRow(10)).type).toBe('RHP');
     const retired = await docRow(3);

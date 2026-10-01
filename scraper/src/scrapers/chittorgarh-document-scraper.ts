@@ -73,6 +73,15 @@ export function detectProspectusDocType(
   return null;
 }
 
+/**
+ * The ONE builder of the title a Chittorgarh-sourced `documents` row carries. The backfill writes
+ * it; the #1442 repair tool re-writes it on a retype so the stored title never contradicts the new
+ * type (retype-misclassified-documents falls back to the title when the file name names no type).
+ */
+export function chittorgarhDocumentTitle(docType: ProspectusDocType, companyName: string): string {
+  return `${docType} — ${companyName} (Chittorgarh)`;
+}
+
 export type ProspectusTypeResolution =
   | { ok: true; docType: ProspectusDocType }
   | { ok: false; reason: 'fetch_failed' | 'not_pdf' | 'cover_unreadable' | 'cover_names_no_offer_type' };
