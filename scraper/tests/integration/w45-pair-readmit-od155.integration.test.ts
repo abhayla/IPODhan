@@ -8,10 +8,8 @@
  *   npx vitest run --config vitest.integration.config.ts tests/integration/w45-pair-readmit-od155.integration.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
-import * as schema from '../../../packages/shared/src/db/schema';
+import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { classifyFailure, selectPendingFilings, type CandidateDocument } from '../../src/services/filing-auto-persist';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -27,8 +25,7 @@ const CASES = [
 ] as const;
 const ipoId = (n: string) => `00000000-0000-4000-8000-0000000155${n}0`;
 
-let pool: Pool;
-let db: ReturnType<typeof drizzle<typeof schema>>;
+let db: Awaited<ReturnType<typeof getTestDb>>;
 
 async function refuse(documentId: string, currentSha: string) {
   const c = classifyFailure(0, VERSION, 'w45_disagreement: price band 100 vs 120', { sha256: currentSha });
@@ -44,8 +41,7 @@ const pendingTypes = async (ipo: string) =>
 describe.skipIf(!DATABASE_URL)('OD-155: new bytes on either side of a W-45-refused pair re-admit both (ipodhan_test)', () => {
   const ids: Record<string, { ad: string; rhp: string }> = {};
   beforeAll(async () => {
-    pool = new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' });
-    db = drizzle(pool, { schema });
+    db = await getTestDb();
     const name = rows(await db.execute(sql`SELECT current_database() AS d`))[0].d;
     if (name !== 'ipodhan_test') throw new Error(`refusing to run against ${name}`);
     for (const c of CASES) {
@@ -59,9 +55,9 @@ describe.skipIf(!DATABASE_URL)('OD-155: new bytes on either side of a W-45-refus
     }
   });
   afterAll(async () => {
-    if (!pool) return;
+    if (!db) return;
     for (const c of CASES) await db.execute(sql`DELETE FROM ipos WHERE id = ${ipoId(c.n)}::uuid`);
-    await pool.end();
+    await cleanupTestDb();
   });
 
   for (const c of CASES) {
