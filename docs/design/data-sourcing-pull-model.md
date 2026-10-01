@@ -959,8 +959,10 @@ Written once here rather than duplicated into every row.
 
 The check is stated ONCE, here and in §1.2 row 4, and it is stated **per lot** so that it can actually fail:
 
-    lot × floor ≥ ₹1,00,000                     (the per-lot invariant, both eras)
-    lot_multiple × lot × floor > ₹2,00,000       (the application invariant, from 2025-07-01)
+    lot × cap ≥ ₹1,00,000                       (the per-lot invariant, both eras)
+    lot_multiple × lot × cap > ₹2,00,000         (the application invariant, from 2025-07-01)
+
+Clarified 2026-10-01 (supervisor, #721): §1.2 row 4 governs; cap, not floor. This block earlier read `lot × floor`, which contradicted §1.2 row 4 ("two-sided, against the CAP in both segments"); the write rule and the audit checks use the cap.
 
 An earlier draft wrote it as `lot_multiple × lot × floor ≥ ₹1,00,000`, which with `lot_multiple = 2` reduces to `lot × floor ≥ ₹50,000` — **the weaker form this very paragraph identifies as F-66, re-adopted by accident.** A review caught it. Applying the mainboard check instead is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the `cap ≤ 1.2 × floor` check is skipped and floor = cap is expected. Designated exchange is always BSE. |
 | **SME on NSE** | 61 | Mirror image: `listing_exchanges = ["NSE"]`, **BSE cannot be rank 2 or 3**. Same 2-lot rule. |

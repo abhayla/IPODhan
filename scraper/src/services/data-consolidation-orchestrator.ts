@@ -44,6 +44,7 @@ import {
   violatesSmeSingleExchange,
 } from './listing-exchange-resolution.js';
 import { initStepLedger } from './step-ledger.js';
+import { guardLotEconomics } from './lot-economics-guard.js';
 import { recordDiscoverySteps } from './step-ledger-recorders.js';
 import { recordTouchedIfChanged } from './touched-ipos-tracker.js';
 import type { Redis } from 'ioredis';
@@ -60,6 +61,8 @@ export interface ConsolidatedUpsertResult {
   skipReason?: string;
   /** #1229: date fields this write carried that the merged-record date rule refused (never written). */
   refusedDateFields?: string[];
+  /** #721: lot fields this write carried that the spec §1.2 row 4 lot rule refused (never written, no provenance). */
+  refusedLotFields?: string[];
 }
 
 /**
@@ -329,6 +332,25 @@ export class DataConsolidationOrchestrator {
         }
       }
 
+      // #721 (OD-131, review r2): spec §1.2 row 4 lot economics (Rule 9) on the MERGED view of the
+      // stored row and this write, BEFORE consolidation, the same as the #1229 date refusal above: a
+      // refused lot never reaches consolidation, so it is never written AND gets no provenance row.
+      // The stored segment / offering type / exchanges govern; with no segment anywhere, the §2.8
+      // inference decides. This door does not run the persister's merged-record pass.
+      const lotRefusals: { field: string; rule: string }[] = [];
+      {
+        const lotGuard = guardLotEconomics(incomingData as Record<string, any>, (existingIPO as Record<string, any>) ?? null, {
+          source,
+          door: isNew ? 'orchestrator-create' : 'orchestrator-update',
+          ipoId: existingIPO?.id ?? null,
+          companyName: scrapedIPO.companyName,
+        });
+        if (lotGuard.violation && 'lotSize' in incomingData && !('lotSize' in lotGuard.payload)) {
+          delete (incomingData as Record<string, any>).lotSize;
+          lotRefusals.push({ field: 'lotSize', rule: lotGuard.violation.rule });
+        }
+      }
+
       // Consolidate IPO main table data
       const consolidationResult =
         await this.consolidationService.consolidateIPOData({
@@ -508,6 +530,7 @@ export class DataConsolidationOrchestrator {
           conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
           companyName: scrapedIPO.companyName,
+          ...(lotRefusals.length > 0 ? { refused: lotRefusals } : {}),
         });
       } catch (ledgerError) {
         logger.warn(
@@ -527,6 +550,7 @@ export class DataConsolidationOrchestrator {
         locked: true,
         skipped: false,
         ...(refusedDateFields.length > 0 ? { refusedDateFields } : {}),
+        ...(lotRefusals.length > 0 ? { refusedLotFields: lotRefusals.map((r) => r.field) } : {}),
       };
 
       // Item 21 slice 1 (OD-40). This is the single write choke point CLAUDE.md

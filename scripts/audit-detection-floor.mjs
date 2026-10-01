@@ -694,7 +694,7 @@ async function checkUpcomingSourceDrift() {
 // ---- (d): lot x band SEBI window + corporate-action shape -------------------
 async function checkD() {
   const rows = await q(
-    `SELECT i.id, i.company_name, i.offering_type AS "offeringType", i.segment,
+    `SELECT i.id, i.company_name, i.offering_type AS "offeringType", i.segment, i.listing_exchanges AS "listingExchanges",
             i.lot_size AS "lotSize", i.price_range_min AS "priceRangeMin", i.price_range_max AS "priceRangeMax",
             CASE WHEN i.open_date IS NOT NULL AND i.close_date IS NOT NULL
                  THEN (i.close_date - i.open_date) ELSE NULL END AS "windowDays"

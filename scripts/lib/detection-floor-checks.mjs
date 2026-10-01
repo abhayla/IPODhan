@@ -1,4 +1,5 @@
 import { pickListingSentenceDocument } from '../../scraper/config/listing-sentence-precedence.mjs';
+import { inferSegmentFromLotValue, SME_INFERENCE_MIN_LOT_VALUE } from './substance-checks.mjs';
 // Pure predicates for the T-335 "detection floor" — the round-7 fresh-review
 // coverage floor promoted into FAIL-level nightly-audit checks (see
 // docs/reviews/round-7-detection-rca.md and evidence/2026-08-26-T-322/DETECTION-RCA.md).
@@ -64,10 +65,14 @@ export const ISSUE_SIZE_CONSISTENCY_UPPER_MULTIPLIER = 3.0;
 // MAINBOARD book-built retail applications are steered to ~Rs10k-15k; SME minimum
 // application sizes run far higher (~Rs1-2 lakh). Margins added both sides so a
 // borderline-but-legitimate issue doesn't false-positive.
+// #721: spec §1.2 row 4 gives SME a per-lot FLOOR only, so the SME window has no ceiling.
 export const LOT_VALUE_WINDOW_RUPEES = {
   MAINBOARD: [8_000, 20_000],
-  SME: [90_000, 3_00_000],
+  SME: [90_000, Number.POSITIVE_INFINITY],
 };
+// #721: spec §2.8 segment inference, so a row with no segment is judged, never skipped. One definition,
+// in substance-checks.mjs (re-exported here for this module's existing callers).
+export { SME_INFERENCE_MIN_LOT_VALUE };
 
 // Corporate-action shape: fixed price (min===max), the near-universal lot_size=100
 // corporate-action default, and a 10-14 day "bidding window" — the exact shape of
@@ -245,12 +250,14 @@ export function checkLotBandSebiWindow(row) {
   const lot = toNumber(row.lotSize);
   const priceMax = toNumber(row.priceRangeMax);
   if (lot === null || lot <= 0 || priceMax === null || priceMax <= 0) return null;
-  const window = LOT_VALUE_WINDOW_RUPEES[row.segment];
-  if (!window) return null; // no window defined for this segment
   const lotValue = lot * priceMax;
+  const segment = row.segment === 'MAINBOARD' || row.segment === 'SME'
+    ? row.segment
+    : inferSegmentFromLotValue(lot, priceMax, row.listingExchanges ?? null);
+  const window = LOT_VALUE_WINDOW_RUPEES[segment];
   const [min, max] = window;
   if (lotValue < min || lotValue > max) {
-    return `lot_size x price_range_max (${lot} x Rs${priceMax} = Rs${lotValue.toLocaleString('en-IN')}) is outside the ${row.segment} SEBI retail window [Rs${min.toLocaleString('en-IN')}..Rs${max.toLocaleString('en-IN')}]`;
+    return `lot_size x price_range_max (${lot} x Rs${priceMax} = Rs${lotValue.toLocaleString('en-IN')}) is outside the ${segment}${row.segment ? '' : ' (inferred, spec §2.8)'} SEBI retail window [Rs${min.toLocaleString('en-IN')}..${Number.isFinite(max) ? 'Rs' + max.toLocaleString('en-IN') : 'no ceiling'}]`;
   }
   return null;
 }

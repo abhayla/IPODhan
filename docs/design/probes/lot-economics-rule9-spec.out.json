@@ -1,0 +1,507 @@
+{
+  "probe": "lot-economics-rule9-spec",
+  "generated_at": "2026-10-01T07:13:42.767Z",
+  "database": "ipodhan_staging",
+  "rowsWithLotAndCap": 320,
+  "noSegment": 6,
+  "fixedPrice": 14,
+  "oldRefuses": 10,
+  "newRefuses": 12,
+  "newlyRefused": [
+    {
+      "slug": "twinkle-papers-ltd",
+      "status": "LISTED",
+      "segment": null,
+      "inferredSegment": "MAINBOARD",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "lot": 2000,
+      "floor": 69,
+      "cap": 69,
+      "minInvestment": 138000,
+      "floorInvestment": 138000,
+      "bandPct": 0,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "narmadesh-brass-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": "FIXED_PRICE",
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 515,
+      "cap": 515,
+      "minInvestment": 51500,
+      "floorInvestment": 51500,
+      "bandPct": 0,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    }
+  ],
+  "noLongerRefused": [],
+  "stillRefused": [
+    {
+      "slug": "windlas-biotech-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 30,
+      "floor": 1000,
+      "cap": 1000,
+      "minInvestment": 30000,
+      "floorInvestment": 30000,
+      "bandPct": 0,
+      "lot_source": "BSE",
+      "cap_source": "BSE",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "suryo-foods-industries-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 3000,
+      "floor": 15,
+      "cap": 15,
+      "minInvestment": 45000,
+      "floorInvestment": 45000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "icici-prudential-asset-management-company-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced MAINBOARD, inferred SME",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE"
+      ],
+      "lot": 100,
+      "floor": 2061,
+      "cap": 2165,
+      "minInvestment": 216500,
+      "floorInvestment": 206100,
+      "bandPct": 5,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "stanbik-agro-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced SME, inferred MAINBOARD",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 30,
+      "cap": 30,
+      "minInvestment": 3000,
+      "floorInvestment": 3000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "travels-rentals-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced SME, inferred MAINBOARD",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 3000,
+      "floor": 15,
+      "cap": 15,
+      "minInvestment": 45000,
+      "floorInvestment": 45000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "stallion-india-fluorochemicals-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced MAINBOARD, inferred SME",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 4000,
+      "floor": 85,
+      "cap": 90,
+      "minInvestment": 360000,
+      "floorInvestment": 340000,
+      "bandPct": 5.9,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "kwality-walls-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 21,
+      "cap": 21,
+      "minInvestment": 2100,
+      "floorInvestment": 2100,
+      "bandPct": 0,
+      "lot_source": "BSE",
+      "cap_source": "BSE",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "cms-info-systems-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 69,
+      "floor": 340,
+      "cap": 340,
+      "minInvestment": 23460,
+      "floorInvestment": 23460,
+      "bandPct": 0,
+      "lot_source": "BSE",
+      "cap_source": "BSE",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "om-power-transmission-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": "BOOK_BUILDING",
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 175,
+      "cap": 175,
+      "minInvestment": 17500,
+      "floorInvestment": 17500,
+      "bandPct": 0,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "glass-wall-systems-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": null,
+      "issue_type": "BOOK_BUILDING",
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "lot": 82,
+      "floor": 72,
+      "cap": 82,
+      "minInvestment": 6724,
+      "floorInvestment": 5904,
+      "bandPct": 13.9,
+      "lot_source": "BSE",
+      "cap_source": "DRHP",
+      "capMayBeWrong": false
+    }
+  ],
+  "segmentDisagreements": [
+    {
+      "slug": "icici-prudential-asset-management-company-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced MAINBOARD, inferred SME",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE"
+      ],
+      "lot": 100,
+      "floor": 2061,
+      "cap": 2165,
+      "minInvestment": 216500,
+      "floorInvestment": 206100,
+      "bandPct": 5,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "sri-priyanka-geo-commex",
+      "status": "LISTED",
+      "segment": "SME",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced SME, inferred MAINBOARD",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "lot": 600,
+      "floor": 212,
+      "cap": 212,
+      "minInvestment": 127200,
+      "floorInvestment": 127200,
+      "bandPct": 0,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": true
+    },
+    {
+      "slug": "stanbik-agro-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced SME, inferred MAINBOARD",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 30,
+      "cap": 30,
+      "minInvestment": 3000,
+      "floorInvestment": 3000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "travels-rentals-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced SME, inferred MAINBOARD",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 3000,
+      "floor": 15,
+      "cap": 15,
+      "minInvestment": 45000,
+      "floorInvestment": 45000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": false
+    },
+    {
+      "slug": "stallion-india-fluorochemicals-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "inferredSegment": null,
+      "sourcedVsInferred": "sourced MAINBOARD, inferred SME",
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 4000,
+      "floor": 85,
+      "cap": 90,
+      "minInvestment": 360000,
+      "floorInvestment": 340000,
+      "bandPct": 5.9,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    }
+  ],
+  "noSegmentRows": [
+    {
+      "slug": "dhanwel-hybird-seeds-ltd",
+      "status": "CLOSED",
+      "segment": null,
+      "inferredSegment": "SME",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 1200,
+      "floor": 95,
+      "cap": 99,
+      "minInvestment": 118800,
+      "floorInvestment": 114000,
+      "bandPct": 4.2,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": true
+    },
+    {
+      "slug": "prachay-capital-ltd",
+      "status": "CLOSED",
+      "segment": null,
+      "inferredSegment": "SME",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "NCD",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 1000,
+      "cap": 1000,
+      "minInvestment": 100000,
+      "floorInvestment": 100000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": true
+    },
+    {
+      "slug": "morganite-crucible-india-ltd",
+      "status": "CLOSED",
+      "segment": null,
+      "inferredSegment": "SME",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 100,
+      "floor": 1557,
+      "cap": 1557,
+      "minInvestment": 155700,
+      "floorInvestment": 155700,
+      "bandPct": 0,
+      "lot_source": "BSE",
+      "cap_source": "BSE",
+      "capMayBeWrong": true
+    },
+    {
+      "slug": "iifl-finance-ltd",
+      "status": "CLOSED",
+      "segment": null,
+      "inferredSegment": "SME",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "NCD",
+      "listing_exchanges": [
+        "NSE"
+      ],
+      "lot": 100,
+      "floor": 1000,
+      "cap": 1000,
+      "minInvestment": 100000,
+      "floorInvestment": 100000,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": true
+    },
+    {
+      "slug": "citius-trannet-investment-trust",
+      "status": "CLOSED",
+      "segment": null,
+      "inferredSegment": "MAINBOARD",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "INVITS",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "lot": 150,
+      "floor": 99,
+      "cap": 99,
+      "minInvestment": 14850,
+      "floorInvestment": 14850,
+      "bandPct": 0,
+      "lot_source": null,
+      "cap_source": null,
+      "capMayBeWrong": true
+    },
+    {
+      "slug": "twinkle-papers-ltd",
+      "status": "LISTED",
+      "segment": null,
+      "inferredSegment": "MAINBOARD",
+      "sourcedVsInferred": null,
+      "issue_type": null,
+      "offering_type": "IPO",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "lot": 2000,
+      "floor": 69,
+      "cap": 69,
+      "minInvestment": 138000,
+      "floorInvestment": 138000,
+      "bandPct": 0,
+      "lot_source": "CHITTORGARH",
+      "cap_source": "CHITTORGARH",
+      "capMayBeWrong": false
+    }
+  ]
+}

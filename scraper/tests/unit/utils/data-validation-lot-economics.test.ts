@@ -63,7 +63,8 @@ describe('validateIPOData — Rule 9 LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD (T-329 r
     expect(result.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
   });
 
-  it('does not reject a MAINBOARD FIXED_PRICE issue outside the book-built retail band', () => {
+  // #721: spec §1.2 row 4 states no FIXED_PRICE exemption, so a fixed-price issue is judged too.
+  it('rejects a MAINBOARD FIXED_PRICE issue outside the retail band (#721: no fixed-price exemption)', () => {
     const result = validateIPOData(
       {
         companyName: 'Fixed Price Corporate Action Ltd.',
@@ -76,7 +77,7 @@ describe('validateIPOData — Rule 9 LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD (T-329 r
       },
       'NSE'
     );
-    expect(result.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
+    expect(result.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
   });
 });
 
@@ -132,20 +133,25 @@ describe('validateIPOData — Rule 9 is bounded (no false positives)', () => {
     expect(result.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
   });
 
-  it('does not fire for an unknown/absent segment (nothing to check against)', () => {
+  it('#721: an absent segment is inferred (spec §2.8), not skipped: lot 100 x Rs21 = Rs2,100 is refused as MAINBOARD', () => {
     const result = validateIPOData(
       { companyName: 'No Segment Ltd.', offeringType: 'IPO', priceRangeMax: 21, lotSize: 100 },
       'NSE'
     );
-    expect(result.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
+    expect(result.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
     expect(result.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_SME');
   });
 
-  it('evaluates lotSize/priceRangeMax whenever both are present, regardless of offeringType (matches Rule 4 MIN_INVESTMENT_* behavior)', () => {
-    const result = validateIPOData(
+  it('#721: a RIGHTS issue is not judged (spec §1.11: no lot size in the IPO sense), an IPO with the same values is', () => {
+    const rights = validateIPOData(
       { companyName: 'Rights Issue Co.', offeringType: 'RIGHTS', segment: 'MAINBOARD', priceRangeMax: 21, lotSize: 100 },
       'NSE'
     );
-    expect(result.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
+    expect(rights.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
+    const ipo = validateIPOData(
+      { companyName: 'Rights Issue Co.', offeringType: 'IPO', segment: 'MAINBOARD', priceRangeMax: 21, lotSize: 100 },
+      'NSE'
+    );
+    expect(ipo.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
   });
 });

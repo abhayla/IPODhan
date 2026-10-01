@@ -247,7 +247,8 @@ describe('upsertIPO — create path (T-292)', () => {
       // over-widening to `!value`).
       const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'mopshop-distribution-ltd' });
 
-      await upsertIPO(ipoRepository, makeScrapedIPO({ lotSize: 100 }), 'CHITTORGARH');
+      // #721: Rs14,000 is a legal lot; the create door now runs Rule 9.
+      await upsertIPO(ipoRepository, makeScrapedIPO({ lotSize: 100, priceRangeMin: 130, priceRangeMax: 140, segment: 'MAINBOARD' }), 'CHITTORGARH');
 
       const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
       const lotSizeRow = fields.find((f: any) => f.fieldName === 'lotSize');

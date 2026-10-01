@@ -95,6 +95,11 @@ export interface DiscoveryStepInput {
    * does not read as a clean tracked write.
    */
   provenanceLookupFailed?: string[];
+  /**
+   * #721: fields a write-door rule refused this write (never written, no provenance), with the rule.
+   * B5 records them, so a refused value is a ledgered outcome, not a silent drop.
+   */
+  refused?: { field: string; rule: string }[];
   companyName?: string;
 }
 
@@ -145,7 +150,12 @@ export function planDiscoverySteps(input: DiscoveryStepInput): StepWrite[] {
 
   // B5 — validation. Reaching the write means the record survived the
   // validation pipeline and the merged-record rules inside upsertIPO.
-  writes.push({ stepId: 'B5', status: 'DONE', source, evidence: { via: 'upsertIPO validation' } });
+  writes.push({
+    stepId: 'B5',
+    status: 'DONE',
+    source,
+    evidence: { via: 'upsertIPO validation', ...(input.refused?.length ? { refused: input.refused } : {}) },
+  });
 
   // B6 — identity match. The distinction is the whole point of the step.
   writes.push({
