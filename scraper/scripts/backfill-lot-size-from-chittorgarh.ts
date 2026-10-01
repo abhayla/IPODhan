@@ -30,6 +30,7 @@ import { ipos } from '@ipodhan/shared/db/schema';
 import { isNull, or, and, sql } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import logger from '../src/utils/logger.js';
+import { guardLotEconomics } from '../src/services/lot-economics-guard.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { openRepairDb } from './lib/repair-tool.js';
@@ -39,6 +40,9 @@ interface BackfillCandidate {
   companyName: string;
   symbol: string | null;
   segment: string | null;
+  offeringType: string | null;
+  listingExchanges: string[] | null;
+  priceRangeMax: string | number | null;
   status: string;
   openDate: Date | null;
   closeDate: Date | null;
@@ -239,6 +243,9 @@ async function backfillLotSizes(options: {
       companyName: ipos.companyName,
       symbol: ipos.symbol,
       segment: ipos.segment,
+      offeringType: ipos.offeringType,
+      listingExchanges: ipos.listingExchanges,
+      priceRangeMax: ipos.priceRangeMax,
       status: ipos.status,
       openDate: ipos.openDate,
       closeDate: ipos.closeDate,
@@ -317,6 +324,25 @@ async function backfillLotSizes(options: {
         },
         'Found lot_size'
       );
+
+      // #721: spec §1.2 row 4 lot economics (Rule 9) against the stored cap, segment, offering type
+      // and exchanges (the §2.8 inference when no segment is stored). A lot the rule refuses is never
+      // written, and a dry run reports it the same way an execute would.
+      const lotGuard = guardLotEconomics(
+        { lotSize: detail.lotSize },
+        { ...candidate, priceRangeMax: candidate.priceRangeMax === null ? null : Number(candidate.priceRangeMax) },
+        { source: 'CHITTORGARH', door: 'backfill-lot-size-from-chittorgarh', ipoId: candidate.id, companyName: candidate.companyName }
+      );
+      if (lotGuard.violation) {
+        results.push({
+          id: candidate.id,
+          companyName: candidate.companyName,
+          success: false,
+          error: `${lotGuard.violation.rule}: ${lotGuard.violation.message}`,
+          chittorgarhUrl,
+        });
+        continue;
+      }
 
       // Update database (if not dry-run)
       if (!options.dryRun) {

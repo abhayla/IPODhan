@@ -1,0 +1,14 @@
+{
+  "class_id": "a per-segment value check that silently skips every row whose segment is unknown",
+  "feature": "any validation whose bounds depend on a classification (segment, offering type, board) that some payloads or rows do not carry",
+  "symptom": "the check is written as \"if segment is MAINBOARD test A, else if SME test B\", so a payload or row with no segment matches neither branch and passes untested. The rows most likely to be wrong (a source that does not send the classification) are exactly the ones the check never sees. A wider shape: a classification-gated rule must decide what an UNKNOWN class means (infer it, or refuse) rather than fall through to \"valid\". The same family: bounds copied into code that the spec never stated (an SME per-lot ceiling of Rs2,00,000) refuse legal values with nobody able to say why.",
+  "first_seen": "2026-10-01 -- #721, measured read-only on ipodhan_staging (docs/design/probes/lot-economics-rule9-spec.mjs): 320 ipos rows with lot and cap, 6 with no segment (never judged by Rule 9 or the nightly d_lot_band_window), 14 FIXED_PRICE (exempt from Rule 9 with no spec basis). Aligning Rule 9 to spec §1.2 row 4 and judging no-segment rows by the §2.8 inference changes the refused set from 10 to 12 rows: newly refused twinkle-papers-ltd (no segment, NSE+BSE, lot 2000 x Rs69 = Rs1,38,000, inferred MAINBOARD) and narmadesh-brass-industries-ltd (SME, FIXED_PRICE, lot 100 x Rs515 = Rs51,500); none stops being refused (no stored row sat between Rs15,000 and Rs16,000 MAINBOARD or above Rs2,00,000 SME). Write doors that did not run Rule 9 at all: the persister create door, the consolidation orchestrator create/update doors, and scraper/scripts/backfill-lot-size-from-chittorgarh.ts.",
+  "fix_prs": "#721 PR: lotEconomicsViolation in packages/shared/src/utils/ipo-field-checks.ts (spec bounds, §2.8 inference, §1.11 offering-type scope), guardLotEconomics on the create/orchestrator/backfill doors, offeringType and listingExchanges on the merged-record pass",
+  "detection_check": "d_lot_band_window (nightly, now infers a missing segment and has no SME ceiling) and the substance check lot_economics_retail_range (mirrors the write rule)",
+  "status": "guarded",
+  "spec_ref": [
+    "§1.2",
+    "§1.11",
+    "§2.8"
+  ]
+}

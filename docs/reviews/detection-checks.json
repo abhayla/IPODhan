@@ -160,7 +160,7 @@
       "round7Findings": [
         "P1-4"
       ],
-      "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
+      "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or below Rs90,000 SME (no SME ceiling, spec §1.2 row 4), for offering_type=IPO; a row with no segment is judged against the spec §2.8 inferred segment (SME when lot x cap >= Rs50,000 and not on two exchanges) (#721)",
       "severity": "P1",
       "unverifiableWhen": "never — always runs against the ipos table"
     },

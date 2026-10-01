@@ -226,6 +226,22 @@ test('(d) PASSES a genuine MAINBOARD lot value inside the SEBI window', () => {
   assert.equal(checkLotBandSebiWindow(row), null);
 });
 
+// #721: a row with no segment is judged against the spec §2.8 inference, never skipped; SME has no ceiling.
+test('(d) #721 FAILS a no-segment row whose inferred segment window it misses (twinkle-papers: NSE+BSE, 2000 x Rs69)', () => {
+  const row = { offeringType: 'IPO', segment: null, listingExchanges: ['NSE', 'BSE'], lotSize: 2000, priceRangeMax: 69 };
+  assert.match(checkLotBandSebiWindow(row) ?? '', /MAINBOARD \(inferred/);
+});
+
+test('(d) #721 PASSES a no-segment single-exchange SME-valued row (dhanwel: BSE, 1200 x Rs99)', () => {
+  const row = { offeringType: 'IPO', segment: null, listingExchanges: ['BSE'], lotSize: 1200, priceRangeMax: 99 };
+  assert.equal(checkLotBandSebiWindow(row), null);
+});
+
+test('(d) #721 PASSES an SME lot above the old Rs3,00,000 ceiling (spec §1.2 row 4: no SME per-lot ceiling)', () => {
+  const row = { offeringType: 'IPO', segment: 'SME', lotSize: 2000, priceRangeMax: 200 }; // Rs4,00,000
+  assert.equal(checkLotBandSebiWindow(row), null);
+});
+
 test('(d) FAILS on a KWALITY-WALLS-shaped corporate-action typed as IPO', () => {
   const row = { offeringType: 'IPO', priceRangeMin: 100, priceRangeMax: 100, lotSize: 100, windowDays: 12 };
   assert.ok(checkCorporateActionShape(row) !== null);

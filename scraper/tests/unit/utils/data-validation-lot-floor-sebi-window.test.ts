@@ -120,7 +120,9 @@ describe('validateIPOData — Rule 1 lot-size floor derives from the SEBI retail
     expect(result.errors.map((e) => e.rule)).toContain('LOT_SIZE_TOO_LOW');
   });
 
-  it('a FIXED_PRICE issue is exempt from the window carve-out (same exemption Rule 9 uses) and falls back to the numeric floor', () => {
+  // #721: Rule 9 no longer exempts FIXED_PRICE (spec §1.2 row 4 states no exemption), so the
+  // carve-out judges a fixed-price sub-10 lot by the same window: lot 8 x Rs1,785 = Rs14,280 is legal.
+  it('a FIXED_PRICE issue is judged by the same window as any other (#721): lot 8 x Rs1,785 = Rs14,280 is accepted', () => {
     const result = validateIPOData(
       {
         companyName: 'Fixed Price Sub-10 Lot Ltd.',
@@ -133,8 +135,8 @@ describe('validateIPOData — Rule 1 lot-size floor derives from the SEBI retail
       },
       'NSE'
     );
-    expect(result.valid).toBe(false);
-    expect(result.errors.map((e) => e.rule)).toContain('LOT_SIZE_TOO_LOW');
+    expect(result.errors.map((e) => e.rule)).not.toContain('LOT_SIZE_TOO_LOW');
+    expect(result.errors.map((e) => e.rule)).not.toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
   });
 
   it('the exported SEBI_RETAIL_WINDOW constants agree with substance-checks.mjs (single source of truth, kept in sync by hand)', () => {
@@ -162,7 +164,7 @@ describe('validateIPOData — Rule 9 reads SEBI_RETAIL_WINDOW, not inline litera
     expect(result.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
     const err = result.errors.find((e) => e.rule === 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD')!;
     expect(err.message).toContain('₹9,900');
-    expect(err.message).toContain('falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000)');
+    expect(err.message).toContain('falls outside the spec §1.2 row 4 retail range for MAINBOARD (₹10,000-₹15,000)');
   });
 
   it('a change to SEBI_RETAIL_WINDOW.MAINBOARD.min is observed by BOTH Rule 1 and Rule 9 at the same boundary (minInvestment = 9,999, just below min)', () => {

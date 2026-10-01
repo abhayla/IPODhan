@@ -50,6 +50,8 @@ export interface IPODataToValidate {
   lotSize?: number | null;
   segment?: string | null;
   offeringType?: string | null;
+  /** Spec §2.8 segment inference reads it: an IPO on two exchanges is never inferred SME (#721). */
+  listingExchanges?: readonly string[] | null;
   priceRangeMin?: number | null;
   priceRangeMax?: number | null;
   /** BOOK_BUILDING | FIXED_PRICE | HYBRID - a FIXED_PRICE issue may legitimately have min === max. */
@@ -64,16 +66,92 @@ export interface IPODataToValidate {
 }
 
 /**
- * SEBI retail-lot window per segment (lot_size x price_range_max, Rs).
- * MUST stay in sync with MAINBOARD_LOT_ECONOMICS_MIN/MAX and
- * SME_LOT_ECONOMICS_MIN/MAX in scripts/lib/substance-checks.mjs (Rule 9's
- * DB-read-side companion, W-171) — a unit test asserts the two agree
- * (data-validation-lot-floor-sebi-window.test.ts).
+ * SEBI retail-lot window per segment (lot_size x price_range_max, Rs), exactly as spec §1.2 row 4
+ * and §1.11 state it (#721): MAINBOARD `10,000 <= lot x cap <= 15,000`; SME `lot x cap >= 1,00,000`
+ * per lot, with NO per-lot upper bound (the spec gives SME lower bounds only). The SME per-application
+ * invariant (`lot_multiple x lot x cap >= 2,00,000` from 2025-07-01) needs `ipo_details.lot_multiple`,
+ * which no `ipos` write payload carries (populated on 8 of 330 rows, §4.6), so it is not a write-time
+ * check here.
+ * MUST stay in sync with MAINBOARD_LOT_ECONOMICS_MIN/MAX and SME_LOT_ECONOMICS_MIN/MAX in
+ * scripts/lib/substance-checks.mjs (Rule 9's DB-read-side companion, W-171) — a unit test asserts
+ * the two agree (data-validation-lot-floor-sebi-window.test.ts).
  */
 export const SEBI_RETAIL_WINDOW = {
-  MAINBOARD: { min: 10000, max: 16000 },
-  SME: { min: 100000, max: 200000 },
+  MAINBOARD: { min: 10000, max: 15000 },
+  SME: { min: 100000, max: Number.POSITIVE_INFINITY },
 } as const;
+
+/** Spec §2.8: with no segment on record, lot x cap at or above this (on one exchange) means SME. */
+export const SME_INFERENCE_MIN_LOT_VALUE = 50000;
+
+/**
+ * Spec §2.8 segment inference (#721): SME when `lot_size x price_range_max >= Rs50,000` and the IPO
+ * does not list on two exchanges, otherwise MAINBOARD. Unknown `listingExchanges` counts as one
+ * exchange (the value test alone decides). Null when lot or cap is missing or not positive.
+ */
+export function inferSegmentFromLotValue(
+  lotSize: number | null | undefined,
+  priceRangeMax: number | null | undefined,
+  listingExchanges?: readonly string[] | null
+): 'SME' | 'MAINBOARD' | null {
+  const lot = Number(lotSize);
+  const cap = Number(priceRangeMax);
+  if (lotSize == null || priceRangeMax == null || !Number.isFinite(lot) || !Number.isFinite(cap) || lot <= 0 || cap <= 0) return null;
+  const onTwoExchanges = Array.isArray(listingExchanges) && new Set(listingExchanges).size >= 2;
+  return lot * cap >= SME_INFERENCE_MIN_LOT_VALUE && !onTwoExchanges ? 'SME' : 'MAINBOARD';
+}
+
+/**
+ * Offering types the lot-economics check does NOT judge (§1.11): rights, OFS, InvITs/REITs, NCDs and
+ * corporate actions have no retail lot in the IPO sense (their §1.11 rows mark lot size / price band
+ * NOT_APPLICABLE or "does not apply in the same sense"). Everything else — IPO, FPO, and an unknown
+ * or missing offering type — is judged (fail closed).
+ */
+const LOT_ECONOMICS_NOT_JUDGED = new Set(['RIGHTS', 'OFS', 'INVITS', 'REITS', 'NCD', 'BUYBACK', 'TENDER', 'TAKEOVER', 'DELISTING', 'OPEN_OFFER']);
+
+/** The segment the lot-economics check applies: the sourced one, else the §2.8 inference. */
+export function lotEconomicsSegment(
+  data: Pick<IPODataToValidate, 'segment' | 'lotSize' | 'priceRangeMax' | 'listingExchanges'>
+): { segment: 'SME' | 'MAINBOARD'; inferred: boolean } | null {
+  if (data.segment === 'SME' || data.segment === 'MAINBOARD') return { segment: data.segment, inferred: false };
+  const inferred = inferSegmentFromLotValue(data.lotSize, data.priceRangeMax, data.listingExchanges);
+  return inferred ? { segment: inferred, inferred: true } : null;
+}
+
+function formatWindow(segment: 'SME' | 'MAINBOARD'): string {
+  const w = SEBI_RETAIL_WINDOW[segment];
+  return Number.isFinite(w.max)
+    ? `₹${w.min.toLocaleString('en-IN')}-₹${w.max.toLocaleString('en-IN')}`
+    : `at least ₹${w.min.toLocaleString('en-IN')}`;
+}
+
+/**
+ * Rule 9 as one function (#721), so every write door that holds lot and cap runs the same check.
+ * Returns the ERROR the rule raises, or null when the pair is legal or the rule does not apply
+ * (no lot, no cap, or an offering type §1.11 says has no retail lot).
+ */
+export function lotEconomicsViolation(data: IPODataToValidate): ValidationRule | null {
+  const lot = Number(data.lotSize);
+  const cap = Number(data.priceRangeMax);
+  if (data.lotSize == null || data.priceRangeMax == null || !Number.isFinite(lot) || !Number.isFinite(cap) || lot <= 0 || cap <= 0) return null;
+  if (data.offeringType && LOT_ECONOMICS_NOT_JUDGED.has(String(data.offeringType))) return null;
+  const resolved = lotEconomicsSegment({ ...data, lotSize: lot, priceRangeMax: cap });
+  if (!resolved) return null;
+  const { segment, inferred } = resolved;
+  const minInvestment = lot * cap;
+  const w = SEBI_RETAIL_WINDOW[segment];
+  if (minInvestment >= w.min && minInvestment <= w.max) return null;
+  const segmentNote = inferred
+    ? ` (no segment on record; ${segment} inferred per spec §2.8 from lot x cap and listing exchanges)`
+    : '';
+  return {
+    field: 'lotEconomics',
+    rule: segment === 'MAINBOARD' ? 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD' : 'LOT_ECONOMICS_IMPOSSIBLE_SME',
+    severity: 'ERROR',
+    message: `${segment} minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${lot} x band-cap ₹${cap}) falls outside the spec §1.2 row 4 retail range for ${segment} (${formatWindow(segment)})${segmentNote}. This lot/band pair is impossible for a genuine ${segment} public issue — reject and flag for review (#P1-4, #721).`,
+    expected: true,
+  };
+}
 
 /**
  * T-lot-floor: a lot_size under 10 is not automatically a scraper error — a
@@ -101,33 +179,24 @@ export const SEBI_RETAIL_WINDOW = {
  * number against), and lot < 1 / lot === 1 are refused earlier regardless.
  */
 function isLotWithinSebiRetailWindow(data: IPODataToValidate): boolean {
-  if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') return false;
+  // #721: the segment is the sourced one or, when absent, the spec §2.8 inference — never the old
+  // "legal under EITHER window" union, and FIXED_PRICE is judged like any other issue.
+  if (!data.priceRangeMax) return false;
+  const resolved = lotEconomicsSegment(data);
+  if (!resolved) return false;
   const minInvestment = (data.lotSize as number) * data.priceRangeMax;
-  if (data.segment === 'MAINBOARD') {
-    return minInvestment >= SEBI_RETAIL_WINDOW.MAINBOARD.min && minInvestment <= SEBI_RETAIL_WINDOW.MAINBOARD.max;
-  }
-  if (data.segment === 'SME') {
-    return minInvestment >= SEBI_RETAIL_WINDOW.SME.min && minInvestment <= SEBI_RETAIL_WINDOW.SME.max;
-  }
-  // Unknown segment: accept if the lot is legal under ANY SEBI retail
-  // window — a lot legal under either segment's rules is not a scraper
-  // error just because the payload omits which segment it is.
-  const inMainboardWindow =
-    minInvestment >= SEBI_RETAIL_WINDOW.MAINBOARD.min && minInvestment <= SEBI_RETAIL_WINDOW.MAINBOARD.max;
-  const inSmeWindow = minInvestment >= SEBI_RETAIL_WINDOW.SME.min && minInvestment <= SEBI_RETAIL_WINDOW.SME.max;
-  return inMainboardWindow || inSmeWindow;
+  const w = SEBI_RETAIL_WINDOW[resolved.segment];
+  return minInvestment >= w.min && minInvestment <= w.max;
 }
 
 function sebiRetailWindowFloorMessage(data: IPODataToValidate, source: string): string {
-  if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') {
+  const resolved = data.priceRangeMax ? lotEconomicsSegment(data) : null;
+  if (!data.priceRangeMax || !resolved) {
     return `lot_size = ${data.lotSize} is below minimum threshold (10) and no price band is on record to check it against the SEBI retail-value window. Likely scraper error. Source: ${source}`;
   }
   const minInvestment = (data.lotSize as number) * data.priceRangeMax;
-  if (!data.segment) {
-    return `lot_size = ${data.lotSize} is below minimum threshold (10) and lot ${data.lotSize} x band-cap ₹${data.priceRangeMax} = ₹${minInvestment.toLocaleString('en-IN')} falls outside every SEBI retail range (no segment on record — tested against MAINBOARD ₹${SEBI_RETAIL_WINDOW.MAINBOARD.min.toLocaleString('en-IN')}-₹${SEBI_RETAIL_WINDOW.MAINBOARD.max.toLocaleString('en-IN')} and SME ₹${SEBI_RETAIL_WINDOW.SME.min.toLocaleString('en-IN')}-₹${SEBI_RETAIL_WINDOW.SME.max.toLocaleString('en-IN')}). Likely scraper error. Source: ${source}`;
-  }
-  const window = data.segment === 'MAINBOARD' ? SEBI_RETAIL_WINDOW.MAINBOARD : SEBI_RETAIL_WINDOW.SME;
-  return `lot_size = ${data.lotSize} is below minimum threshold (10) and lot ${data.lotSize} x band-cap ₹${data.priceRangeMax} = ₹${minInvestment.toLocaleString('en-IN')} falls outside the SEBI ${data.segment} retail range (₹${window.min.toLocaleString('en-IN')}-₹${window.max.toLocaleString('en-IN')}). Likely scraper error. Source: ${source}`;
+  const how = resolved.inferred ? `${resolved.segment} (inferred per spec §2.8, no segment on record)` : resolved.segment;
+  return `lot_size = ${data.lotSize} is below minimum threshold (10) and lot ${data.lotSize} x band-cap ₹${data.priceRangeMax} = ₹${minInvestment.toLocaleString('en-IN')} falls outside the SEBI ${how} retail range (${formatWindow(resolved.segment)}). Likely scraper error. Source: ${source}`;
 }
 
 /**
@@ -540,37 +609,31 @@ export function validateIPOData(
   //
   // SEBI ICDR Regulation 32(1) caps a MAINBOARD retail individual application
   // at one lot within the Rs10,000-Rs15,000 band (the lot size is fixed so
-  // that lot_size x cap-price lands in that range); this guard uses a
-  // slightly wider Rs10,000-Rs16,000 window to tolerate the last paisa of
-  // rounding at the cap price without false-rejecting a genuine issue. SME
-  // issues use a materially larger per-lot minimum — SEBI ICDR Chapter IX
-  // (Regulation 253 and allied SME-specific provisions) requires post-issue
-  // paid-up capital thresholds and retail lot sizing that put a genuine SME
-  // minimum investment at Rs1,00,000-Rs2,00,000 per lot (the same range Rule
-  // 4's MIN_INVESTMENT_LOW_SME/MIN_INVESTMENT_HIGH_SME above already uses).
+  // that lot_size x cap-price lands in that range). SME issues have a per-lot
+  // FLOOR of Rs1,00,000 and no per-lot ceiling (spec §1.2 row 4, §1.11).
+  // The earlier Rs16,000 / Rs2,00,000 ceilings were not in the spec (#721);
+  // measured on ipodhan_staging 2026-10-01, no stored row sat in either gap.
   //
-  // Unlike Rule 4, this is a hard REJECT (never published) — only for
-  // BOOK_BUILDING (or unclassified) issues; a FIXED_PRICE issue's minimum
-  // investment is not bounded the same way SEBI's retail-lot band assumes
-  // book-building, so it is exempt here (Rule 4's warnings still apply).
-  if (data.lotSize && data.priceRangeMax && data.issueType !== 'FIXED_PRICE') {
-    const minInvestment = data.lotSize * data.priceRangeMax;
+  // Unlike Rule 4, this is a hard REJECT (never published).
+  //
+  // #721: the bounds are spec §1.2 row 4 exactly (MAINBOARD Rs10,000-Rs15,000; SME at least
+  // Rs1,00,000 per lot, no upper bound). FIXED_PRICE issues are judged too: the spec states no
+  // exemption, and the real case is narmadesh-brass (SME, fixed price, lot 100 x Rs515 = Rs51,500).
+  // A payload with no segment is judged against the spec §2.8 inferred segment instead of being
+  // skipped. One function (`lotEconomicsViolation`) so every write door runs the same check.
+  const lotEconomicsError = lotEconomicsViolation(data);
+  if (lotEconomicsError) errors.push(lotEconomicsError);
 
-    if (data.segment === 'MAINBOARD' && (minInvestment < SEBI_RETAIL_WINDOW.MAINBOARD.min || minInvestment > SEBI_RETAIL_WINDOW.MAINBOARD.max)) {
-      errors.push({
-        field: 'lotEconomics',
-        rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
-        severity: 'ERROR',
-        message: `MAINBOARD minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000). This lot/band pair is arithmetically impossible for a genuine book-built mainboard IPO — reject and flag for reclassification (#P1-4: ICICI Prudential AMC/STALLION/MORGANITE shape).`,
-        expected: true,
-      });
-    } else if (data.segment === 'SME' && (minInvestment < SEBI_RETAIL_WINDOW.SME.min || minInvestment > SEBI_RETAIL_WINDOW.SME.max)) {
-      errors.push({
-        field: 'lotEconomics',
-        rule: 'LOT_ECONOMICS_IMPOSSIBLE_SME',
-        severity: 'ERROR',
-        message: `SME minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Chapter IX retail range (~₹1,00,000-₹2,00,000). This lot/band pair is arithmetically implausible for a genuine SME IPO — reject and flag for reclassification.`,
-        expected: true,
+  // #721: a sourced segment that disagrees with the §2.8 inference means one of the two is wrong
+  // (the Qualiance false-alarm shape). Flagged only; the sourced segment governs.
+  if (data.segment === 'SME' || data.segment === 'MAINBOARD') {
+    const inferredSegment = inferSegmentFromLotValue(data.lotSize, data.priceRangeMax, data.listingExchanges);
+    if (inferredSegment && inferredSegment !== data.segment) {
+      warnings.push({
+        field: 'segment',
+        rule: 'SEGMENT_INFERENCE_DISAGREES',
+        severity: 'WARNING',
+        message: `Sourced segment ${data.segment} disagrees with the spec §2.8 inference ${inferredSegment} (lot ${data.lotSize} x cap ₹${data.priceRangeMax}, exchanges ${JSON.stringify(data.listingExchanges ?? null)}). One of the two is wrong.`,
       });
     }
   }

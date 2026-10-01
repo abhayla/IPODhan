@@ -13,6 +13,7 @@ import { validateLotSize } from '../utils/lot-size-validator.js';
 // W-14: the SAME per-source rule set, re-run once on the MERGED record at the
 // consolidation write door (see the block in upsertIPO for why).
 import { validateIPOData } from '../utils/data-validation.js';
+import { guardLotEconomics } from './lot-economics-guard.js';
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
 import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from './types.js';
@@ -501,6 +502,11 @@ async function applyMergedRecordValidation(
     priceRangeMin: mergedValue('priceRangeMin'),
     priceRangeMax: mergedValue('priceRangeMax'),
     issueType: mergedValue('issueType'),
+    // #721: Rule 9 judges equity public issues only (§1.11) and, with no segment on record, infers
+    // one (§2.8) from lot x cap and the listing exchanges. The stored classification governs, the
+    // same as segment above.
+    offeringType: (existingIPO as any).offeringType ?? incomingData.offeringType ?? null,
+    listingExchanges: (existingIPO as any).listingExchanges ?? incomingData.listingExchanges ?? null,
     // W-160: openDate/closeDate/listingDate together, on the MERGED record —
     // a single source rarely reports all three in one payload (per-source
     // validation's CLOSE_DATE_BEFORE_OPEN never sees listingDate at all), so
@@ -2450,8 +2456,16 @@ async function upsertIPOInScope(
       } else {
         // Create new IPO
         logger.debug({ slug, source }, `Creating new ${source} IPO`);
+        // #721: the create door has no stored row, so the merged-record pass never runs here; the
+        // same Rule 9 gate drops an impossible lot before the row exists.
+        const { payload: lotGuardedIpoData } = guardLotEconomics(ipoData as Record<string, any>, null, {
+          source,
+          door: 'persister-create',
+          companyName: scrapedIPO.companyName,
+        });
+        const createData = lotGuardedIpoData as typeof ipoData;
         const newIPO = await ipoRepository.create({
-          ...ipoData,
+          ...createData,
           createdAt: new Date()
         } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
 
@@ -2461,7 +2475,7 @@ async function upsertIPOInScope(
         // to show it was single-sourced. Track every field this scrape actually
         // supplied, at full confidence, with no prior value (there is no prior row).
         if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-          const fieldsToTrack = Object.entries(ipoData)
+          const fieldsToTrack = Object.entries(createData)
             .filter(([, value]) => value !== undefined && value !== null)
             .map(([fieldName]) => ({
               fieldName,
@@ -2479,8 +2493,8 @@ async function upsertIPOInScope(
         ledgerFacts = {
           source,
           created: true,
-          fields: Object.keys(ipoData).filter((k) => (ipoData as Record<string, unknown>)[k] !== undefined),
-          offeringType: (ipoData as { offeringType?: string }).offeringType ?? null,
+          fields: Object.keys(createData).filter((k) => (createData as Record<string, unknown>)[k] !== undefined),
+          offeringType: (createData as { offeringType?: string }).offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
           companyName: scrapedIPO.companyName,

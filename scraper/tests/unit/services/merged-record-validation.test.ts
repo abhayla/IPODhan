@@ -688,4 +688,72 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
 
     warnSpy.mockRestore();
   });
+
+  it('(p) #721: a stored row with NO segment is judged against the spec §2.8 inference, not skipped (twinkle-papers shape: NSE+BSE, lot 2000 x Rs69)', async () => {
+    mockConsolidated({ companyName: 'Acme Industries Limited', lotSize: 2000, priceRangeMin: 69, priceRangeMax: 69 });
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ lotSize: 2000, priceRangeMin: 69, priceRangeMax: 69 }),
+      'BSE',
+      existingRow({ segment: null, listingExchanges: ['NSE', 'BSE'], lotSize: null, priceRangeMin: 65, priceRangeMax: 68 })
+    );
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('lotSize');
+    expect(patch.priceRangeMax).toBe(69);
+  });
+
+  it('(q) #721: the same no-segment row on ONE exchange (inferred SME, Rs1,38,000) keeps its lot', async () => {
+    mockConsolidated({ companyName: 'Acme Industries Limited', lotSize: 2000, priceRangeMin: 69, priceRangeMax: 69 });
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ lotSize: 2000, priceRangeMin: 69, priceRangeMax: 69 }),
+      'BSE',
+      existingRow({ segment: null, listingExchanges: ['BSE'], lotSize: null, priceRangeMin: 69, priceRangeMax: 69 })
+    );
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.lotSize).toBe(2000);
+  });
+
+  it('(r) #721: a stored NCD row is not judged (spec §1.11), so its lot is written', async () => {
+    mockConsolidated({ companyName: 'Acme Industries Limited', lotSize: 100, priceRangeMin: 300, priceRangeMax: 300 });
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ lotSize: 100, priceRangeMin: 300, priceRangeMax: 300, offeringType: 'NCD' }),
+      'BSE',
+      existingRow({ segment: null, offeringType: 'NCD', lotSize: null, priceRangeMin: 300, priceRangeMax: 300 })
+    );
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.lotSize).toBe(100);
+  });
+
+  it('(s) #721: the CREATE door drops an impossible lot (no stored row, lot 100 x Rs300 = Rs30,000) and keeps the rest', async () => {
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.create.mockResolvedValue({ id: 'new-ipo-id' });
+    await upsertIPO(
+      ipoRepository,
+      scrape({ companyName: 'Brand New Ltd', lotSize: 100, priceRangeMin: 290, priceRangeMax: 300 }),
+      'BSE'
+    );
+    expect(ipoRepository.create).toHaveBeenCalledTimes(1);
+    const [created] = ipoRepository.create.mock.calls[0];
+    expect(created).not.toHaveProperty('lotSize');
+    expect(created.priceRangeMax).toBe(300);
+    const tracked = fieldSourcesMock.bulkTrackFieldUpdates.mock.calls.at(-1)?.[2] ?? [];
+    expect(tracked.map((t: any) => t.fieldName)).not.toContain('lotSize');
+  });
+
+  it('(t) #721: the CREATE door keeps a legal lot (lot 50 x Rs290 = Rs14,500)', async () => {
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.create.mockResolvedValue({ id: 'new-ipo-id' });
+    await upsertIPO(
+      ipoRepository,
+      scrape({ companyName: 'Brand New Ltd', lotSize: 50, priceRangeMin: 280, priceRangeMax: 290 }),
+      'BSE'
+    );
+    const [created] = ipoRepository.create.mock.calls[0];
+    expect(created.lotSize).toBe(50);
+  });
 });

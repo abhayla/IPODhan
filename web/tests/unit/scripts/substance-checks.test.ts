@@ -371,28 +371,41 @@ describe('checkLotEconomicsRetailRange (W-171: Kanohar-shape lot/cap misread)', 
       segment: 'SME',
       issue_type: 'BOOK_BUILDING',
     });
-    expect(reason).toMatch(/outside the SEBI ICDR Chapter IX/);
+    expect(reason).toMatch(/below the spec §1.2 row 4 SME per-lot floor/);
   });
 
   it('passes for an SME row inside its retail range', () => {
     expect(
       checkLotEconomicsRetailRange({
         lot_size: 1600,
-        price_range_max: (SME_LOT_ECONOMICS_MIN + SME_LOT_ECONOMICS_MAX) / 2 / 1600,
+        price_range_max: 80, // 1600 x 80 = Rs1,28,000
         segment: 'SME',
         issue_type: 'BOOK_BUILDING',
       })
     ).toBeNull();
   });
 
-  it('is exempt for a FIXED_PRICE issue even when lot x cap looks implausible', () => {
+  // #721: mirrors the write rule — spec §1.2 row 4 states no FIXED_PRICE exemption, SME has no
+  // per-lot ceiling, and a row with no segment is judged against the §2.8 inference.
+  it('judges a FIXED_PRICE issue too (#721): narmadesh-brass SME lot 100 x Rs515 = Rs51,500 fails', () => {
     expect(
-      checkLotEconomicsRetailRange({
-        lot_size: 23,
-        price_range_max: 82,
-        segment: 'MAINBOARD',
-        issue_type: 'FIXED_PRICE',
-      })
+      checkLotEconomicsRetailRange({ lot_size: 100, price_range_max: 515, segment: 'SME', issue_type: 'FIXED_PRICE' })
+    ).toMatch(/SME per-lot floor/);
+  });
+
+  it('has no SME per-lot ceiling (#721): lot 1000 x Rs250 = Rs2,50,000 passes', () => {
+    expect(checkLotEconomicsRetailRange({ lot_size: 1000, price_range_max: 250, segment: 'SME', issue_type: null })).toBeNull();
+    expect(SME_LOT_ECONOMICS_MAX).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('judges a row with no segment against the spec §2.8 inference (#721)', () => {
+    // twinkle-papers shape: NSE+BSE, lot 2000 x Rs69 = Rs1,38,000 -> inferred MAINBOARD -> fails
+    expect(
+      checkLotEconomicsRetailRange({ lot_size: 2000, price_range_max: 69, segment: null, listing_exchanges: ['NSE', 'BSE'] })
+    ).toMatch(/MAINBOARD/);
+    // dhanwel shape: BSE only, lot 1200 x Rs99 = Rs1,18,800 -> inferred SME -> passes
+    expect(
+      checkLotEconomicsRetailRange({ lot_size: 1200, price_range_max: 99, segment: null, listing_exchanges: ['BSE'] })
     ).toBeNull();
   });
 
@@ -401,10 +414,12 @@ describe('checkLotEconomicsRetailRange (W-171: Kanohar-shape lot/cap misread)', 
     expect(checkLotEconomicsRetailRange({ lot_size: 23, price_range_max: null, segment: 'MAINBOARD' })).toBeNull();
   });
 
-  it('passes (not applicable) for a segment with no defined band (RIGHTS/NCD/REIT/InvIT)', () => {
-    expect(
-      checkLotEconomicsRetailRange({ lot_size: 23, price_range_max: 82, segment: 'RIGHTS', issue_type: null })
-    ).toBeNull();
+  it('passes (not applicable) for an offering type with no retail lot (RIGHTS/NCD/REIT/InvIT, spec §1.11)', () => {
+    for (const offering_type of ['RIGHTS', 'NCD', 'REITS', 'INVITS']) {
+      expect(
+        checkLotEconomicsRetailRange({ lot_size: 23, price_range_max: 82, segment: null, offering_type, issue_type: null })
+      ).toBeNull();
+    }
   });
 });
 

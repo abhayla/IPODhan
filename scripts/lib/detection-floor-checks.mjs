@@ -64,10 +64,13 @@ export const ISSUE_SIZE_CONSISTENCY_UPPER_MULTIPLIER = 3.0;
 // MAINBOARD book-built retail applications are steered to ~Rs10k-15k; SME minimum
 // application sizes run far higher (~Rs1-2 lakh). Margins added both sides so a
 // borderline-but-legitimate issue doesn't false-positive.
+// #721: spec §1.2 row 4 gives SME a per-lot FLOOR only, so the SME window has no ceiling.
 export const LOT_VALUE_WINDOW_RUPEES = {
   MAINBOARD: [8_000, 20_000],
-  SME: [90_000, 3_00_000],
+  SME: [90_000, Number.POSITIVE_INFINITY],
 };
+// #721: spec §2.8 segment inference, so a row with no segment is judged, never skipped.
+export const SME_INFERENCE_MIN_LOT_VALUE = 50_000;
 
 // Corporate-action shape: fixed price (min===max), the near-universal lot_size=100
 // corporate-action default, and a 10-14 day "bidding window" — the exact shape of
@@ -245,12 +248,15 @@ export function checkLotBandSebiWindow(row) {
   const lot = toNumber(row.lotSize);
   const priceMax = toNumber(row.priceRangeMax);
   if (lot === null || lot <= 0 || priceMax === null || priceMax <= 0) return null;
-  const window = LOT_VALUE_WINDOW_RUPEES[row.segment];
-  if (!window) return null; // no window defined for this segment
   const lotValue = lot * priceMax;
+  const onTwoExchanges = Array.isArray(row.listingExchanges) && new Set(row.listingExchanges).size >= 2;
+  const segment = row.segment === 'MAINBOARD' || row.segment === 'SME'
+    ? row.segment
+    : (lotValue >= SME_INFERENCE_MIN_LOT_VALUE && !onTwoExchanges ? 'SME' : 'MAINBOARD');
+  const window = LOT_VALUE_WINDOW_RUPEES[segment];
   const [min, max] = window;
   if (lotValue < min || lotValue > max) {
-    return `lot_size x price_range_max (${lot} x Rs${priceMax} = Rs${lotValue.toLocaleString('en-IN')}) is outside the ${row.segment} SEBI retail window [Rs${min.toLocaleString('en-IN')}..Rs${max.toLocaleString('en-IN')}]`;
+    return `lot_size x price_range_max (${lot} x Rs${priceMax} = Rs${lotValue.toLocaleString('en-IN')}) is outside the ${segment}${row.segment ? '' : ' (inferred, spec §2.8)'} SEBI retail window [Rs${min.toLocaleString('en-IN')}..${Number.isFinite(max) ? 'Rs' + max.toLocaleString('en-IN') : 'no ceiling'}]`;
   }
   return null;
 }
