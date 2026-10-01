@@ -118,6 +118,15 @@ export function rowTableDerivedKey(tableName: string): { sourceField: string; de
 export { protectionTableName };
 
 /** Bookkeeping columns no admin value may replace (keys, timestamps, the dedicated lock flag, the slug). */
+/**
+ * #1159 item 2: admin-editable columns whose value set is closed and enforced by a DB CHECK. A value
+ * outside the set is refused as INVALID (400) before the transaction, never left to the CHECK (a 500).
+ * Keyed `<table>.<field>`; each set is the schema's own declaration, never a copy.
+ */
+const CLOSED_VALUE_SETS: Readonly<Record<string, readonly string[]>> = {
+  'documents.extractionStatus': schema.DOCUMENT_EXTRACTION_STATUSES,
+};
+
 const NON_EDITABLE_FIELDS = new Set([
   'id',
   'ipoId',
@@ -653,6 +662,10 @@ export async function writeAdminFieldValue(
     const coerced = coerceForColumn(column.columnType, mode.kind === 'storedPick' ? mode.value ?? null : input.value ?? null);
     if (coerced.ok === false) return { kind: 'INVALID', reason: `${tableName}.${fieldName}: ${coerced.reason}` };
     newValue = coerced.value;
+    const closedSet = CLOSED_VALUE_SETS[`${tableName}.${fieldName}`];
+    if (closedSet && (typeof newValue !== 'string' || !closedSet.includes(newValue))) {
+      return { kind: 'INVALID', reason: `${tableName}.${fieldName} must be one of ${closedSet.join(', ')}` };
+    }
     if (tableName === 'ipos' && fieldName === 'listingExchanges') {
       const venues = normalizeListingExchanges(newValue);
       if (venues.ok === false) return { kind: 'INVALID', reason: `ipos.listingExchanges: ${venues.reason}` };

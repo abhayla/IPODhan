@@ -183,6 +183,13 @@ export const DOCUMENT_EXTRACTION_STATUSES = [
   'NOT_EXTRACTABLE',
 ] as const;
 export type DocumentExtractionStatus = (typeof DOCUMENT_EXTRACTION_STATUSES)[number];
+/**
+ * #1159 item 3: the only statuses a `document_extraction_attempts` row records (a failed attempt with a
+ * cause, #634). Declared once; the column's `$type` and `ck_document_extraction_attempts_outcome` both
+ * read it, so a write of any other status fails to compile instead of at the CHECK.
+ */
+export const DOCUMENT_EXTRACTION_ATTEMPT_OUTCOMES = ['FAILED', 'MANUAL_REVIEW'] as const satisfies readonly DocumentExtractionStatus[];
+export type DocumentExtractionAttemptOutcome = (typeof DOCUMENT_EXTRACTION_ATTEMPT_OUTCOMES)[number];
 
 export const ipoVerdictEnum = pgEnum('ipo_verdict', [
   'APPLY',
@@ -839,13 +846,16 @@ export const documentExtractionAttempts = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: 'cascade' }),
     attemptNumber: integer('attempt_number').notNull(),
-    outcome: varchar('outcome', { length: 50 }).$type<DocumentExtractionStatus>().notNull(),
+    outcome: varchar('outcome', { length: 50 }).$type<DocumentExtractionAttemptOutcome>().notNull(),
     cause: text('cause').notNull(),
     attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
   },
   (table) => ({
     documentIdIdx: index('idx_document_extraction_attempts_document').on(table.documentId, table.id),
-    outcomeIsFailure: check('ck_document_extraction_attempts_outcome', sql`${table.outcome} IN ('FAILED', 'MANUAL_REVIEW')`),
+    outcomeIsFailure: check(
+      'ck_document_extraction_attempts_outcome',
+      sql`${table.outcome} IN (${sql.raw(DOCUMENT_EXTRACTION_ATTEMPT_OUTCOMES.map((v) => `'${v}'`).join(', '))})`
+    ),
   })
 );
 

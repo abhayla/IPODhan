@@ -86,4 +86,30 @@ describe.skipIf(!DATABASE_URL)('document_extraction_attempts keeps every failed 
     // drizzle wraps the pg error; the constraint name is on its cause.
     expect(err?.cause?.constraint ?? err?.constraint).toBe('ck_documents_extraction_status');
   });
+  it('#1159: when the attempt insert fails, the FAILED status rolls back with it (the row keeps IN_PROGRESS, no attempt row)', async () => {
+    const doc = rows(await db.execute(sql`
+      INSERT INTO documents (ipo_id, type, title, url, extraction_status)
+      VALUES (${IPO}::uuid, 'RHP', 'rhp', ${'https://example.test/1159-' + Math.random().toString(36).slice(2) + '.pdf'}, 'PENDING')
+      RETURNING id`))[0].id as string;
+    await db.update(schema.documents).set(buildExtractionStatePatch('IN_PROGRESS', { retryCount: 1 }) as never)
+      .where(sql`id = ${doc}::uuid`);
+    // The real database and the real writer; only the attempt INSERT inside the transaction is made to fail.
+    const bind = (o: any, k: PropertyKey) => (typeof o[k] === 'function' ? o[k].bind(o) : o[k]);
+    const failingInsert = new Proxy(db as any, {
+      get: (t, k) =>
+        k === 'transaction'
+          ? (fn: (tx: unknown) => Promise<unknown>) =>
+              t.transaction((tx: any) =>
+                fn(new Proxy(tx, { get: (x, kk) => (kk === 'insert' ? () => { throw new Error('simulated attempt insert failure'); } : bind(x, kk)) }))
+              )
+          : bind(t, k),
+    });
+    const patch = buildExtractionStatePatch('FAILED', { error: 'extractor: parse error' });
+    await expect(writeStatusWithAttempt(failingInsert, doc, 'FAILED', 'extractor: parse error', patch)).rejects.toThrow('simulated attempt insert failure');
+    const d = rows(await db.execute(sql`SELECT extraction_status, extraction_error FROM documents WHERE id = ${doc}::uuid`))[0];
+    expect(d.extraction_status).toBe('IN_PROGRESS');
+    expect(d.extraction_error).toBeNull();
+    const n = rows(await db.execute(sql`SELECT count(*)::int AS n FROM document_extraction_attempts WHERE document_id = ${doc}::uuid`))[0].n;
+    expect(n).toBe(0);
+  });
 });

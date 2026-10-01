@@ -45,6 +45,21 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     await expect(writeAdminFieldValue(untouchable, { ...base, fieldName, value })).rejects.toThrow('db touched before validation finished');
   });
 
+  // #1159 item 2: documents.extraction_status is a closed set (spec §1.8, ck_documents_extraction_status).
+  // A value outside it is a 400 before any transaction, never a CHECK violation surfacing as a 500.
+  it.each(['DONE', 'completed', ''])('documents.extractionStatus %o is refused before the transaction (#1159)', async (value) => {
+    const r = await writeAdminFieldValue(untouchable, {
+      ...base, tableName: 'documents', row: { recordId: 'r' }, fieldName: 'extractionStatus', value,
+    } as AdminFieldWriteInput);
+    expect(r.kind).toBe('INVALID');
+    expect((r as { reason: string }).reason).toContain('documents.extractionStatus must be one of PENDING, IN_PROGRESS');
+  });
+  it('a declared documents.extractionStatus passes validation and reaches the database (#1159)', async () => {
+    await expect(writeAdminFieldValue(untouchable, {
+      ...base, tableName: 'documents', row: { recordId: 'r' }, fieldName: 'extractionStatus', value: 'FAILED',
+    } as AdminFieldWriteInput)).rejects.toThrow('db touched before validation finished');
+  });
+
   it('item 18: a typed listing venue other than NSE/BSE is refused before any transaction', async () => {
     const opts = { planManifest: { version: 2, fields: {} } };
     for (const value of ['NSE, XYZ', '', 42, ['NSE', 7]]) {

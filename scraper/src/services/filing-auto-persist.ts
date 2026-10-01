@@ -836,6 +836,29 @@ export type { ExtractionStatus, ExtractionStatePatchContext };
 export { buildExtractionStatePatch };
 
 /**
+ * #1159: the catch for every extraction-status write in `processPendingFilings`. A status write
+ * that throws has rolled back (a FAILED / MANUAL_REVIEW write rolls back WITH its
+ * `document_extraction_attempts` row, `writeStatusWithAttempt`), so the document keeps its previous
+ * status and the cause would otherwise be lost (signal-ownership R6). The cycle still continues: one
+ * document's lost write must not fail the others. Logged at error with the wrapped cause.
+ */
+export function logStatusWriteFailure(documentId: string, status: string | null | undefined) {
+  return (error: unknown): undefined => {
+    const wrapped = error instanceof Error ? error.cause : undefined;
+    logger.error(
+      {
+        documentId,
+        status,
+        error: error instanceof Error ? error.message : String(error),
+        ...(wrapped !== undefined ? { cause: wrapped instanceof Error ? wrapped.message : String(wrapped) } : {}),
+      },
+      'Extraction status write failed and rolled back: the document keeps its previous status (#1159)'
+    );
+    return undefined;
+  };
+}
+
+/**
  * #634: a failed extraction attempt's status write AND its append to
  * `document_extraction_attempts`, in one transaction, so the status can never say FAILED without
  * the cause being on record (and vice versa). The attempt number is the row's own `retry_count`
@@ -1228,8 +1251,8 @@ async function parkExhaustedUnfinishedReads(
     );
     try {
       await deps.setDocumentExtractionState({ documentId: doc.id, status: 'FAILED', error });
-    } catch {
-      /* already logged by the writer; parking must not fail the cycle */
+    } catch (writeError) {
+      logStatusWriteFailure(doc.id, 'FAILED')(writeError);
     }
     if (doc.type === ANCHOR_DOC_TYPE) {
       await recordLiveStep(ipoId, 'H3', { status: 'BLOCKED', source: ANCHOR_DOC_TYPE, error: `${error} — ${reason}` }).catch(
@@ -1993,7 +2016,7 @@ async function runAnchorDocument(
     result.anchorsPersisted++;
     await deps
       .setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null, retryCount: 0 })
-      .catch(() => undefined);
+      .catch(logStatusWriteFailure(doc.id, 'COMPLETED'));
     if (ctx.stateId) {
       await deps
         .setFetchStateExtracted({
@@ -2051,7 +2074,7 @@ async function runAnchorDocument(
         ...(ctx.previousUpdatedAt ? { updatedAt: ctx.previousUpdatedAt } : {}),
         ...(ctx.previousError !== undefined ? { error: ctx.previousError } : {}),
       })
-      .catch(() => undefined);
+      .catch(logStatusWriteFailure(doc.id, ctx.previousStatus));
     // Round 3 (MINOR-4): the filing-loop busy branch restores `doc.retryCount`
     // in-place so a later re-read of this same object in the SAME cycle sees
     // the pre-attempt value, not the in-flight IN_PROGRESS stamp — the anchor
@@ -2082,7 +2105,7 @@ async function runAnchorDocument(
         error: parked,
         retryCount: retryCountAtStamp,
       })
-      .catch(() => undefined);
+      .catch(logStatusWriteFailure(doc.id, 'MANUAL_REVIEW'));
     await recordLiveStep(ipo.id, 'H3', {
       status: 'BLOCKED',
       source: ANCHOR_DOC_TYPE,
@@ -2151,7 +2174,7 @@ async function runAnchorDocument(
       error: classified.error.slice(0, 1000),
       ...(classified.status === 'MANUAL_REVIEW' ? { retryCount: retryCountAtStamp } : {}),
     })
-    .catch(() => undefined);
+    .catch(logStatusWriteFailure(doc.id, classified.status));
   await recordLiveStep(ipo.id, 'H3', {
     // #959: a parked unfinished read is BLOCKED too - it waits for a new version or new bytes.
     status: classified.status === 'MANUAL_REVIEW' || classified.parked ? 'BLOCKED' : 'FAILED',
@@ -2213,11 +2236,8 @@ async function runCorrigendumPass(
           error: withFailedVersion(`corrigendum_read_failed: ${cause}`, deps.version ?? EXTRACTOR_VERSION, doc.sha256),
           retryCount: (doc.retryCount ?? 0) + 1,
         });
-      } catch (stampError) {
-        logger.warn(
-          { ipoId: ipo.id, documentId: doc.id, error: stampError instanceof Error ? stampError.message : String(stampError) },
-          'Could not stamp corrigendum FAILED (non-fatal)'
-        );
+      } catch (writeError) {
+        logStatusWriteFailure(doc.id, 'FAILED')(writeError);
       }
       logger.warn({ ipoId: ipo.id, documentId: doc.id, cause }, '[OD-90] corrigendum read failed');
     }
@@ -2516,10 +2536,13 @@ export async function processPendingFilings(
           ...(resumeError !== undefined ? { error: resumeError } : {}),
         });
       } catch (error) {
-        logger.warn(
-          { ipoId: ipo.id, docType: doc.type, error: error instanceof Error ? error.message : String(error) },
-          'Could not mark anchor document IN_PROGRESS (non-fatal) — extracting anyway'
-        );
+        // #1245: fail closed, same as the filing loop - an unstamped read is an uncounted read.
+        const message = error instanceof Error ? error.message : String(error);
+        logStatusWriteFailure(doc.id, 'IN_PROGRESS')(error);
+        doc.retryCount = previousRetryCount;
+        doc.extractionError = previousError;
+        result.skipped = [...result.skipped, `${doc.type}: IN_PROGRESS stamp failed, not extracted this pass (#1245): ${message}`];
+        continue;
       }
 
       result.spawned++;
@@ -2622,10 +2645,16 @@ export async function processPendingFilings(
         ...(resumeError !== undefined ? { error: resumeError } : {}),
       });
     } catch (error) {
-      logger.warn(
-        { ipoId: ipo.id, docType, error: error instanceof Error ? error.message : String(error) },
-        'Could not mark document IN_PROGRESS (non-fatal) — extracting anyway'
-      );
+      // #1245: fail closed. The attempt is counted AT this stamp (and an interrupted resume's
+      // count is recorded on it), so extracting without it would run an uncounted read: a
+      // repeated stamp failure plus a kill could loop past the unfinished-read cap. The row
+      // keeps its previous state and is read at the next pass.
+      const message = error instanceof Error ? error.message : String(error);
+      logStatusWriteFailure(doc.id, 'IN_PROGRESS')(error);
+      doc.retryCount = previousRetryCount;
+      doc.extractionError = previousError;
+      result.skipped = [...result.skipped, `${docType}: IN_PROGRESS stamp failed, not extracted this pass (#1245): ${message}`];
+      continue;
     }
 
     result.spawned++;
@@ -2677,8 +2706,8 @@ export async function processPendingFilings(
             // #959: undo the resume stamp's interruption record too — a busy box is not an attempt.
             ...(resumeError !== undefined ? { error: previousError } : {}),
           });
-        } catch {
-          /* already logged by the writer; a stuck IN_PROGRESS status must not fail the cycle */
+        } catch (writeError) {
+          logStatusWriteFailure(doc.id, previousStatus)(writeError);
         }
         doc.retryCount = previousRetryCount;
         doc.extractionError = previousError;
@@ -2777,8 +2806,8 @@ export async function processPendingFilings(
           error: classified.error.slice(0, 1000),
           ...(blocked ? { retryCount: newRetryCount } : {}),
         });
-      } catch {
-        /* already logged by the writer; a stuck status must not fail the cycle */
+      } catch (writeError) {
+        logStatusWriteFailure(doc.id, classified.status)(writeError);
       }
       continue;
     }
@@ -2855,7 +2884,7 @@ export async function processPendingFilings(
           error: classified.error.slice(0, 1000),
           ...(classified.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
         })
-        .catch(() => undefined);
+        .catch(logStatusWriteFailure(doc.id, classified.status));
     }
     await writeSteps(ipo.id, [
       {
@@ -2928,7 +2957,7 @@ export async function processPendingFilings(
           error: classified.error.slice(0, 1000),
           ...(classified.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
         })
-        .catch(() => undefined);
+        .catch(logStatusWriteFailure(doc.id, classified.status));
       continue;
     }
 
@@ -3026,7 +3055,7 @@ export async function processPendingFilings(
           ...(classifiedIncomplete.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
           pageRows: pageRowsFromExtraction(doc.id, extraction as never),
         })
-        .catch(() => undefined);
+        .catch(logStatusWriteFailure(doc.id, classifiedIncomplete.status));
       continue;
     }
 
@@ -3046,7 +3075,7 @@ export async function processPendingFilings(
         // therefore never delete its PDF.
         pageRows: pageRowsFromExtraction(doc.id, extraction as never),
       })
-      .catch(() => undefined);
+      .catch(logStatusWriteFailure(doc.id, 'COMPLETED'));
     const stateId = stateIdByDocType.get(docType);
     if (stateId) {
       await deps

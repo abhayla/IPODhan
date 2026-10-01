@@ -12,7 +12,7 @@
  * changes. Behaviour is unchanged — this is a pure move, not a rewrite.
  */
 
-import type { DocumentExtractionStatus } from '@ipodhan/shared/db/schema';
+import type { DocumentExtractionStatus, DocumentExtractionAttemptOutcome } from '@ipodhan/shared/db/schema';
 
 /**
  * The status values `buildExtractionStatePatch` writes: the column's declared set
@@ -23,12 +23,16 @@ import type { DocumentExtractionStatus } from '@ipodhan/shared/db/schema';
 export type ExtractionStatus = Exclude<DocumentExtractionStatus, 'NOT_EXTRACTABLE'>;
 
 /** The outcomes that record an attempt row (#634): the attempt failed and carries a cause. */
-export const ATTEMPT_RECORDING_OUTCOMES: readonly ExtractionStatus[] = ['FAILED', 'MANUAL_REVIEW'];
+export const ATTEMPT_RECORDING_OUTCOMES: readonly DocumentExtractionAttemptOutcome[] = ['FAILED', 'MANUAL_REVIEW'];
+
+function isAttemptOutcome(status: ExtractionStatus): status is DocumentExtractionAttemptOutcome {
+  return (ATTEMPT_RECORDING_OUTCOMES as readonly string[]).includes(status);
+}
 
 export interface ExtractionAttemptRow {
   documentId: string;
   attemptNumber: number;
-  outcome: ExtractionStatus;
+  outcome: DocumentExtractionAttemptOutcome;
   cause: string;
   attemptedAt: Date;
 }
@@ -48,7 +52,7 @@ export function buildExtractionAttemptRow(
   attemptNumber: number,
   now: Date = new Date()
 ): ExtractionAttemptRow | null {
-  if (!ATTEMPT_RECORDING_OUTCOMES.includes(transition)) return null;
+  if (!isAttemptOutcome(transition)) return null;
   if (typeof error !== 'string' || error.trim() === '') return null;
   return { documentId, attemptNumber, outcome: transition, cause: error, attemptedAt: now };
 }
