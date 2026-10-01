@@ -9,7 +9,7 @@
  * Total: 5+ test cases
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { scrapeBSEDocuments } from '../../src/scrapers/bse-document-scraper.js';
 import { detectDocumentType } from '../../src/utils/document-type-mapper.js';
@@ -35,6 +35,13 @@ describe('BSE Document Scraper Integration', () => {
       slug: `bse-document-scraper-test-${mockIPOId}`,
       status: 'UPCOMING',
     });
+  });
+
+  // #1395: a failed assertion used to skip the inline cleanup at the end of a
+  // case, leaving its rows for the next case to count (3 leftover + 1 = 4).
+  // Cleanup now runs after every case, pass or fail.
+  afterEach(async () => {
+    await documentRepository.deleteByIPO(mockIPOId);
   });
 
   afterAll(async () => {
@@ -130,7 +137,7 @@ describe('BSE Document Scraper Integration', () => {
           type: 'DRHP',
           mediaType: 'PDF',
           title: 'Draft Red Herring Prospectus',
-          url: 'https://www.bseindia.com/drhp1.pdf',
+          url: `https://www.bseindia.com/${mockIPOId}/drhp1.pdf`,
           exchange: 'BSE',
           isActive: true,
         },
@@ -139,7 +146,7 @@ describe('BSE Document Scraper Integration', () => {
           type: 'ADDENDUM',
           mediaType: 'PDF',
           title: 'Addendum 1',
-          url: 'https://www.bseindia.com/addendum1.pdf',
+          url: `https://www.bseindia.com/${mockIPOId}/addendum1.pdf`,
           exchange: 'BSE',
           isActive: true,
         },
@@ -148,7 +155,7 @@ describe('BSE Document Scraper Integration', () => {
           type: 'ADDENDUM',
           mediaType: 'PDF',
           title: 'Addendum 2',
-          url: 'https://www.bseindia.com/addendum2.pdf',
+          url: `https://www.bseindia.com/${mockIPOId}/addendum2.pdf`,
           exchange: 'BSE',
           isActive: true,
         },
@@ -166,19 +173,20 @@ describe('BSE Document Scraper Integration', () => {
       expect(savedDocs.length).toBe(3);
 
       // Verify sequence numbers
-      const addendums = savedDocs.filter(d => d.type === 'ADDENDUM');
+      // #1395: findByIPO has no ORDER BY, so row order is Postgres heap order
+      // and can differ from insert order. Sort before indexing.
+      const addendums = savedDocs
+        .filter(d => d.type === 'ADDENDUM')
+        .sort((a, b) => (a.sequenceNumber ?? 0) - (b.sequenceNumber ?? 0));
       expect(addendums.length).toBe(2);
       expect(addendums[0].sequenceNumber).toBe(1);
       expect(addendums[1].sequenceNumber).toBe(2);
-
-      // Cleanup
-      await documentRepository.deleteByIPO(mockIPO);
     });
 
     it('should handle duplicate URL updates', async () => {
       // #572: same fix — reuse the seeded parent row, not an unseeded uuid.
       const mockIPO = mockIPOId;
-      const duplicateURL = `https://www.bseindia.com/test-duplicate-${Date.now()}.pdf`;
+      const duplicateURL = `https://www.bseindia.com/test-duplicate-${randomUUID()}.pdf`;
 
       const doc1: DocumentInsert = {
         ipoId: mockIPO,
@@ -206,9 +214,6 @@ describe('BSE Document Scraper Integration', () => {
       // Verify only one document exists
       const savedDocs = await documentRepository.findByIPO(mockIPO);
       expect(savedDocs.length).toBe(1);
-
-      // Cleanup
-      await documentRepository.deleteByIPO(mockIPO);
     });
   });
 });
