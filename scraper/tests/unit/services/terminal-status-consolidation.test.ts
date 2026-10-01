@@ -224,7 +224,7 @@ describe('terminal ipo_status consolidation guard (W-60)', () => {
       {
         ipoId: 'terminal-status-ipo',
         tableName: 'ipos',
-        fieldName: 'total_subscription',
+        fieldName: 'gmpPrice',
         source: 'NSE',
         value: '5',
         confidence: 95,
@@ -239,13 +239,13 @@ describe('terminal ipo_status consolidation guard (W-60)', () => {
     const result = await service.consolidateIPOData({
       ipoId: 'terminal-status-ipo',
       tableName: 'ipos',
-      incomingData: { total_subscription: 8 },
+      incomingData: { gmpPrice: 8 },
       source: 'NSE',
       confidence: 95,
       scrapedAt: new Date('2026-08-20T11:00:00Z'), // newer -> TIME_BASED_PRIORITY wins
     });
 
-    const field = result.fieldResults.find((f) => f.fieldName === 'total_subscription');
+    const field = result.fieldResults.find((f) => f.fieldName === 'gmpPrice');
     expect(field?.chosenSource).toBe('NSE');
     expect(field?.finalValue).toBe(8);
     expect(field?.conflictReason).not.toBe('TERMINAL_STATUS_KEPT');

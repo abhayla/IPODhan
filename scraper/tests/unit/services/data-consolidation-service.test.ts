@@ -104,7 +104,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'revenue_fy1',
+          fieldName: 'revenueFy2024',
           source: 'NSE',
           value: '5000000000',
           confidence: 95,
@@ -120,7 +120,7 @@ describe('DataConsolidationService', () => {
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          incomingData: { revenue_fy1: 5100000000 },
+          incomingData: { revenueFy2024: 5100000000 },
           source: 'DRHP',
           confidence: 100,
         });
@@ -362,7 +362,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'peer_companies',
+          fieldName: 'objectives',
           source: 'NSE',
           value: 'existing text',
           confidence: 95,
@@ -376,7 +376,7 @@ describe('DataConsolidationService', () => {
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
         vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
 
-        // peer_companies' matrix entry lists only ['ADMIN','DRHP','CHITTORGARH',
+        // objectives' matrix entry (#1186: was the dead peer_companies key) lists only ['ADMIN','DRHP','CHITTORGARH',
         // 'MONEYCONTROL'] — NSE and BSE both rank -1 (unrecognized), so
         // existingPriority === incomingPriority and resolution falls through
         // to DEFAULT_KEEP_EXISTING (existing wins). The old logConflict
@@ -385,7 +385,7 @@ describe('DataConsolidationService', () => {
         await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          incomingData: { peer_companies: 'incoming text' },
+          incomingData: { objectives: 'incoming text' },
           source: 'BSE',
           confidence: 90,
         });
@@ -513,7 +513,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'total_subscription',
+          fieldName: 'gmpPrice',
           source: 'NSE',
           value: '5',
           confidence: 95,
@@ -529,7 +529,7 @@ describe('DataConsolidationService', () => {
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          incomingData: { total_subscription: 8 }, // NSE revising its own number upward
+          incomingData: { gmpPrice: 8 }, // NSE revising its own number upward
           source: 'NSE', // SAME source as existing
           confidence: 95,
           scrapedAt: new Date('2026-08-20T11:00:00Z'), // newer -> TIME_BASED_PRIORITY wins
@@ -545,7 +545,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'total_subscription',
+          fieldName: 'gmpPrice',
           source: 'NSE',
           value: '5',
           confidence: 95,
@@ -562,7 +562,7 @@ describe('DataConsolidationService', () => {
         await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          incomingData: { total_subscription: 9 },
+          incomingData: { gmpPrice: 9 },
           source: 'BSE', // DIFFERENT source than existing (NSE)
           confidence: 90,
           scrapedAt: new Date('2026-08-20T11:00:00Z'),
@@ -577,7 +577,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'total_subscription',
+          fieldName: 'gmpPrice',
           source: 'NSE',
           value: '9',
           confidence: 95,
@@ -594,7 +594,7 @@ describe('DataConsolidationService', () => {
         await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          incomingData: { total_subscription: 9 }, // BSE now agrees with NSE's 9
+          incomingData: { gmpPrice: 9 }, // BSE now agrees with NSE's 9
           source: 'BSE',
           confidence: 90,
         });
@@ -605,7 +605,7 @@ describe('DataConsolidationService', () => {
           'test-ipo',
           'ipos',
           '',
-          'total_subscription'
+          'gmpPrice'
         );
         // Values are equivalent -> no new conflict is logged
         expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
@@ -775,7 +775,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'subscriptions',
-          fieldName: 'total_subscription',
+          fieldName: 'gmpPrice',
           source: 'NSE',
           value: '2.5',
           confidence: 95,
@@ -793,7 +793,7 @@ describe('DataConsolidationService', () => {
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'subscriptions',
-          incomingData: { total_subscription: 3.2 },
+          incomingData: { gmpPrice: 3.2 },
           source: 'NSE',
           confidence: 95,
           scrapedAt: new Date('2025-01-15T10:15:00Z'),
@@ -807,7 +807,7 @@ describe('DataConsolidationService', () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'subscriptions',
-          fieldName: 'total_subscription',
+          fieldName: 'gmpPrice',
           source: 'NSE',
           value: '3.2',
           confidence: 95,
@@ -824,7 +824,7 @@ describe('DataConsolidationService', () => {
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
           tableName: 'subscriptions',
-          incomingData: { total_subscription: 2.5 },
+          incomingData: { gmpPrice: 2.5 },
           source: 'NSE',
           confidence: 95,
           scrapedAt: new Date('2025-01-15T10:00:00Z'),

@@ -203,19 +203,12 @@ describe('T-520: a website value arriving after a document value is REJECTED, no
   });
 
   it('leaves the fields no offer document contains untouched (websites still win)', () => {
-    // Live subscription, GMP, listing price/gain and current status are NOT in
-    // any filing - the exchanges and the GMP feeds remain authoritative.
-    for (const field of [
-      'total_subscription',
-      'retail_subscription',
-      'qib_subscription',
-      'nii_subscription',
-      'gmp_price',
-      'expected_listing_price',
-      'listing_price',
-      'listing_gain_percentage',
-      'status',
-    ]) {
+    // GMP and current status are NOT in any filing - the GMP feeds and the
+    // exchanges remain authoritative. #1186: the subscription, expected-listing
+    // and listing price/gain names that used to be listed here were snake_case
+    // keys no consolidated write ever looks up (subscriptions, gmp_records and
+    // listing_performance have their own writers) and were deleted from the matrix.
+    for (const field of ['gmpPrice', 'gmp_price', 'gmpPercentageHistorical', 'status']) {
       expect(getSourcePriority(field, 'DRHP')).toBe(-1);
     }
   });
@@ -254,11 +247,11 @@ describe('T-520 round 2: a document can correct a document, a website still cann
   }
 
   const REFRESHABLE = [
+    // #1186: `min_investment`, `issue_price`, `fresh_issue_size` and `offer_for_sale_size` were listed here,
+    // but those snake_case matrix entries were never reached by a production write (every caller passes
+    // the camelCase column name), so this block was proving rules that never ran. They are deleted from
+    // the matrix; the DRHP self-refresh mechanism stays proven on the fields that really carry it.
     { field: 'lotSize', wrong: 1200, right: 1600 },
-    { field: 'min_investment', wrong: 126000, right: 168000 },
-    { field: 'issue_price', wrong: 105, right: 112 },
-    { field: 'fresh_issue_size', wrong: 5000000000, right: 6000000000 },
-    { field: 'offer_for_sale_size', wrong: 2000000000, right: 2500000000 },
     { field: 'priceRangeMin', wrong: 100, right: 106 },
     { field: 'priceRangeMax', wrong: 105, right: 112 },
   ];

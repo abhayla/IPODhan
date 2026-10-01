@@ -11,7 +11,9 @@ import {
  * priority matrix for every GMP field, time-based, DRHP-ignoring, range-validated,
  * and ranked above Chittorgarh (which was abandoned as unscrapeable).
  */
-const GMP_FIELDS = ['gmp_price', 'gmp_percentage', 'gmpPrice', 'gmpPercentageHistorical'];
+// #1186: `gmp_percentage` (gmp_records, written by createGmpRecord, never by the consolidator) was a dead
+// snake_case key and is deleted; `gmp_price` stays here because getFieldRules() normalises it to `gmpPrice`.
+const GMP_FIELDS = ['gmp_price', 'gmpPrice', 'gmpPercentageHistorical'];
 
 describe('GMP field priority matrix — InvestorGain registered', () => {
   for (const field of GMP_FIELDS) {

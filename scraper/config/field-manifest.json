@@ -175,7 +175,8 @@
         "INVITS",
         "REITS",
         "TENDER",
-        "BUYBACK"
+        "BUYBACK",
+        "OFS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -434,7 +435,8 @@
       "na": [
         "NCD",
         "TENDER",
-        "BUYBACK"
+        "BUYBACK",
+        "OFS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -480,7 +482,8 @@
       "na": [
         "NCD",
         "TENDER",
-        "BUYBACK"
+        "BUYBACK",
+        "OFS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -603,7 +606,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1133,7 +1138,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1168,7 +1175,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1203,7 +1212,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },

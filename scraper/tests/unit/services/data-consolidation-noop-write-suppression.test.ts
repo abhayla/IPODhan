@@ -62,7 +62,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       {
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        fieldName: 'revenue_fy1',
+        fieldName: 'revenueFy2024',
         source: 'NSE',
         value: '6800000000.00', // as it round-trips from a pg NUMERIC column
         confidence: 90,
@@ -77,7 +77,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
     const result = await service.consolidateIPOData({
       ipoId: 'test-ipo',
       tableName: 'ipos',
-      incomingData: { revenue_fy1: 6800000000 },
+      incomingData: { revenueFy2024: 6800000000 },
       source: 'NSE',
       confidence: 90,
     });
@@ -90,8 +90,8 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       {
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        fieldName: 'revenue_fy1',
-        source: 'MONEYCONTROL', // lower priority than DRHP/NSE in revenue_fy1's matrix entry
+        fieldName: 'revenueFy2024',
+        source: 'MONEYCONTROL', // lower priority than DRHP/NSE in revenueFy2024's matrix entry
         value: '6800000000.00',
         confidence: 70,
         dataLineage: null,
@@ -105,7 +105,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
     const result = await service.consolidateIPOData({
       ipoId: 'test-ipo',
       tableName: 'ipos',
-      incomingData: { revenue_fy1: 7100000000 },
+      incomingData: { revenueFy2024: 7100000000 },
       source: 'DRHP',
       confidence: 90,
     });
@@ -119,7 +119,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
     const result = await service.consolidateIPOData({
       ipoId: 'test-ipo',
       tableName: 'ipos',
-      incomingData: { revenue_fy1: 6800000000 },
+      incomingData: { revenueFy2024: 6800000000 },
       source: 'NSE',
       confidence: 90,
     });
@@ -144,7 +144,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       {
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        fieldName: 'revenue_fy1',
+        fieldName: 'revenueFy2024',
         source: 'MONEYCONTROL',
         value: '6800000000.00', // pg NUMERIC string
         confidence: 70,
@@ -159,16 +159,16 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
     const result = await service.consolidateIPOData({
       ipoId: 'test-ipo',
       tableName: 'ipos',
-      incomingData: { revenue_fy1: 6800000000 }, // JS number, same value
+      incomingData: { revenueFy2024: 6800000000 }, // JS number, same value
       source: 'DRHP', // higher priority — wins the field
       confidence: 90,
     });
 
     expect(result.fieldsUpdated).toBe(0);
-    expect(Number(result.consolidatedData.revenue_fy1)).toBe(6800000000);
+    expect(Number(result.consolidatedData.revenueFy2024)).toBe(6800000000);
     // The winner is the existing row's source: an identical value from another
     // source is a CONVERGENCE, not an update — no provenance churn either.
-    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'revenue_fy1')!;
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'revenueFy2024')!;
     expect(fieldResult.chosenSource).toBe('MONEYCONTROL');
   });
 
@@ -177,7 +177,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       {
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        fieldName: 'revenue_fy1',
+        fieldName: 'revenueFy2024',
         source: 'DRHP', // higher priority than the incoming MONEYCONTROL
         value: '6800000000.00',
         confidence: 95,
@@ -192,7 +192,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
     const result = await service.consolidateIPOData({
       ipoId: 'test-ipo',
       tableName: 'ipos',
-      incomingData: { revenue_fy1: 6800000000 },
+      incomingData: { revenueFy2024: 6800000000 },
       source: 'MONEYCONTROL',
       confidence: 70,
     });
@@ -218,7 +218,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       const result = await service.consolidateIPOData({
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        incomingData: { revenue_fy1: 6800000000 },
+        incomingData: { revenueFy2024: 6800000000 },
         source: 'NSE',
         confidence: 90,
       });
@@ -236,8 +236,8 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
         {
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'revenue_fy1',
-          source: 'MONEYCONTROL', // lower priority than DRHP in revenue_fy1's matrix entry
+          fieldName: 'revenueFy2024',
+          source: 'MONEYCONTROL', // lower priority than DRHP in revenueFy2024's matrix entry
           value: '6800000000.00',
           confidence: 70,
           dataLineage: null,
@@ -251,7 +251,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       const result = await service.consolidateIPOData({
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        incomingData: { revenue_fy1: 7100000000 }, // genuinely different value too
+        incomingData: { revenueFy2024: 7100000000 }, // genuinely different value too
         source: 'DRHP',
         confidence: 90,
       });
@@ -269,7 +269,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
         {
           ipoId: 'test-ipo',
           tableName: 'ipos',
-          fieldName: 'revenue_fy1',
+          fieldName: 'revenueFy2024',
           source: 'NSE',
           value: '6800000000.00', // as it round-trips from a pg NUMERIC column
           confidence: 90,
@@ -284,7 +284,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
       const result = await service.consolidateIPOData({
         ipoId: 'test-ipo',
         tableName: 'ipos',
-        incomingData: { revenue_fy1: 6800000000 }, // same value, different string shape only
+        incomingData: { revenueFy2024: 6800000000 }, // same value, different string shape only
         source: 'NSE', // SAME source re-supplies it
         confidence: 90,
       });
@@ -298,7 +298,7 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
     });
 
     it('(d) existing value, SAME source, GENUINELY different value: writtenSameSourceChanged increments — the branch F-49 says has never fired', async () => {
-      // Measured, not assumed (this test was RED first against `revenue_fy1`,
+      // Measured, not assumed (this test was RED first against `revenueFy2024`,
       // a field with no `sameSourceRefresh` opt-in): without opting into
       // `sameSourceRefresh`, resolveConflict's DEFAULT_KEEP_EXISTING branch
       // keeps the stored value even when the same source re-supplies a

@@ -1,37 +1,27 @@
 /**
- * #754 guard: every FIELD_PRIORITY_MATRIX key must be reachable by a REAL
- * production caller.
+ * #1186 structural guard: every FIELD_PRIORITY_MATRIX key is a REAL camelCase field the
+ * consolidator looks up. No allow-list.
  *
- * Class: every test (or matrix entry) that keys the priority matrix by a
- * field name production never uses. getSourcePriority()/getFieldRules()
- * (field-priority-matrix.ts:881-892) look the field up as
- * `FIELD_PRIORITY_MATRIX[toCamelKey(fieldName)] || FIELD_PRIORITY_MATRIX[fieldName]`.
- * Every real caller (data-consolidation-service.ts, writer-source-ranking.ts,
- * field-plan-walk.ts) passes a CAMELCASE field name built from `incomingData`
- * keys (the W-55 comment above `toCamelKey` names this explicitly) — never a
- * snake_case literal. `toCamelKey` only ever REMOVES underscores; it never
- * introduces one. So a snake_case matrix key can be reached ONLY if:
- *   (a) its camelCase equivalent is ALSO a matrix key (the snake_case entry
- *       is then an inert legacy duplicate — `toCamelKey` finds the camelCase
- *       one first, per the W-55 comment), or
- *   (b) something outside this file calls getSourcePriority/getFieldRules
- *       with that literal snake_case string.
- * Neither held for `min_investment` / `issue_price` / `fresh_issue_size` /
- * `offer_for_sale_size` (issue #754) — grepped across scraper/src and
- * scraper/scripts, the only callers pass a camelCase variable. This test
- * makes that class impossible to reintroduce silently: it fails and NAMES
- * any new snake_case key that has no camelCase sibling and is not on the
- * reviewed `KNOWN_DEAD_KEYS` list below.
+ * Class: a matrix key whose name is not the camelCase property of a column on a table the
+ * consolidator writes. getSourcePriority()/getFieldRules() look a field up as
+ * `FIELD_PRIORITY_MATRIX[toCamelKey(fieldName)] || FIELD_PRIORITY_MATRIX[fieldName]`, and every
+ * production caller passes the camelCase property name of a schema column
+ * (data-consolidation-service.ts, writer-source-ranking.ts, field-plan-walk.ts via
+ * fieldNameToColumn). So a key that is not such a name is never reached: its rules never run and
+ * the field silently takes the default (or the manifest resolver's) order, while the entry reads
+ * like coverage.
  *
- * `KNOWN_DEAD_KEYS` is not a free pass — it is the sweep's honest finding:
- * these keys were ALREADY dead (unreachable via toCamelKey by any real
- * caller found in this sweep) before #754, and reclassifying an entry from
- * "unlisted field, default rules" to "explicit sources/confidence/validation"
- * is a production data-consolidation behaviour change that needs its own
- * defect-fix-contract round (RCA + real-data proof), not a silent rename
- * inside a test-fix PR. Removing one from this list without adding the
- * matching camelCase entry (or deleting the dead key from the matrix) will
- * fail this test — that is the intended forcing function for that follow-up.
+ * #754 found 13 of them and pinned them in a KNOWN_DEAD_KEYS list. #1186 deleted them, with the
+ * 5 snake_case keys shadowed by a camelCase sibling, `industry` (no such column) and
+ * `peer_companies` (a table name, never passed as a field name) — spec §5.5 item 4 and §7 build
+ * item 3 ("delete the 13 dead snake_case keys, adopt the manifest"). Measured on staging before the
+ * deletion (docs/design/probes/matrix-dead-keys-impact.out.json): no recorded source decision
+ * would have changed, and the only rows the camelCase names reach (ipo_details.freshIssue 20,
+ * ofsIssue 12) are all DRHP-held and governed by the manifest resolver (the flipped issue-size
+ * group).
+ *
+ * Fail closed: if the matrix, the schema, a table or the child-table union cannot be parsed, the
+ * suite fails rather than passing an empty comparison.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -39,144 +29,121 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MATRIX_PATH = path.resolve(__dirname, '../../../src/config/field-priority-matrix.ts');
+const REPO = path.resolve(__dirname, '../../../..');
+const MATRIX_PATH = path.join(REPO, 'scraper/src/config/field-priority-matrix.ts');
+const SCHEMA_PATH = path.join(REPO, 'packages/shared/src/db/schema.ts');
+const ORCHESTRATOR_PATH = path.join(REPO, 'scraper/src/services/data-consolidation-orchestrator.ts');
+const MANIFEST_PATH = path.join(REPO, 'scraper/config/field-manifest.json');
 
-function toCamelKey(fieldName: string): string {
-  return fieldName.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
-}
-
-/** Parse the top-level keys of `FIELD_PRIORITY_MATRIX` out of the source file. */
-function extractMatrixKeys(): string[] {
-  const src = fs.readFileSync(MATRIX_PATH, 'utf8');
-  const start = src.indexOf('export const FIELD_PRIORITY_MATRIX');
-  if (start === -1) throw new Error('FIELD_PRIORITY_MATRIX not found — matrix file restructured');
-  const braceStart = src.indexOf('{', start);
+/** The text between the `{` at/after `from` and its matching `}`; throws when unbalanced. */
+function braceBody(text: string, from: number, what: string): string {
+  const open = text.indexOf('{', from);
+  if (open === -1) throw new Error(`no opening brace for ${what}`);
   let depth = 0;
-  let end = -1;
-  for (let i = braceStart; i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') {
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
       depth--;
-      if (depth === 0) {
-        end = i;
-        break;
-      }
+      if (depth === 0) return text.slice(open + 1, i);
     }
   }
-  if (end === -1) throw new Error('Could not find the end of FIELD_PRIORITY_MATRIX');
-  const body = src.slice(braceStart + 1, end);
+  throw new Error(`unbalanced braces in ${what}`);
+}
 
+/** Top-level keys of `FIELD_PRIORITY_MATRIX`, parsed from the source file. */
+export function extractMatrixKeys(src: string): string[] {
+  const start = src.indexOf('export const FIELD_PRIORITY_MATRIX');
+  if (start === -1) throw new Error('FIELD_PRIORITY_MATRIX not found — matrix file restructured');
+  const body = braceBody(src, start, 'FIELD_PRIORITY_MATRIX');
   const keys: string[] = [];
-  const re = /([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\{/g;
+  // Any `name: {` OR quoted `'name': {` OR a spread / computed key at depth 0. A shape this
+  // parser cannot read as a plain identifier is reported as UNRESOLVED (fail closed), never skipped.
+  const re = /(?:^|[,{\n])\s*(\.\.\.[^,\n]+|\[[^\]]*\]\s*:|['"]?[A-Za-z_$][A-Za-z0-9_$]*['"]?\s*:)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body))) {
-    // Only a TOP-LEVEL key (depth 0 relative to `body`) is a field entry —
-    // nested `validation: { min, max }` blocks must not be counted.
-    let d = 0;
-    for (let j = 0; j < m.index; j++) {
-      if (body[j] === '{') d++;
-      else if (body[j] === '}') d--;
+    const tokenAt = m.index + m[0].indexOf(m[1]);
+    let depth = 0;
+    for (let j = 0; j < tokenAt; j++) {
+      if (body[j] === '{' || body[j] === '[' || body[j] === '(') depth++;
+      else if (body[j] === '}' || body[j] === ']' || body[j] === ')') depth--;
     }
-    if (d === 0) keys.push(m[1]);
+    if (depth !== 0) continue;
+    const tok = m[1].replace(/\s*:$/, '');
+    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(tok)) keys.push(tok);
+    else keys.push(`UNRESOLVED<${tok}>`);
   }
   return keys;
 }
 
-/**
- * Keys proven dead by this sweep (2026-09-26, #754): snake_case, no camelCase
- * sibling in the matrix, and grepping `getSourcePriority(`/`getFieldRules(`
- * call sites across `scraper/src` and `scraper/scripts` shows every caller
- * passes a camelCase field name. Fixing these for real (adding the matching
- * camelCase entry with correct sources/confidence/validation) is a
- * data-consolidation behaviour change — tracked as follow-up, not done here.
- */
-const KNOWN_DEAD_KEYS = new Set([
-  'revenue_fy1',
-  'fresh_issue_size',
-  'offer_for_sale_size',
-  'issue_price',
-  'min_investment',
-  'total_subscription',
-  'retail_subscription',
-  'qib_subscription',
-  'nii_subscription',
-  'gmp_percentage',
-  'expected_listing_price',
-  'listing_price',
-  'listing_gain_percentage',
-]);
+/** camelCase property names of one pgTable's columns, parsed from schema.ts. */
+function tableColumns(schema: string, table: string): Set<string> {
+  const re = new RegExp(`pgTable\\(\\s*'${table}'`);
+  const m = re.exec(schema);
+  if (!m) throw new Error(`pgTable('${table}') not found in schema.ts`);
+  const body = braceBody(schema, m.index, `pgTable('${table}')`);
+  const cols = new Set<string>();
+  for (const c of body.matchAll(/^\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*[A-Za-z]+\(\s*'[a-z0-9_]+'/gm)) cols.add(c[1]);
+  if (cols.size === 0) throw new Error(`no columns parsed for ${table}`);
+  return cols;
+}
 
-/**
- * `peer_companies` is a snake_case key whose value is a one-to-many payload
- * tracked by TABLE name (`data-consolidation-orchestrator.ts`'s
- * `'peer_companies'` union member, `filing-persister.ts`'s
- * `replaceAllowed('peer_companies', ...)`), not a camelCase scalar field —
- * `toCamelKey` does not apply to it the way it does to a column name. Kept
- * off `KNOWN_DEAD_KEYS` (it is not proven dead, it is a different shape of
- * key) and explicitly allow-listed here instead.
- */
-const NON_FIELD_KEYS = new Set(['peer_companies']);
+/** Tables the consolidator writes: ipos, every ChildConsolidationTable member, every manifest table. */
+function consolidatedTables(): string[] {
+  const orch = fs.readFileSync(ORCHESTRATOR_PATH, 'utf8');
+  const at = orch.indexOf('export type ChildConsolidationTable');
+  if (at === -1) throw new Error('ChildConsolidationTable union not found');
+  const union = orch.slice(at, orch.indexOf(';', at));
+  const members = [...union.matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  if (members.length === 0) throw new Error('ChildConsolidationTable union parsed empty');
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')) as { fields: Record<string, unknown> };
+  const manifestTables = Object.keys(manifest.fields).map((k) => k.split('.')[0]);
+  return [...new Set(['ipos', ...members, ...manifestTables])];
+}
 
-describe('#754: FIELD_PRIORITY_MATRIX has no NEW unreachable snake_case key', () => {
-  it('every snake_case key either has a camelCase sibling, is a reviewed dead key, or is a declared non-field key', () => {
-    const keys = extractMatrixKeys();
-    expect(keys.length).toBeGreaterThan(20); // sanity: the parser actually found the object
+/** Matrix keys that are not the camelCase property of a column on a consolidated table. */
+export function deadMatrixKeys(matrixSrc: string, schemaSrc: string, tables: string[]): string[] {
+  const real = new Set<string>();
+  for (const t of tables) for (const c of tableColumns(schemaSrc, t)) real.add(c);
+  return extractMatrixKeys(matrixSrc).filter((k) => k.includes('_') || !real.has(k));
+}
 
-    const keySet = new Set(keys);
-    const unexplained: string[] = [];
+describe('#1186: every FIELD_PRIORITY_MATRIX key is a real camelCase field the consolidator looks up', () => {
+  const matrixSrc = fs.readFileSync(MATRIX_PATH, 'utf8');
+  const schemaSrc = fs.readFileSync(SCHEMA_PATH, 'utf8');
+  const tables = consolidatedTables();
 
-    for (const key of keys) {
-      if (!key.includes('_')) continue; // camelCase / no-underscore keys are always reachable
-      if (NON_FIELD_KEYS.has(key)) continue;
-      const camel = toCamelKey(key);
-      const hasCamelSibling = keySet.has(camel);
-      const isKnownDead = KNOWN_DEAD_KEYS.has(key);
-      if (!hasCamelSibling && !isKnownDead) {
-        unexplained.push(key);
-      }
-    }
+  it('parses enough of the matrix and the schema to make the comparison meaningful', () => {
+    const keys = extractMatrixKeys(matrixSrc);
+    expect(keys.length).toBeGreaterThan(30);
+    expect(keys).toContain('issueSize');
+    expect(keys).toContain('lotSize');
+    expect(tables).toEqual(expect.arrayContaining(['ipos', 'ipo_details', 'financial_statements']));
+    expect(tableColumns(schemaSrc, 'ipos').has('lotSize')).toBe(true);
+  });
 
+  it('has no dead key: no snake_case key, no key that is not a column on a consolidated table', () => {
+    const dead = deadMatrixKeys(matrixSrc, schemaSrc, tables);
     expect(
-      unexplained,
-      `New unreachable snake_case matrix key(s) found: ${unexplained.join(', ')}. ` +
-        `getFieldRules()/getSourcePriority() only reach a snake_case key when its ` +
-        `camelCase form is ALSO a key (toCamelKey finds that first) — every real ` +
-        `caller passes camelCase. Either add the camelCase sibling entry, delete the ` +
-        `dead key, or (if it is a genuinely different shape of key, like a table-name ` +
-        `key) add it to NON_FIELD_KEYS with a one-line reason.`
+      dead,
+      `Unreachable FIELD_PRIORITY_MATRIX key(s): ${dead.join(', ')}. Every caller passes the camelCase ` +
+        `property of a schema column on a table the consolidator writes (${tables.join(', ')}). Rename the ` +
+        `key to that property (this switches its rules ON — measure on staging first, #1186) or delete it. ` +
+        `There is no allow-list.`
     ).toEqual([]);
   });
 
-  it('every KNOWN_DEAD_KEYS entry is still actually dead (still snake_case, still no camelCase sibling)', () => {
-    const keys = extractMatrixKeys();
-    const keySet = new Set(keys);
-    const noLongerDead: string[] = [];
-    const notEvenInMatrix: string[] = [];
-
-    for (const key of KNOWN_DEAD_KEYS) {
-      if (!keySet.has(key)) {
-        notEvenInMatrix.push(key);
-        continue;
-      }
-      if (keySet.has(toCamelKey(key))) {
-        noLongerDead.push(key);
-      }
-    }
-
-    expect(
-      notEvenInMatrix,
-      `KNOWN_DEAD_KEYS entries no longer in the matrix (remove them from this list): ${notEvenInMatrix.join(', ')}`
-    ).toEqual([]);
-    expect(
-      noLongerDead,
-      `KNOWN_DEAD_KEYS entries that now have a camelCase sibling — remove from this list, ` +
-        `they are reachable again: ${noLongerDead.join(', ')}`
-    ).toEqual([]);
-  });
-
-  it('KNOWN_DEAD_KEYS only ever shrinks (a new dead key is fixed, never added here)', () => {
-    // Pinned at the #754 sweep's count. Lower this number when #1186 fixes a key;
-    // raising it hides a new unreachable rule instead of fixing it.
-    expect(KNOWN_DEAD_KEYS.size).toBeLessThanOrEqual(13);
+  it('detects each dead shape (self-test: the guard can fail)', () => {
+    const fake = (body: string) => `export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {\n${body}\n};`;
+    const ok = "  lotSize: { sources: ['ADMIN'] },\n";
+    expect(deadMatrixKeys(fake(ok), schemaSrc, tables)).toEqual([]);
+    expect(deadMatrixKeys(fake(ok + "  lot_size: { sources: ['ADMIN'] },"), schemaSrc, tables)).toEqual(['lot_size']);
+    expect(deadMatrixKeys(fake(ok + "  industry: { sources: ['ADMIN'] },"), schemaSrc, tables)).toEqual(['industry']);
+    expect(deadMatrixKeys(fake(ok + "  'lotSize2': { sources: ['ADMIN'] },"), schemaSrc, tables)).toEqual(["UNRESOLVED<'lotSize2'>"]);
+    expect(deadMatrixKeys(fake(ok + '  ...EXTRA,'), schemaSrc, tables)).toEqual(['UNRESOLVED<...EXTRA>']);
+    expect(deadMatrixKeys(fake(ok + "  ['lotSize']: { sources: ['ADMIN'] },"), schemaSrc, tables).length).toBe(1);
+    // nested keys (validation blocks) are not top-level entries
+    expect(deadMatrixKeys(fake("  lotSize: { sources: ['ADMIN'], validation: { min_x: 1 } },"), schemaSrc, tables)).toEqual([]);
+    expect(() => deadMatrixKeys('no matrix here', schemaSrc, tables)).toThrow();
+    expect(() => deadMatrixKeys(fake(ok), schemaSrc, ['no_such_table'])).toThrow();
   });
 });

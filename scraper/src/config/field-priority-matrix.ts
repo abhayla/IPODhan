@@ -146,15 +146,15 @@ export interface FieldRules {
  * 6. Chittorgarh specializes in GMP data
  * 7. Real-time data uses latest value
  */
+/**
+ * #1186: every key is the camelCase property of a column on a table the consolidator writes —
+ * the name getFieldRules()/getSourcePriority() are called with. A snake_case or non-column key is never
+ * reached (its rules never run) and is refused by
+ * scraper/tests/unit/config/field-priority-matrix-keys-are-real-fields.test.ts. Source ORDER for a
+ * field with a manifest row is configuration (spec §2.3.5, scraper/config/field-manifest.json).
+ */
 export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== FINANCIAL DATA (DRHP is authoritative) ====================
-
-  revenue_fy1: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Revenue for fiscal year 1 - DRHP is most accurate',
-  },
 
   // Specific fiscal year fields (camelCase - actual database fields)
   revenueFy2022: {
@@ -230,28 +230,9 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   promoterHoldingPreIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding pre-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
   promoterHoldingPostIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding post-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
   marketCap: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Market capitalization (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.marketCap } },
-  peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
   objectives: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Objects-of-issue payload (ipos.objectives jsonb) from the detail page' },
 
   // ==================== IPO CORE DATA (NSE is primary) ====================
-
-  fresh_issue_size: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Fresh issue size',
-  },
-
-  offer_for_sale_size: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Offer for sale size',
-  },
 
   // T-287F2: had NO matrix entry before this fix (checker T-287C2
   // FINDING-hold-rebounded.md) -- an unlisted field falls back to
@@ -310,13 +291,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { regex: '^.{2,100}$' },
   },
 
-  company_description: {
-    sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE'],
-    normalization: 'none',
-    confidenceThreshold: 75,
-    description: 'Company business description - DRHP "Our Business" / Chittorgarh "About"',
-    validation: { regex: '^.{20,5000}$' },
-  },
   // camelCase variant - consolidation service keys on this (data-persister writes
   // `companyDescription`). Without it, getFieldRules('companyDescription') falls
   // through to DEFAULT rules (NSE outranks DRHP, validation skipped). Mirrors the
@@ -473,16 +447,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 0, max: 10000 },
   },
 
-  issue_price: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 95,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Final issue price - critical field',
-    validation: { min: 1, max: 100000 },
-  },
-
   // W-117 (review round 1): the filing beats the AGGREGATORS but NOT the
   // exchanges for bidding-window dates. NSE/BSE publish extensions to the
   // open/close window after the RHP/price-band ad is printed - the ad is
@@ -490,17 +454,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // (same rule as listingDate/allotmentDate already document) and above
   // MONEYCONTROL/CHITTORGARH, which have no comparable authority and (in
   // Moneycontrol's case, W-116) previously fabricated these dates outright.
-  open_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'],
-    normalization: 'date',
-    confidenceThreshold: 95,
-    description: 'IPO open date - critical field',
-    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
-    // (a postponement updates the same row). A website may not move a date it set — equal rank
-    // is ignored — so only the exchanges refresh their own value.
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['NSE', 'BSE'],
-  },
 
   // W-49: camelCase sibling of `open_date`. `data-persister.ts` builds
   // `ipoData` (the `incomingData` passed to consolidateIPOData) with
@@ -513,18 +466,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
-    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
-    // (a postponement updates the same row). A website may not move a date it set — equal rank
-    // is ignored — so only the exchanges refresh their own value.
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['NSE', 'BSE'],
-  },
-
-  close_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'],
-    normalization: 'date',
-    confidenceThreshold: 95,
-    description: 'IPO close date - critical field',
     // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
     // (a postponement updates the same row). A website may not move a date it set — equal rank
     // is ignored — so only the exchanges refresh their own value.
@@ -623,15 +564,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // (data-validation.ts, SEBI_RETAIL_WINDOW) at write time and the nightly
   // `d_lot_band_window` audit on stored rows. Keep this matrix entry as the
   // plausibility floor ONLY.
-  lot_size: {
-    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 90,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Lot size - BSE data is more accurate historically',
-    validation: { min: 1, max: 100000 },
-  },
 
   // CamelCase (TypeScript field name) - consolidation service uses this
   lotSize: {
@@ -642,15 +574,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sameSourceRefreshSources: ['DRHP'],
     description: 'Lot size (camelCase) - BSE data is more accurate historically',
     validation: { min: 1, max: 100000 },
-  },
-
-  min_investment: {
-    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Minimum investment amount',
   },
 
   // ==================== REAL-TIME DATA (Latest wins) ====================
@@ -666,66 +589,10 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'IPO status - real-time field, newest value wins',
   },
 
-  total_subscription: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    description: 'Total subscription times - real-time data',
-    validation: { min: 0, max: 1000 },
-  },
-
-  retail_subscription: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    description: 'Retail subscription - real-time',
-    validation: { min: 0, max: 1000 },
-  },
-
-  qib_subscription: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    description: 'QIB subscription - real-time',
-    validation: { min: 0, max: 1000 },
-  },
-
-  nii_subscription: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    description: 'NII subscription - real-time',
-    validation: { min: 0, max: 1000 },
-  },
-
   // ==================== GMP DATA (InvestorGain is the live-GMP specialist) ====================
   // G8: InvestorGain GMP is the real live source; Chittorgarh GMP was abandoned
   // as unscrapeable. timeBased:true means newest-wins regardless, but InvestorGain
   // is ranked first so source-priority tie-breaks favour it over Chittorgarh.
-
-  gmp_price: {
-    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    confidenceThreshold: 70,
-    description: 'Grey Market Premium - InvestorGain is specialist',
-    validation: { min: -1000, max: 10000 },
-  },
-
-  gmp_percentage: {
-    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
-    normalization: 'percentage',
-    timeBased: true,
-    ignoreDRHP: true,
-    confidenceThreshold: 70,
-    description: 'GMP percentage - InvestorGain is specialist',
-    validation: { min: -100, max: 500 },
-  },
 
   // CamelCase (TypeScript field names) - consolidation service uses these
   gmpPrice: {
@@ -748,14 +615,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: -100, max: 500 },
   },
 
-  expected_listing_price: {
-    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    description: 'Expected listing price (GMP-based)',
-  },
-
   // ==================== COMPANY INFO ====================
 
   // W-55: renamed from `company_name` — `data-persister.ts` builds
@@ -770,13 +629,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sameSourceRefresh: true,
     sameSourceRefreshSources: ['DRHP'],
     description: 'Company name - normalized',
-  },
-
-  industry: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'none',
-    confidenceThreshold: 75,
-    description: 'Industry/Sector',
   },
 
   registrar: {
@@ -819,28 +671,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     // listing-sentence order, the same one the persister gate applies.
     documentOrder: LISTING_SENTENCE_ORDER,
     description: 'Listing exchange set — union of exchange self-assertions (NSE/BSE speak only for themselves)',
-  },
-
-  // ==================== LISTING PERFORMANCE ====================
-
-  listing_price: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    confidenceThreshold: 95,
-    description: 'Actual listing price - critical',
-    validation: { min: 1, max: 100000 },
-  },
-
-  listing_gain_percentage: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'percentage',
-    timeBased: true,
-    ignoreDRHP: true,
-    confidenceThreshold: 90,
-    description: 'Listing gains percentage',
-    validation: { min: -100, max: 1000 },
   },
 };
 

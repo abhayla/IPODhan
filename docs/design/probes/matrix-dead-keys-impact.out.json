@@ -1,0 +1,211 @@
+{
+  "probe": "matrix-dead-keys-impact",
+  "generated_at": "2026-10-01T06:18:40.075Z",
+  "database": "ipodhan_staging",
+  "keys": [
+    {
+      "key": "revenue_fy1",
+      "camelCaseNames": [
+        "revenueFy1"
+      ],
+      "columnTable": "ipo_financials",
+      "provenanceRows": [
+        {
+          "table_name": "ipo_financials",
+          "field_name": "revenue_fy1",
+          "source": "BSE",
+          "n": 1
+        },
+        {
+          "table_name": "ipo_financials",
+          "field_name": "revenue_fy1",
+          "source": "CHITTORGARH",
+          "n": 12
+        },
+        {
+          "table_name": "ipo_financials",
+          "field_name": "revenue_fy1",
+          "source": "DRHP",
+          "n": 3
+        },
+        {
+          "table_name": "ipo_financials",
+          "field_name": "revenue_fy1",
+          "source": "NSE",
+          "n": 7
+        }
+      ],
+      "provenanceRowCount": 23,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "fresh_issue_size",
+      "camelCaseNames": [
+        "freshIssueSize",
+        "freshIssue"
+      ],
+      "columnTable": "ipo_details",
+      "provenanceRows": [
+        {
+          "table_name": "ipo_details",
+          "field_name": "freshIssue",
+          "source": "DRHP",
+          "n": 20
+        }
+      ],
+      "provenanceRowCount": 20,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "offer_for_sale_size",
+      "camelCaseNames": [
+        "offerForSaleSize",
+        "ofsIssue"
+      ],
+      "columnTable": "ipo_details",
+      "provenanceRows": [
+        {
+          "table_name": "ipo_details",
+          "field_name": "ofsIssue",
+          "source": "DRHP",
+          "n": 12
+        }
+      ],
+      "provenanceRowCount": 12,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "issue_price",
+      "camelCaseNames": [
+        "issuePrice"
+      ],
+      "columnTable": "listing_performance",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "min_investment",
+      "camelCaseNames": [
+        "minInvestment"
+      ],
+      "columnTable": "ipo_details",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "total_subscription",
+      "camelCaseNames": [
+        "totalSubscription"
+      ],
+      "columnTable": "subscriptions",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "retail_subscription",
+      "camelCaseNames": [
+        "retailSubscription"
+      ],
+      "columnTable": "subscriptions",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "qib_subscription",
+      "camelCaseNames": [
+        "qibSubscription"
+      ],
+      "columnTable": "subscriptions",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "nii_subscription",
+      "camelCaseNames": [
+        "niiSubscription"
+      ],
+      "columnTable": "subscriptions",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "gmp_percentage",
+      "camelCaseNames": [
+        "gmpPercentage"
+      ],
+      "columnTable": "gmp_records",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "expected_listing_price",
+      "camelCaseNames": [
+        "expectedListingPrice"
+      ],
+      "columnTable": "gmp_records",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "listing_price",
+      "camelCaseNames": [
+        "listingPrice"
+      ],
+      "columnTable": "listing_performance",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    },
+    {
+      "key": "listing_gain_percentage",
+      "camelCaseNames": [
+        "listingGainPercentage"
+      ],
+      "columnTable": "ipos",
+      "provenanceRows": [],
+      "provenanceRowCount": 0,
+      "conflictRows": 0,
+      "conflictsTheDeadRuleWouldDecideDifferently": 0,
+      "differences": []
+    }
+  ],
+  "ipo_details_stored": {
+    "rows_total": 270,
+    "fresh_issue_set": 20,
+    "ofs_issue_set": 12,
+    "min_investment_set": 0
+  },
+  "ipos_listing_gain_percentage_stored": 0
+}
