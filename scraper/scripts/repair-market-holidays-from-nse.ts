@@ -23,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   collectFlagValues,
-  decideCacheInvalidationBlock,
+  guardCacheInvalidation,
   openRepairDb,
   readExpectDbFlag,
   repairToolRedisSlot,
@@ -41,13 +41,14 @@ const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const CACHE_PATTERN = 'market_holidays:*';
 
 async function dropHolidayCache(dbName: string): Promise<void> {
-  const redisHost = resolveRedisTargetHost({ redisUrl: process.env.REDIS_URL, redisHost: process.env.REDIS_HOST });
-  const decision = decideCacheInvalidationBlock({ dbName, redisHost });
-  if (decision.block) {
+  // The shared notice prints a plain DEL of the given keys; a pattern needs SCAN, so the tool prints its own.
+  const { blocked } = guardCacheInvalidation({ dbName, toolName: TOOL, keys: [CACHE_PATTERN], log: () => {} });
+  if (blocked) {
+    const redisHost = resolveRedisTargetHost({ redisUrl: process.env.REDIS_URL, redisHost: process.env.REDIS_HOST });
     const { dbIndex } = repairToolRedisSlot(dbName);
     const n = dbIndex === null ? '<slot db index>' : String(dbIndex);
     console.log(
-      `${TOOL}: cache NOT dropped — ${decision.reason}. Run on the VPS (docs/ops/prod-ops-recipes.md §5):\n` +
+      `${TOOL}: cache NOT dropped — this box's Redis (${redisHost ?? 'unset, localhost:6379'}) is not "${dbName}"'s slot Redis. Run on the VPS (docs/ops/prod-ops-recipes.md §5):\n` +
         `  redis-cli -n ${n} --scan --pattern '${CACHE_PATTERN}' | xargs -r redis-cli -n ${n} DEL`
     );
     return;
