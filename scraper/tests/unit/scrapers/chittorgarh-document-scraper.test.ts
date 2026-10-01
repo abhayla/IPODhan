@@ -137,6 +137,29 @@ describe('chittorgarh-document-scraper', () => {
       expect(classifyOfferDocumentCover('DRAFT RED HERRING PROSPECTUS\nDated: May 1, 2026\nACME LIMITED')).toBe('DRHP');
       expect(classifyOfferDocumentCover('RED HERRING PROSPECTUS\nDated: May 1, 2026\nACME LIMITED')).toBe('RHP');
     });
+    it('types three more real final-prospectus covers (pdftotext page 1) as PROSPECTUS', () => {
+      expect(classifyOfferDocumentCover(fixture('kwick-forensic-prospectus.cover.txt'))).toBe('PROSPECTUS');
+      expect(classifyOfferDocumentCover(fixture('digilogic-prospectus.cover.txt'))).toBe('PROSPECTUS');
+      expect(classifyOfferDocumentCover(fixture('modern-diagnostic-prospectus.cover.txt'))).toBe('PROSPECTUS');
+    });
+    it('types a real RHP cover as RHP (QR note says "view the RHP")', () => {
+      expect(classifyOfferDocumentCover(fixture('dove-soft-rhp.cover.txt'))).toBe('RHP');
+    });
+    it('a final prospectus whose cover says "to be read with the Red Herring Prospectus dated" stays PROSPECTUS (own title decides)', () => {
+      const real = fixture('adisoft-997.cover.txt');
+      const withRef = real.replace(
+        'Dated: April 28, 2026\n',
+        'Dated: April 28, 2026\nThis Prospectus is to be read with the Red Herring Prospectus dated April 10, 2026\n'
+      );
+      expect(withRef).not.toBe(real);
+      expect(classifyOfferDocumentCover(withRef)).toBe('PROSPECTUS');
+    });
+    it('a notice / annual report / addendum that merely mentions the RHP is never an offer document', () => {
+      expect(classifyOfferDocumentCover('NOTICE\nACME LIMITED\nThe Red Herring Prospectus dated May 1, 2026 has been filed with the RoC')).toBeNull();
+      expect(classifyOfferDocumentCover('ANNUAL REPORT 2025-26\nACME LIMITED\nRed Herring Prospectus\nDated: May 1, 2026')).toBeNull();
+      expect(classifyOfferDocumentCover('CORRIGENDUM\nto the Red Herring Prospectus dated May 1, 2026')).toBeNull();
+      expect(classifyOfferDocumentCover('ADVERTISEMENT\nACME LIMITED\nthe Red Herring Prospectus dated May 1, 2026')).toBeNull();
+    });
     it('an addendum / abridged prospectus / advertisement cover is not an offer document', () => {
       expect(classifyOfferDocumentCover('ADDENDUM TO THE PROSPECTUS\nDated: May 1, 2026')).toBeNull();
       expect(classifyOfferDocumentCover('ABRIDGED PROSPECTUS\nACME LIMITED')).toBeNull();

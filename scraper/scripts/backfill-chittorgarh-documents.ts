@@ -133,8 +133,8 @@ export async function main() {
         }
       },
     });
-    if (res.ok) p.row = { ...p.row, docType: res.docType };
-    else {
+    if (res.ok === true) p.row = { ...p.row, docType: res.docType };
+    else if (res.ok === false) {
       unresolved.push({ company: p.ipo.companyName, url: p.row.pdfUrl, reason: res.reason });
       plans.splice(i, 1);
     }

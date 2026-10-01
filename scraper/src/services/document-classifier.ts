@@ -128,12 +128,19 @@ export function classifyByTitle(rawTitle: string | null | undefined): DocumentTy
 }
 
 /**
- * How much of a cover page's text may hold the title (#1417). Measured on 17 real
- * Chittorgarh-linked prospectus covers (2026-10-02): the title sits within the first
- * ~150 characters once the leading "(Please scan this QR code to view the ...)" note is
- * removed; 400 leaves room for the issuer name and CIN lines that sometimes precede it.
+ * How many leading non-empty cover lines may hold the document's own title (#1417).
+ * Measured on 17 real Chittorgarh-linked prospectus covers (2026-10-02) plus the DRHP/RHP
+ * covers in the fixtures: the title is the first or second line once the leading
+ * "(Please scan this QR code to view the ...)" note is removed; 12 leaves room for the
+ * issuer name and CIN lines that sometimes precede it.
  */
-const COVER_TITLE_WINDOW_CHARS = 400;
+const COVER_TITLE_LINES = 12;
+
+/** A line that IS an offer-document title: the title phrase alone, optionally "Dated: <date>". */
+const COVER_TITLE_LINE = /^(draft red herring prospectus|red herring prospectus|prospectus)(?:\s+(?:dated|date)\b.*)?$/;
+
+/** Covers that are never an offer document, however they quote one. */
+const NON_OFFER_COVER = /\b(annual report|notice|addendum|corrigendum|abridged|advertisement)\b/;
 
 /**
  * Type an OFFER document (DRHP / RHP / PROSPECTUS) from its COVER PAGE text (#1417), for a
@@ -142,25 +149,30 @@ const COVER_TITLE_WINDOW_CHARS = 400;
  * to PROSPECTUS (OD-30 makes the final prospectus terminal, OD-154 ranks it first, so a
  * wrongly typed annual report would outrank the real RHP).
  *
- * The parenthesised QR note is dropped first: a DRHP's cover also says "view the Draft Red
- * Herring Prospectus", and a non-offer document may quote the word. An addendum,
- * corrigendum, abridged prospectus or advertisement is not an offer document here.
- * Pure: no IO.
+ * The document's OWN title decides: a line that is only "PROSPECTUS" / "RED HERRING
+ * PROSPECTUS" / "DRAFT RED HERRING PROSPECTUS" (optionally "Dated: ..."). A later reference
+ * to another document ("to be read with the Red Herring Prospectus dated ...", "filed with",
+ * a notice quoting the RHP) is a sentence, never a title line, so it never decides. The
+ * parenthesised QR note is dropped first. A cover with an annual report / notice / addendum /
+ * corrigendum / abridged prospectus / advertisement marker at or before the title is not an
+ * offer document. Pure: no IO.
  */
 export function classifyOfferDocumentCover(coverText: string | null | undefined): DocumentType | null {
   if (typeof coverText !== 'string') return null;
-  const head = coverText
+  const lines = coverText
     .replace(/\([^)]*\)/g, ' ')
-    .toLowerCase()
-    .replace(/[_\-.]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, COVER_TITLE_WINDOW_CHARS);
-  if (head === '') return null;
-  if (/addendum|corrigendum|abridged|advertisement/.test(head)) return null;
-  if (/draft red herring prospectus/.test(head)) return 'DRHP';
-  if (/red herring prospectus/.test(head)) return 'RHP';
-  if (/prospectus/.test(head)) return 'PROSPECTUS';
+    .split(/\r?\n/)
+    .map((l) => l.toLowerCase().replace(/[_\-.:]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((l) => l !== '')
+    .slice(0, COVER_TITLE_LINES);
+  for (const line of lines) {
+    if (NON_OFFER_COVER.test(line)) return null;
+    const m = COVER_TITLE_LINE.exec(line);
+    if (!m) continue;
+    if (m[1] === 'draft red herring prospectus') return 'DRHP';
+    if (m[1] === 'red herring prospectus') return 'RHP';
+    return 'PROSPECTUS';
+  }
   return null;
 }
 
