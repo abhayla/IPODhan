@@ -623,6 +623,7 @@ where that contract already names the section; new rows extend it in the same sh
 | 32 | `cin` | 27 | D | DOC | — | — | keep | E7 | `^[UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}$` | MCA lookup (not built). No second source exists — a document-only field. | — |
 
 **Amended by OD-129 (2026-09-27), SPEC CHANGE, row 17:** `listing_exchanges` is sourced from the offer document's listing sentence (Prospectus > RHP > DRHP; a price band advertisement only when it names the exchanges), which also gives the board (main board, BSE SME, NSE Emerge) and the designated exchange (row 48 of §1.3). Only when no document has been read: the exchange feed, then CG. CG always cross-checks; a disagreement goes to the admin queue. The row's class and source columns were changed with the #938 code change (§1.2.1 amendment).
+*Clarified 2026-10-01 (supervisor, spec-conformant):* for the listing sentence, a price band advertisement that names the exchanges ranks below RHP and above DRHP; within one type the later filing date wins (as built in #1363).
 
 **Amended by OD-130 (2026-09-27), row 12:** when the base slug is already taken by a genuinely separate offering (OD-35), the new row's slug is `<slug>-<open-year>`, then `<slug>-<open-year>-<segment>`; the first row's slug never changes, and the identity matcher never strips a year or segment suffix.
 
@@ -3185,6 +3186,10 @@ Projects, and gives the unit conversion one place to happen instead of two.
 validation before the write. This is no longer "the cheap half" of anything; it is the whole of
 build item 4.
 
+**F-216 (2026-10-01, measured by the #1368 build, PR #1369):** this rule is not wired in production yet.
+The consolidator's validation step needs a field-validation-failures repository that no production
+service passes (only unit tests inject it), so no production write is validated per field. Tracked as #1370.
+
 #### The rule
 
 1. **Every extracted field is validated on its own, before the write.** Not the document, not the
@@ -4109,6 +4114,11 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
    edit and remove whole rows. Once an admin changes a list, the whole list is admin-owned for that
    IPO; a later document's different list becomes a suggestion (rows to add or remove), never an
    automatic change. Why rows and not only picks: most of these lists are empty today (F-174).
+   *Clarified 2026-10-01 (supervisor, spec-conformant; #1294 item 2, follows from this item and item 25):*
+   an OPEN list suggestion is recomputed against the admin's CURRENT list whenever the admin edits the
+   list (rows to add, remove or change are rewritten), and closes when the document's list now equals
+   the admin's; it is never re-keyed on the admin's list, so a dismissed suggestion for the same
+   document list never returns.
 9. **A newer document after an admin save** (follows from OD-102, OD-107, OD-63, OD-66). When a
    document read after an admin save supplies a different value for an admin-held field, the
    admin value stays; the document's value is stored as a witness and listed in the admin queue
@@ -4116,6 +4126,10 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
    `document_field_receipts` has no page column, although the extractor already emits a page number
    per field (`ocr-value-mark.ts`'s `fieldsMark` reads `f.page`); as measured, this item's suggestion
    can name the document but not the page.
+   *Clarified 2026-10-01 (supervisor, spec-conformant; #1300, follows from this item and item 25):* an
+   OPEN suggestion closes by itself (reason `ACCEPTED_BY_ADMIN_EDIT`) only when the admin saves the field
+   to the value it proposes; a save of any other value leaves it open, and a dismissed suggestion never
+   returns.
 10. **A save is live at once** (follows from OD-40 and §2.11). An admin save drops the detail
     page's cache keys (`getIPOBySlugKey(slug)` and `getIPOProvenanceKey(slug)`) and calls the
     authenticated revalidate endpoint for that slug, so a reader sees the new value on the next
@@ -4214,6 +4228,13 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     the OD-83 relaunch path is not an admin-removed value and keeps binding as before. Otherwise the
     record is held for review on the OD-68 hold path, never bound and never created (decided under
     OD-68 during the 2026-09-29 unattended run; a spec-conformant decision, not a spec change).
+    *Clarified 2026-10-01 (supervisor, spec-conformant; #1290, follows from this item and OD-68):* when
+    the admin types into row B's editor an identifier that another row A keeps ONLY as an admin-removed
+    value (a source key an admin edit superseded, or an alias), the identifier moves to B: A's copy is
+    closed (the key RELEASED, the alias removed), B binds it, and an `ADMIN_IDENTIFIER_MOVED` audit row
+    on A records it; no new button. An identifier another row binds on its own account (ACTIVE key, live
+    column, or a key superseded by the OD-83/OD-86 relaunch path) is refused naming that row, and a
+    failed lookup refuses the save. Applies to CIN, symbol, ISIN and each source record number.
 27. **A relaunched IPO (OD-120).** When a POSTPONED IPO's relaunch filing arrives, admin values on
     its document fields are cleared with the rest (§2.9). They stay in the audit trail, and one
     alert lists each cleared value with a one-click re-apply for those still true. A "relaunch filing" is
@@ -4232,7 +4253,12 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     An unknown answer (not found, ambiguous, empty board, failed read) keeps the admin value; only an
     explicit "not printed" passes the decision down the ranking (OD-145).
     (b) Removing rows from an admin-owned list (OD-107) takes a short reason and an audit row, as a
-    delete does (OD-121); removing every row leaves the list admin-empty. (c) A relaunch (OD-120)
+    delete does (OD-121); removing every row leaves the list admin-empty.
+    *Clarified 2026-10-01 (supervisor, spec-conformant; #1294 item 4, follows from item 8 and this
+    item):* the OD-38 duplicate merge never deletes or replaces an admin-owned list silently: when the
+    dropped row has an admin-owned list (admin-empty included) or the survivor's admin-owned list would
+    receive a carried column, the merge (dry run included) is refused, naming the IPO and the list.
+    (c) A relaunch (OD-120)
     releases admin EMPTY values too, and its alert reads "you had blanked X; the new filing says Y".
     (d) For IPOs the walk no longer reads (OD-78, OD-98), no suggestion arrives, so the admin value or
     empty is final there (§2.7 caveat).

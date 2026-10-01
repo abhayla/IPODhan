@@ -77,14 +77,19 @@ export class AnchorInvestorRepository
   }
 
   /**
-   * Create anchor investor data for an IPO
+   * Create anchor investor data for an IPO. #1362 review MINOR: under the IPO row lock the list editor
+   * takes, an admin-owned list (§9.2 item 8, OD-107) is never written from a body: refused with
+   * AnchorListHeldError, nothing inserted.
    */
   async create(data: AnchorInvestorInsert): Promise<AnchorInvestor> {
     try {
-      const [result] = await this.db
-        .insert(anchorInvestors)
-        .values(data)
-        .returning();
+      const result = await this.db.transaction(async (tx) => {
+        const { owned } = await lockAndReadListOwnership(tx as never, data.ipoId, 'anchor_investors');
+        if (owned) return null;
+        const [inserted] = await tx.insert(anchorInvestors).values(data).returning();
+        return inserted;
+      });
+      if (!result) throw new AnchorListHeldError(data.ipoId);
 
       // Invalidate cache
       await this.deleteCache(
@@ -93,6 +98,7 @@ export class AnchorInvestorRepository
 
       return result;
     } catch (error) {
+      if (error instanceof AnchorListHeldError) throw error;
       throw new DatabaseError(
         'Failed to create anchor investor data',
         undefined,

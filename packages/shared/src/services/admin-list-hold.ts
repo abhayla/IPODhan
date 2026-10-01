@@ -182,7 +182,9 @@ export async function recordListSuggestion(
   if (add.length === 0 && remove.length === 0 && change.length === 0) return { recorded: false, add, remove, change };
   const source = SOURCES.has(args.source.toUpperCase()) ? args.source.toUpperCase() : 'DRHP';
   const key = createHash('sha256').update(`list|${args.ipoId}|${args.list}|${incomingKeys.join('\u0001')}`).digest('hex');
-  const evidence = { origin: ADMIN_LIST_SUGGESTION_REASON, list: args.list, writer: args.source, add, remove, change };
+  // #1294 item 2: the writer's rows are kept (only the columns a row's key, label and values read), so an
+  // OPEN suggestion can be recomputed against the admin's list when the admin edits it.
+  const evidence = { origin: ADMIN_LIST_SUGGESTION_REASON, list: args.list, writer: args.source, add, remove, change, incoming: args.incoming.map(projectListRow) };
   const labels = (rows: readonly Row[]) => JSON.stringify(rows.map((r) => spec.label(r)));
   const res = await tx.execute(sql`
     INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2,
@@ -193,4 +195,95 @@ export async function recordListSuggestion(
     ON CONFLICT (suggestion_key) DO NOTHING
     RETURNING id`);
   return { recorded: res.rows.length > 0, add, remove, change };
+}
+
+/** The columns any list's key, label or values read (ADMIN_LIST_SPECS); nothing else is kept. */
+const LIST_ROW_COLUMNS = ['name', 'normalizedName', 'companyName', 'role', 'fiscalYear', 'basis', 'unit', 'headingHash', 'heading', ...FINANCIAL_VALUE_COLUMNS] as const;
+
+export function projectListRow(row: Row): Row {
+  const out: Row = {};
+  for (const c of LIST_ROW_COLUMNS) if (row[c] !== undefined) out[c] = row[c];
+  return out;
+}
+
+/**
+ * #1294 item 2, spec §9.2 items 8 and 25 (clarified 2026-10-01). Inside an admin list write's
+ * transaction, AFTER the list is written: every OPEN list suggestion of this list is recomputed
+ * against the admin's CURRENT list. Its rows to add / remove / change and its value1 (the admin's
+ * list) are rewritten; when the document's list now equals the admin's, the suggestion closes
+ * (resolved, `evidence.closedBecause` = ADMIN_LIST_NOW_EQUAL). The suggestion's key is NOT changed:
+ * it stays the writer's list, so a dismissed suggestion for the same document list never returns
+ * (item 25), and a decided row is never touched. A row recorded before the writer's rows were kept
+ * (`evidence.incoming` absent) cannot be recomputed; it is left as it is and counted in `legacy`.
+ */
+export async function recomputeOpenListSuggestions(
+  tx: HoldExecutor,
+  args: { ipoId: string; list: AdminListName; adminRows: readonly Row[]; by: string }
+): Promise<{ updated: string[]; closed: string[]; legacy: string[] }> {
+  const spec = ADMIN_LIST_SPECS[args.list];
+  const out = { updated: [] as string[], closed: [] as string[], legacy: [] as string[] };
+  const open = await tx.execute(sql`
+    SELECT id::text AS id, evidence FROM data_conflicts
+     WHERE ipo_id = ${args.ipoId}::uuid AND resolved_at IS NULL
+       AND resolution_reason = ${ADMIN_LIST_SUGGESTION_REASON}
+       AND table_name = ${spec.holdTable} AND field_name = ${spec.holdField}
+     ORDER BY id
+     FOR UPDATE`);
+  const adminLabels = JSON.stringify(args.adminRows.map((r) => spec.label(r)));
+  for (const r of open.rows as Array<{ id: string; evidence: Record<string, unknown> | null }>) {
+    const incoming = r.evidence?.incoming;
+    if (!Array.isArray(incoming)) {
+      out.legacy.push(r.id);
+      continue;
+    }
+    const { add, remove, change } = diffList(args.list, args.adminRows, incoming as Row[]);
+    const evidence = { ...(r.evidence ?? {}), add, remove, change };
+    if (add.length === 0 && remove.length === 0 && change.length === 0) {
+      await tx.execute(sql`
+        UPDATE data_conflicts
+           SET value1 = ${adminLabels}, evidence = ${JSON.stringify({ ...evidence, closedBecause: 'ADMIN_LIST_NOW_EQUAL' })}::jsonb,
+               resolved_source = 'ADMIN', resolved_by = ${args.by}, resolved_at = now(),
+               admin_note = 'closed: the admin list now equals this document list (#1294)'
+         WHERE id = ${r.id}::uuid AND resolved_at IS NULL`);
+      out.closed.push(r.id);
+    } else {
+      await tx.execute(sql`
+        UPDATE data_conflicts SET value1 = ${adminLabels}, evidence = ${JSON.stringify(evidence)}::jsonb
+         WHERE id = ${r.id}::uuid AND resolved_at IS NULL`);
+      out.updated.push(r.id);
+    }
+  }
+  return out;
+}
+
+/** The `ipos` column a duplicate merge may carry INTO a list (CARRY_IF_ABSENT_COLUMNS), by list. */
+const LIST_CARRY_COLUMN: Partial<Record<AdminListName, string>> = { lead_managers: 'lead_managers' };
+
+/**
+ * #1294 item 4, spec §9.2 items 8 and 28(b) (clarified 2026-10-01): the OD-38 duplicate merge deletes
+ * the dropped row's child lists (and its `ipos.lead_managers` with the row), and may carry lead managers
+ * onto the survivor. Removing admin rows needs a reason and an audit row, so the merge never does it
+ * silently: this returns the refusal (naming the IPO and the list) when the dropped row has ANY
+ * admin-owned list, admin-empty included, or the survivor's admin-owned list would receive a carried
+ * column. Null when the merge touches no admin-owned list. The admin moves or re-enters the list first.
+ */
+export async function adminListMergeRefusal(
+  db: HoldExecutor,
+  args: { keep: { id: string; slug: string }; drop: { id: string; slug: string }; carriedColumns: readonly string[] }
+): Promise<string | null> {
+  const res = await db.execute(sql`
+    SELECT ipo_id::text AS ipo_id, table_name, field_name FROM field_protection_metadata
+     WHERE ipo_id IN (${args.keep.id}::uuid, ${args.drop.id}::uuid) AND is_protected = true`);
+  const held = new Set((res.rows as Array<{ ipo_id: string; table_name: string; field_name: string }>).map((r) => `${r.ipo_id}|${r.table_name}|${r.field_name}`));
+  const owned = (ipoId: string, list: AdminListName) => held.has(`${ipoId}|${ADMIN_LIST_SPECS[list].holdTable}|${ADMIN_LIST_SPECS[list].holdField}`);
+  const problems: string[] = [];
+  for (const list of ADMIN_LISTS) {
+    if (owned(args.drop.id, list)) problems.push(`the dropped IPO ${args.drop.slug} has an admin-owned ${list} list, which the merge would delete`);
+    const carry = LIST_CARRY_COLUMN[list];
+    if (carry && args.carriedColumns.includes(carry) && owned(args.keep.id, list)) {
+      problems.push(`the surviving IPO ${args.keep.slug} has an admin-owned ${list} list, which the merge would replace`);
+    }
+  }
+  if (problems.length === 0) return null;
+  return `${problems.join('; ')} (spec §9.2 items 8, 28(b): removing admin rows needs a reason and an audit row). Move or re-enter the list in the admin editor first.`;
 }

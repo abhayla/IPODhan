@@ -22,7 +22,7 @@
  * without one, OD-76); the other values are typed in the editor under item 12 (OD-108).
  */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { auditLogs, ipos, offeringTypeEnum } from '../db/schema';
 import { IPORepository, IPO_CREATED_BY_ADMIN_ACTION } from '../repositories/ipo-repository';
@@ -43,6 +43,7 @@ import { normalizeCin } from '../utils/cin';
 import { normalizeCompanyNameForMatching } from '../utils/company-name-normalizer';
 import { generateIPOSlug } from '../utils/slug';
 import { logger } from '../logger';
+import { lockIdentifierValues } from './admin-identifier-alias';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -215,9 +216,7 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
   try {
     // Every hold recorded inside this scope is tagged admin-create (#1299), whichever path reaches it.
     outcome = await withHoldOrigin('admin-create', () => db.transaction(async (tx) => {
-      for (const k of lockKeys) {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('admin-ipo-create'), hashtext(${k}))`);
-      }
+      await lockIdentifierValues(tx as never, lockKeys);
       const txRepo = new IPORepository(tx as never, noRedis);
       // A refusal RETURNS (the transaction commits), so a hold the resolver records stays recorded.
       const refusal = await refuseIfAlreadyThere(tx as never, txRepo, {

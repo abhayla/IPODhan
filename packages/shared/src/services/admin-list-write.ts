@@ -35,7 +35,7 @@ import {
 } from '../db/schema';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { headingHashForRiskFactor } from '../utils/risk-factor-heading-key';
-import { ADMIN_LIST_SPECS, lockAndReadListOwnership, upsertListHold, type AdminListName } from './admin-list-hold';
+import { ADMIN_LIST_SPECS, lockAndReadListOwnership, recomputeOpenListSuggestions, upsertListHold, type AdminListName } from './admin-list-hold';
 import type { AdminActor } from './admin-field-write';
 import { IPORepository } from '../repositories/ipo-repository';
 
@@ -229,6 +229,8 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
             ? `List row added: ${spec.label(next.rows[next.rows.length - 1])}`
             : `List row edited: ${op.rowKey}`;
       await upsertListHold(tx as never, { ipoId, list, by: actor.name, editNote, at: now });
+      // #1294 item 2: open document-list suggestions follow the admin's list as it is now.
+      await recomputeOpenListSuggestions(tx as never, { ipoId, list, adminRows: await readList(tx, ipoId, list), by: actor.name });
 
       if (list === 'lead_managers') {
         const lineage = { method: 'ADMIN_LIST', entryPoint: input.entryPoint, by: actor.name, adminId: actor.adminId };
@@ -287,4 +289,12 @@ export async function readAdminList(
     .where(and(eq(fieldProtectionMetadata.ipoId, ipoId), eq(fieldProtectionMetadata.tableName, spec.holdTable), eq(fieldProtectionMetadata.fieldName, spec.holdField)));
   const version = await listVersion(db, ipoId, list, rows);
   return { owned: prot.some((p) => p.p === true), version, rows: rows.map((row) => ({ key: spec.key(row), label: spec.label(row), row })) };
+}
+
+/**
+ * #1294 item 2: a field edit on a list row (a peer row, admin-field-write) changes the list too, so the
+ * list's open suggestions are recomputed against the list as stored after that edit, in the same tx.
+ */
+export async function recomputeListSuggestionsAfterRowEdit(tx: Db, ipoId: string, list: AdminListName, by: string) {
+  return recomputeOpenListSuggestions(tx as never, { ipoId, list, adminRows: await readList(tx, ipoId, list), by });
 }
