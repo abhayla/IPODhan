@@ -28,6 +28,8 @@ import { lockAndReadRowHolds } from '@ipodhan/shared/services/field-hold';
 import { persistAnchorReport } from '../../src/services/anchor-persister';
 import { selectPriceCandidates } from '../../src/scheduler/post-listing-price';
 import { closedIpoCandidatesQuery } from '../../src/scheduler/closed-ipo-job';
+import { CANDIDATE_IPOS_SQL } from '../../src/services/document-cycle';
+import { RECONCILER_PRESENCE_SQL } from '../../src/scheduler/jobs/stage-reconciler-job';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const HIDDEN = '00000000-0000-4000-9123-000000000001';
@@ -50,6 +52,8 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO scraper writes are d
   let repo: IPORepository;
 
   async function cleanup() {
+    await db.execute(sql`DELETE FROM ipo_source_keys WHERE ipo_id IN (${HIDDEN}::uuid, ${VISIBLE}::uuid)`);
+    await db.execute(sql`DELETE FROM ipo_pipeline_steps WHERE ipo_id IN (${HIDDEN}::uuid, ${VISIBLE}::uuid)`);
     await db.delete(schema.financialData).where(inArray(schema.financialData.ipoId, IDS));
     await db.delete(schema.documents).where(inArray(schema.documents.ipoId, IDS));
     await db.delete(schema.gmpRecords).where(inArray(schema.gmpRecords.ipoId, IDS));
@@ -68,10 +72,10 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO scraper writes are d
     await cleanup();
     // Both LISTED 10 days before NOW and closed before today: each is a price-job and closed-job candidate unless hidden.
     await db.execute(sql`
-      INSERT INTO ipos (id, company_name, slug, offering_type, segment, category, status, open_date, close_date, listing_date, symbol, hidden_at, hidden_reason)
+      INSERT INTO ipos (id, company_name, slug, offering_type, segment, category, status, open_date, close_date, listing_date, symbol, isin, hidden_at, hidden_reason)
       VALUES
-        (${HIDDEN}::uuid, 'Item23 Write Probe Hidden Ltd', 'item23-write-probe-hidden-ltd', 'IPO', 'MAINBOARD', 'MAINBOARD', 'LISTED', '2026-09-15', '2026-09-17', '2026-09-20', 'I23WHID', '2026-09-29T00:00:00Z', 'Not an IPO (test)'),
-        (${VISIBLE}::uuid, 'Item23 Write Probe Visible Ltd', 'item23-write-probe-visible-ltd', 'IPO', 'MAINBOARD', 'MAINBOARD', 'LISTED', '2026-09-15', '2026-09-17', '2026-09-20', 'I23WVIS', NULL, NULL)
+        (${HIDDEN}::uuid, 'Item23 Write Probe Hidden Ltd', 'item23-write-probe-hidden-ltd', 'IPO', 'MAINBOARD', 'MAINBOARD', 'LISTED', '2026-09-15', '2026-09-17', '2026-09-20', 'I23WHID', 'INE23H000011', '2026-09-29T00:00:00Z', 'Not an IPO (test)'),
+        (${VISIBLE}::uuid, 'Item23 Write Probe Visible Ltd', 'item23-write-probe-visible-ltd', 'IPO', 'MAINBOARD', 'MAINBOARD', 'LISTED', '2026-09-15', '2026-09-17', '2026-09-20', 'I23WVIS', 'INE23V000019', NULL, NULL)
     `);
   }, 60000);
 
@@ -160,5 +164,36 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO scraper writes are d
     expect(plan).toBeDefined();
     const flagged = (await pool.query(childWritesAfterHideSql(plan))).rows.map((r: { id: string }) => r.id).filter((id: string) => IDS.includes(id));
     expect(flagged).toEqual([HIDDEN]);
+  });
+
+  it('#1354 item 1: the document-walk candidate selection does not select a hidden row; a visible one is selected', async () => {
+    const { rows } = await pool.query(CANDIDATE_IPOS_SQL);
+    expect(rows.map((r: { id: string }) => r.id).filter((id: string) => IDS.includes(id))).toEqual([VISIBLE]);
+  });
+
+  it('#1354 item 2: the stage reconciler presence query skips a hidden row, so no ipo_pipeline_steps row is written for it (d_hidden_ipo_child_writes would FAIL on one)', async () => {
+    const { rows } = await pool.query(RECONCILER_PRESENCE_SQL);
+    expect(rows.map((r: { id: string }) => r.id).filter((id: string) => IDS.includes(id))).toEqual([VISIBLE]);
+  });
+
+  it('#1354 item 3: ISIN tier binds the hidden row (IpoHiddenError, nothing created); a visible row ISIN does not refuse', async () => {
+    await expect(resolveIpoRow(repo as never, { companyName: 'Renamed Probe Co', isin: 'INE23H000011' } as never)).rejects.toMatchObject({ name: 'IpoHiddenError', ipoId: HIDDEN });
+    await expect(resolveIpoRow(repo as never, { companyName: 'Renamed Probe Co Two', isin: 'INE23V000019' } as never)).resolves.toMatchObject({ id: VISIBLE });
+    const n = await pool.query(`SELECT count(*)::int AS n FROM ipos WHERE id IN ($1, $2) OR company_name LIKE 'Renamed Probe Co%'`, [HIDDEN, VISIBLE]);
+    expect(n.rows[0].n).toBe(2);
+  });
+
+  it('#1354 item 3: source-key tier binds the hidden row (IpoHiddenError, nothing created); a visible row key binds it normally', async () => {
+    await pool.query(
+      `INSERT INTO ipo_source_keys (ipo_id, source, key_type, key_value, binding_value, state, bound_via, bound_by)
+       VALUES ($1, 'BSE', 'BSE_IPO_NO', 'I23HKEY', 'I23HKEY', 'ACTIVE', 'CREATE', 'item23-test'),
+              ($2, 'BSE', 'BSE_IPO_NO', 'I23VKEY', 'I23VKEY', 'ACTIVE', 'CREATE', 'item23-test')`,
+      [HIDDEN, VISIBLE]
+    );
+    const ref = (keyValue: string) => ({ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue });
+    await expect(resolveIpoRow(repo as never, { companyName: 'Totally Different Name Ltd', sourceKeys: [ref('I23HKEY')] } as never)).rejects.toMatchObject({ name: 'IpoHiddenError', ipoId: HIDDEN });
+    await expect(resolveIpoRow(repo as never, { companyName: 'Totally Different Name Ltd', sourceKeys: [ref('I23VKEY')] } as never)).resolves.toMatchObject({ id: VISIBLE });
+    const n = await pool.query(`SELECT count(*)::int AS n FROM ipos WHERE id IN ($1, $2) OR company_name LIKE 'Totally Different%'`, [HIDDEN, VISIBLE]);
+    expect(n.rows[0].n).toBe(2);
   });
 });

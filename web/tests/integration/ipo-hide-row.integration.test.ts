@@ -70,6 +70,7 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: hide a row (410, out of lists, st
     await db.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, ids));
     await db.delete(schema.ipoFieldPlan).where(inArray(schema.ipoFieldPlan.ipoId, ids));
     await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.ipoId, ids));
+    await db.delete(schema.ipoSlugRedirects).where(inArray(schema.ipoSlugRedirects.ipoId, ids));
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, ids));
   }
 
@@ -251,5 +252,18 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: hide a row (410, out of lists, st
       .from(schema.auditLogs)
       .where(and(eq(schema.auditLogs.ipoId, HIDDEN_ID), eq(schema.auditLogs.actionType, IPO_UNHIDDEN_ACTION)));
     expect(audit).toHaveLength(1);
+  });
+
+  it('slug redirect (#1354 item 4): an old slug redirects to a visible row and NEVER to a hidden one', async () => {
+    const OLD_SLUG = 'item23-old-slug-probe';
+    await db.insert(schema.ipoSlugRedirects).values({ oldSlug: OLD_SLUG, ipoId: NEIGHBOUR_ID, reason: 'item23-test' });
+    expect(await webRepo.findRedirectSlug(OLD_SLUG)).toBe(NEIGHBOUR_SLUG);
+    await db.execute(sql`UPDATE ipos SET hidden_at = now(), hidden_reason = 'item23 redirect probe' WHERE id = ${NEIGHBOUR_ID}::uuid`);
+    try {
+      expect(await webRepo.findRedirectSlug(OLD_SLUG)).toBeNull();
+    } finally {
+      await db.execute(sql`UPDATE ipos SET hidden_at = NULL, hidden_reason = NULL WHERE id = ${NEIGHBOUR_ID}::uuid`);
+    }
+    expect(await webRepo.findRedirectSlug(OLD_SLUG)).toBe(NEIGHBOUR_SLUG);
   });
 });
