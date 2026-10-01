@@ -42,6 +42,10 @@
  *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute reclass --apply [--allow-prod]  # writes offering_type
  */
 import { Client } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import * as schema from '@ipodhan/shared/db/schema';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../../src/config/field-manifest-loader.js';
 import { writeFileSync } from 'fs';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { detectOfferingTypeFromBSEIRFlag } from '../../src/utils/detect-offering-type.js';
@@ -282,9 +286,12 @@ async function main() {
         `--apply refused: connected to production database "${currentDb}" — pass --allow-prod to override.`
       );
     }
+    const wdb = drizzle(wc, { schema });
+    const manifest = loadPlanManifest();
     console.log(`\napplying ${targets.length} reclass updates against "${currentDb}"...`);
     for (const t of targets) {
-      await wc.query('update ipos set offering_type = $1 where id = $2', [t.reclassTo, t.id]);
+      // #1402 (spec §2.8): offering_type is a plan input; the write rebuilds the IPO's plan in the same transaction.
+      await wdb.transaction((tx) => writeIposRebuildingPlanInTx(tx as never, t.id, { offeringType: t.reclassTo as never }, manifest));
       console.log(`  APPLIED  ${t.name} (${t.id}) -> offering_type=${t.reclassTo}`);
     }
   } finally {

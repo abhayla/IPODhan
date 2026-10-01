@@ -6,6 +6,7 @@ import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { generateFieldPlan, type PlanIpo } from '../../src/services/field-plan-generator';
 import { loadPlanManifest } from '../../src/config/field-manifest-loader';
 import { writeSegmentRepairRow, applySegmentRepairs } from '../../scripts/repair-segment-provenance';
+import { writeSourceTrustRepairRow } from '../../scripts/repair-source-trust-batch-t292';
 import { IPORepository } from '@ipodhan/shared';
 
 /**
@@ -221,4 +222,63 @@ describe('#1402 r2: mergeDuplicateInto / unmergeDuplicate rebuild the survivor p
     expect(restored.s).toBe('SME');
     expect(await oldRank1()).toEqual(ranks(smeBse));
   }, 120_000);
+});
+
+/**
+ * #1408 review r3: repair-source-trust-batch-t292 --apply wrote offering_type (FPO -> IPO, IPO ->
+ * RIGHTS) through a bare `db.update(ipos)`, leaving the plan on the old type's not-applicable set.
+ */
+describe('#1402 r3: repair-source-trust-batch-t292 offering_type write rebuilds the plan', () => {
+  const ID = '00000000-0000-4000-8000-0000000014b1';
+  const rights: PlanIpo = { id: ID, segment: 'MAINBOARD', listingExchanges: ['NSE'], offeringType: 'RIGHTS' };
+  const ipoType: PlanIpo = { id: ID, segment: 'MAINBOARD', listingExchanges: ['NSE'], offeringType: 'IPO' };
+  const rank1 = async () =>
+    new Map(
+      (await db.select({ t: schema.ipoFieldPlan.tableName, f: schema.ipoFieldPlan.fieldName, r: schema.ipoFieldPlan.rank1Source })
+        .from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, ID))).map((x: any) => [`${x.t}.${x.f}`, x.r])
+    );
+  const keys = (ipo: PlanIpo) => new Set(generateFieldPlan(ipo, manifest).map((r) => `${r.tableName}.${r.fieldName}`));
+  async function clean() {
+    await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, ID));
+    await db.execute(sql`DELETE FROM audit_logs WHERE ipo_id = ${ID}::uuid`);
+    await db.execute(sql`DELETE FROM ipos WHERE id = ${ID}::uuid`);
+  }
+  beforeAll(async () => {
+    db = await getTestDb();
+  });
+  beforeEach(async () => {
+    await clean();
+    await db.insert(schema.ipos).values({
+      id: ID, slug: 'issue-1402-t292-rebuild', companyName: 'Issue 1402 T292 Limited', status: 'UPCOMING',
+      segment: 'MAINBOARD', offeringType: 'IPO', listingExchanges: ['NSE'],
+    } as never);
+    const rows = generateFieldPlan(ipoType, manifest);
+    await db.insert(schema.ipoFieldPlan).values(
+      rows.map((r) => ({
+        ipoId: ID, tableName: r.tableName, rowKey: '', fieldName: r.fieldName,
+        rank1Source: r.rank1Source, rank2Source: r.rank2Source, rank3Source: r.rank3Source,
+        state: 'PENDING' as const, attempts: 0, manifestVersion: r.manifestVersion, policyOrigin: r.policyOrigin,
+      }))
+    );
+  });
+  afterAll(async () => {
+    await clean();
+    await cleanupTestDb();
+  });
+
+  it('the IPO and RIGHTS plans differ for this row (the test can fail)', () => {
+    expect(keys(rights)).not.toEqual(keys(ipoType));
+  });
+
+  it('writeSourceTrustRepairRow: IPO -> RIGHTS rebuilds the plan in the same transaction', async () => {
+    const n = await writeSourceTrustRepairRow(db, { ipoId: ID, set: { offeringType: 'RIGHTS', lotSize: null }, manifest });
+    expect(n).toBe(1);
+    const [row] = await db.select({ t: schema.ipos.offeringType }).from(schema.ipos).where(eq(schema.ipos.id, ID));
+    expect(row.t).toBe('RIGHTS');
+    expect(new Set((await rank1()).keys())).toEqual(keys(rights));
+  });
+
+  it('a row that does not exist reports 0 and writes nothing', async () => {
+    expect(await writeSourceTrustRepairRow(db, { ipoId: '00000000-0000-4000-8000-00000000dead', set: { offeringType: 'RIGHTS' }, manifest })).toBe(0);
+  });
 });

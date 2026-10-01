@@ -80,7 +80,10 @@
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import type { PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
@@ -206,6 +209,23 @@ async function loadRow(slug: string) {
     throw new Error(`Expected exactly 1 row for slug=${slug}, found ${rows.length}`);
   }
   return rows[0];
+}
+
+/**
+ * #1402 (spec §2.8): the corrected fields can include offering_type (FPO -> IPO, IPO -> RIGHTS), a
+ * plan input. The row is locked, written and its plan rebuilt in ONE transaction through the shared
+ * door, so the value and its plan commit or roll back together. Returns the rows written (0 or 1).
+ */
+export async function writeSourceTrustRepairRow(
+  database: { transaction: <T>(fn: (tx: any) => Promise<T>) => Promise<T> },
+  args: { ipoId: string; set: Record<string, unknown>; manifest: PlanManifest }
+): Promise<number> {
+  return database.transaction(async (tx) => {
+    const cur = await tx.execute(sql`SELECT id FROM ipos WHERE id = ${args.ipoId}::uuid FOR UPDATE`);
+    if (cur.rows.length === 0) return 0;
+    await writeIposRebuildingPlanInTx(tx, args.ipoId, args.set, args.manifest);
+    return 1;
+  });
 }
 
 async function main() {
@@ -430,6 +450,8 @@ async function main() {
     process.exit(0);
   }
 
+  // #1402: loaded before any write so a bad manifest writes nothing.
+  const manifest = loadPlanManifest();
   const protectionService = createFieldProtectionService(db, getRedisClient());
   const ledger: Array<Record<string, unknown>> = [];
   let written = 0;
@@ -439,8 +461,7 @@ async function main() {
     const setClause: Record<string, unknown> = {};
     for (const c of r.changes) setClause[c.field] = c.to;
 
-    const result = await db.update(schema.ipos).set(setClause).where(eq(schema.ipos.id, r.id));
-    const rowCount = (result as any).rowCount ?? 0;
+    const rowCount = await writeSourceTrustRepairRow(db, { ipoId: r.id, set: setClause, manifest });
     if (rowCount < 1) {
       const msg = `UPDATE matched 0 rows for ${r.slug} (id=${r.id}) — investigate before re-running`;
       failures.push(msg);

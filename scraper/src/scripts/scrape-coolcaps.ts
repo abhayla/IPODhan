@@ -5,6 +5,8 @@ import { scrapeNSEAPI } from '../scrapers/nse-api-client.js';
 import { db } from '@ipodhan/shared';
 import { ipos, subscriptions } from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../config/field-manifest-loader.js';
 import logger from '../utils/logger.js';
 
 async function scrapeCoolCaps() {
@@ -31,14 +33,15 @@ async function scrapeCoolCaps() {
     logger.info({ ipo: coolCaps }, 'Found Cool Caps in NSE data');
 
     // Update the existing record
-    const updated = await db.update(ipos)
-      .set({
-        ...coolCaps,
-        lastScrapedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(ipos.slug, 'cool-caps-industries-limited'))
-      .returning();
+    // #1402 (spec §2.8): the NSE record can carry segment / offeringType / listingExchanges (plan
+    // inputs); the write rebuilds the plan in the same transaction.
+    const [target] = await db.select({ id: ipos.id }).from(ipos).where(eq(ipos.slug, 'cool-caps-industries-limited'));
+    if (!target) throw new Error('Cool Caps IPO row not found');
+    const manifest = loadPlanManifest();
+    await db.transaction((tx) =>
+      writeIposRebuildingPlanInTx(tx as never, target.id, { ...coolCaps, lastScrapedAt: new Date(), updatedAt: new Date() }, manifest)
+    );
+    const updated = await db.select().from(ipos).where(eq(ipos.id, target.id));
 
     logger.info({ updated: updated[0] }, 'Updated Cool Caps IPO record');
 
