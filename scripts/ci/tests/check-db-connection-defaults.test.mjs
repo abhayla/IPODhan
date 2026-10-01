@@ -4,7 +4,7 @@
 // red before the gate itself can silently stop catching the class.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findOffenders } from '../check-db-connection-defaults.mjs';
+import { findOffenders, LAYER1_PREFILTER } from '../check-db-connection-defaults.mjs';
 
 test('flags the pre-fix shape (DATABASE_NAME defaults to the production db name)', () => {
   const source = `
@@ -321,6 +321,17 @@ const ESCAPE_SHAPES = {
   'computed member': [`import pg from 'pg';\nconst k = 'Pool';\nnew pg[k]();`, 'unresolved'],
   'non-literal require': [`const m = require(process.env.DRIVER);`, 'unresolved'],
   'non-literal import()': [`const m = await import(name);`, 'unresolved'],
+  'require.call with pg': [`const P = require.call(null, 'pg').Pool;`, 'unresolved'],
+  'require.apply with pg': [`const m = require.apply(null, ['pg']);`, 'unresolved'],
+  'module.require with a variable': [`const m = module.require(name);`, 'unresolved'],
+  'createRequire result with a variable': [`import { createRequire } from 'node:module';
+const r = createRequire(import.meta.url);
+const m = r(name);`, 'unresolved'],
+  'inline createRequire call with a variable': [`import { createRequire } from 'node:module';
+const m = createRequire(import.meta.url)(name);`, 'unresolved'],
+  'createRequire result .call': [`import { createRequire } from 'node:module';
+const r = createRequire(import.meta.url);
+r.call(null, 'pg');`, 'unresolved'],
   'un-awaited import() promise': [`import('pg').then((m) => new m.Pool());`, 'unresolved'],
   'drizzle with an env URL': [`import { drizzle } from 'drizzle-orm/node-postgres';\nconst db = drizzle(process.env.DATABASE_URL);`, 'drizzle-fresh-client'],
   'drizzle with a url literal': [`import { drizzle } from 'drizzle-orm/node-postgres';\ndrizzle('postgres://h/ipodhan');`, 'drizzle-fresh-client'],
@@ -370,4 +381,13 @@ test('#1142 r2: the baseline is shrink-only - a fixed (gone) entry FAILS the run
   assert.equal(exitCodeFor(result), 1);
   assert.equal(exitCodeFor(compareToBaseline([{ ...entry, line: 2 }], [entry])), 0);
   assert.equal(exitCodeFor(compareToBaseline([{ ...entry, line: 2 }], [])), 1);
+});
+
+test('#1142 polish: layer 1 prefilter lets every require-like shape through, case-insensitively', () => {
+  for (const src of [
+    `const m = createRequire(u)(name);`,
+    `const m = module.require(name);`,
+    `const m = require.apply(null, [x]);`,
+    `const m = REQUIRE(x);`,
+  ]) assert.ok(LAYER1_PREFILTER.test(src), src);
 });

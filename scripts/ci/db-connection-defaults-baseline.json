@@ -95,7 +95,7 @@
     "variable": "new",
     "text": "new Pool({ connectionString: process.env.DATABASE_URL, options: '-c timezone=UTC', // Force session UTC so the NOW() scraper_logs write is UTC-naive (#28) max: 2, // Small pool for background jobs idl",
     "kind": "construction",
-    "reason": "Background job with its own small pool (max 2, -c timezone=UTC); that config is pinned by scraper/tests/unit/scripts/pool-utc-pin.test.ts and web/tests/unit/db/pool-config.test.ts. Route it through the sanctioned module when the file is next touched (#1142 follow-up)."
+    "reason": "not wired: nothing imports refreshCalendarView (reroute or delete later)"
   },
   {
     "file": "scraper/src/scripts/analyze-data-gaps.ts",
@@ -1377,5 +1377,19 @@
     "text": "process.env.DATABASE_USER || 'NOT SET'",
     "kind": "env-default",
     "reason": "Same as line 27 — a console.log display label ('NOT SET'), not the value passed to the Pool."
+  },
+  {
+    "file": "docs/design/probes/_lib.mjs",
+    "variable": "non-literal module",
+    "text": "createRequire(root)(name)",
+    "kind": "unresolved",
+    "reason": "Loader req(name) is called only as req('pg') in this file; it builds a Pool whose user/database are pinned and reviewed under this file's other baseline entries (read-only probe). Fixed-name loader, not a connection default (#1142 polish)."
+  },
+  {
+    "file": "scripts/ops/walk-proof.mjs",
+    "variable": "non-literal module",
+    "text": "createRequire(root)(name)",
+    "kind": "unresolved",
+    "reason": "Loader req(name) is called only as req('pg') in this file; it builds a Pool whose user/database are pinned and reviewed under this file's other baseline entries (read-only probe). Fixed-name loader, not a connection default (#1142 polish)."
   }
 ]

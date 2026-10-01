@@ -96,7 +96,7 @@ const OR_ASSIGN_KINDS = new Set([ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.
 
 const LAYER1_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
 // Layer 1 parses only files that could import a driver or load a module.
-const LAYER1_PREFILTER = /\bpg\b|postgres|drizzle|require\s*\(|import\s*\(/;
+export const LAYER1_PREFILTER = /\bpg\b|postgres|drizzle|require|import\s*\(/i;
 
 function trackedFiles() {
   const out = execSync('git ls-files', { cwd: REPO_ROOT, encoding: 'utf8' });

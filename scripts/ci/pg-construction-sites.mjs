@@ -102,6 +102,11 @@ function isLocalFileSpecifier(arg) {
   return text !== null && /^(\.{1,2}\/|\/|file:)/.test(text);
 }
 
+function isCreateRequireCall(call) {
+  const c = unwrap(call.expression);
+  return (ts.isIdentifier(c) && c.text === 'createRequire') || (ts.isPropertyAccessExpression(c) && c.name.text === 'createRequire');
+}
+
 function isDynamicImport(call) {
   return call.expression.kind === ts.SyntaxKind.ImportKeyword;
 }
@@ -209,6 +214,20 @@ export function findConstructionSites(file, source) {
     ts.forEachChild(n, collect);
   };
   collect(sf);
+  // Names bound to createRequire(...): calling one is a require.
+  const requireFns = new Set();
+  for (const d of decls) {
+    const init = unwrap(d.initializer);
+    if (ts.isIdentifier(d.name) && init && ts.isCallExpression(init) && isCreateRequireCall(init)) requireFns.add(d.name.text);
+  }
+  const isRequireLike = (expr) => {
+    const e = unwrap(expr);
+    if (!e) return false;
+    if (ts.isIdentifier(e)) return e.text === 'require' || requireFns.has(e.text);
+    if (ts.isPropertyAccessExpression(e)) return e.name.text === 'require' && ts.isIdentifier(unwrap(e.expression)) && unwrap(e.expression).text === 'module';
+    if (ts.isCallExpression(e)) return isCreateRequireCall(e);
+    return false;
+  };
   const bindPattern = (pattern, k) => {
     let changed = false;
     for (const el of pattern.elements) {
@@ -330,7 +349,13 @@ export function findConstructionSites(file, source) {
     }
     if (ts.isCallExpression(n)) {
       const spec = stringArg(n);
-      const isReq = isDynamicImport(n) || (ts.isIdentifier(n.expression) && n.expression.text === 'require');
+      const isReq = isDynamicImport(n) || isRequireLike(n.expression);
+      // require.call(...) / .apply(...) / .bind(...) hide the module name from
+      // the one-string-argument rule; fail closed.
+      const callee = unwrap(n.expression);
+      if (ts.isPropertyAccessExpression(callee) && /^(call|apply|bind)$/.test(callee.name.text) && isRequireLike(callee.expression)) {
+        record(n, 'unresolved', `require.${callee.name.text}`);
+      }
       if (isReq && spec === undefined && n.arguments.length > 0 && !isLocalFileSpecifier(n.arguments[0])) {
         record(n, 'unresolved', 'non-literal module');
       }

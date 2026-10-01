@@ -21,9 +21,13 @@ export async function GET() {
   // this endpoint tests the connection the site actually serves from.
   try {
     const client = await pool.connect();
-    const result = await client.query('SELECT version()');
-    const version = result.rows[0].version;
-    client.release();
+    let version: string;
+    try {
+      const result = await client.query('SELECT version()');
+      version = result.rows[0].version;
+    } finally {
+      client.release();
+    }
 
     return NextResponse.json({
       success: true,
