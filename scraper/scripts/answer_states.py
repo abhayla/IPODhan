@@ -20,7 +20,9 @@ The two mistakes are not symmetric. OD-153/OD-158 CLEAR a stored value on
 REFUSED and STATED_NOT_PRINTED, and keep it on MISSED. Calling a miss a refusal
 or an absence would erase a good stored value; calling a refusal a miss only
 leaves an old value in place one cycle longer. So anything not positively known
-to be a refusal or a stated absence is MISSED.
+to be a refusal or a stated absence is MISSED: a failed check is REFUSED only
+when it returned the `Refused` marker, and a null is STATED_NOT_PRINTED only
+when its reason is on the allow-list AND was decided from the field's own cell.
 """
 
 import json
@@ -66,6 +68,33 @@ def missed(detail, passed=False):
     return Missed(detail, passed)
 
 
+class Refused(tuple):
+    """A check result that POSITIVELY rejects a value it was given (OD-153).
+
+    The opt-in marker for REFUSED: `check_state` answers REFUSED only for this
+    type. A plain `(False, detail)` - every inline presence check, every check
+    nobody has audited - is MISSED, because REFUSED clears a stored value and
+    MISSED keeps it. A check returns `refused(...)` only on a branch reached
+    after every input it judges was present. Compares equal to (False, detail).
+    """
+
+    def __new__(cls, detail):
+        return tuple.__new__(cls, (False, detail))
+
+
+def refused(detail):
+    return Refused(detail)
+
+
+def judge(present, ok, detail):
+    """An inline rule over a field's own value: MISSED when the value (or any
+    input the rule reads) is absent, VALUE when the rule holds, REFUSED when a
+    present value breaks it."""
+    if not present:
+        return missed(detail)
+    return (True, detail) if ok else refused(detail)
+
+
 def null_state(reason):
     """The state of a field emitted with no value and reason `reason`."""
     return STATED_NOT_PRINTED if reason in STATED_ABSENCE_REASONS else MISSED
@@ -78,4 +107,7 @@ def check_state(value, check_result):
     if value is None or value == [] or value == {} or value == "":
         # Nothing was read: nothing to publish and nothing to refuse.
         return MISSED
-    return VALUE if check_result[0] else REFUSED
+    if check_result[0]:
+        return VALUE
+    # Opt-in: only a check that positively rejected a present value refuses.
+    return REFUSED if isinstance(check_result, Refused) else MISSED

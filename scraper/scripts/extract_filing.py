@@ -26,7 +26,7 @@ import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
 import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
 import answer_states  # noqa: E402 — pure-python, stdlib only (#1420)
-from answer_states import missed  # noqa: E402
+from answer_states import judge, missed, refused  # noqa: E402
 
 # W-178c round 2: how long this process waits to acquire the box lock before
 # giving up as "busy" this cycle — kept independent of ANCHOR_LOCK_WAIT_S
@@ -217,6 +217,9 @@ CURRENCY_AMOUNT = re.compile(r"[`₹]\s*(\(?-?[\d,]+(?:\.\d+)?\)?)")
 
 # --------------------------------------------------------------------------- #
 # checks (§1). Each returns (passed: bool, detail: str). Named, one per rule.
+# #1420: a branch that rejects a value it was GIVEN returns refused(...) (the
+# opt-in REFUSED marker); an absent or unusable input returns missed(...); a
+# plain (False, detail) is read as MISSED (answer_states.check_state).
 # --------------------------------------------------------------------------- #
 def check_price_band(floor, cap, segment="MAINBOARD"):
     """floor < cap, and cap within the regulatory band width of floor."""
@@ -224,9 +227,9 @@ def check_price_band(floor, cap, segment="MAINBOARD"):
         return missed("floor or cap missing")
     limit = 1.4 if segment == "SME" else 1.2
     if not floor < cap:
-        return False, "floor %s not < cap %s" % (floor, cap)
+        return refused("floor %s not < cap %s" % (floor, cap))
     if cap > limit * floor:
-        return False, "cap %s > %sx floor %s" % (cap, limit, floor)
+        return refused("cap %s > %sx floor %s" % (cap, limit, floor))
     return True, "%s < %s <= %sx floor" % (floor, cap, limit)
 
 
@@ -236,9 +239,9 @@ def check_lot_value(lot, floor, segment="MAINBOARD"):
         return missed("lot or floor missing")
     value = lot * floor
     if value < 10000:
-        return False, "lot value %s < 10000" % value
+        return refused("lot value %s < 10000" % value)
     if value > 20000:
-        return False, "lot value %s > 20000 (implausible for a retail lot)" % value
+        return refused("lot value %s > 20000 (implausible for a retail lot)" % value)
     return True, "lot value %s" % value
 
 
@@ -248,7 +251,7 @@ def check_face_multiple(price, face, printed):
         return missed("price, face value or printed multiple missing")
     computed = price / face
     if abs(computed - printed) > 0.01 * max(1.0, abs(printed)):
-        return False, "computed %s != printed %s" % (computed, printed)
+        return refused("computed %s != printed %s" % (computed, printed))
     return True, "%s/%s = %s == %s" % (price, face, computed, printed)
 
 
@@ -259,8 +262,8 @@ def check_shares_amount(shares, price, amount_mn, tol=0.005):
     computed = shares * price / 1_000_000.0
     drift = abs(computed - amount_mn) / abs(amount_mn)
     if drift > tol:
-        return False, "%sx%s = %.2fmn vs printed %s (%.4f%%)" % (
-            shares, price, computed, amount_mn, drift * 100)
+        return refused("%sx%s = %.2fmn vs printed %s (%.4f%%)" % (
+            shares, price, computed, amount_mn, drift * 100))
     return True, "%.2fmn ~= %s (%.4f%%)" % (computed, amount_mn, drift * 100)
 
 
@@ -268,7 +271,7 @@ def check_monotonic_shares(shares_floor, shares_cap):
     if shares_floor is None or shares_cap is None:
         return missed("missing")
     if not shares_floor > shares_cap:
-        return False, "shares at floor %s not > at cap %s" % (shares_floor, shares_cap)
+        return refused("shares at floor %s not > at cap %s" % (shares_floor, shares_cap))
     return True, "%s > %s" % (shares_floor, shares_cap)
 
 
@@ -276,7 +279,7 @@ def check_monotonic_mcap(mcap_floor, mcap_cap):
     if mcap_floor is None or mcap_cap is None:
         return missed("missing")
     if not mcap_floor < mcap_cap:
-        return False, "mcap at floor %s not < at cap %s" % (mcap_floor, mcap_cap)
+        return refused("mcap at floor %s not < at cap %s" % (mcap_floor, mcap_cap))
     return True, "%s < %s" % (mcap_floor, mcap_cap)
 
 
@@ -295,8 +298,8 @@ def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, share
     denom = max(abs(pre_floor), abs(pre_cap), 1.0)
     drift = abs(pre_floor - pre_cap) / denom
     if drift > tol:
-        return False, "implied pre-issue shares %.0f (floor) != %.0f (cap) (%.4f%%)" % (
-            pre_floor, pre_cap, drift * 100)
+        return refused("implied pre-issue shares %.0f (floor) != %.0f (cap) (%.4f%%)" % (
+            pre_floor, pre_cap, drift * 100))
     return True, "implied pre-issue shares %.0f ~= %.0f (%.4f%%)" % (pre_floor, pre_cap, drift * 100)
 
 
@@ -308,7 +311,7 @@ def check_sum_equals(parts, total, label, tol=0.5):
         return missed("%s: missing parts or total" % label)
     s = sum(parts)
     if abs(s - total) > tol:
-        return False, "%s: parts sum %s != printed total %s" % (label, s, total)
+        return refused("%s: parts sum %s != printed total %s" % (label, s, total))
     return True, "%s: %s == %s" % (label, s, total)
 
 
@@ -320,8 +323,8 @@ def check_ratio_equals(numerator, denominator, printed, label, tol=0.01):
     computed = numerator / denominator
     drift = abs(computed - printed) / max(abs(printed), 1e-9)
     if drift > tol:
-        return False, "%s: %s/%s = %.4f vs printed %s (%.2f%%)" % (
-            label, numerator, denominator, computed, printed, drift * 100)
+        return refused("%s: %s/%s = %.4f vs printed %s (%.2f%%)" % (
+            label, numerator, denominator, computed, printed, drift * 100))
     return True, "%s: %.4f ~= %s" % (label, computed, printed)
 
 
@@ -332,13 +335,13 @@ def check_weighted_average(series, weights, printed, label, tol=0.01):
         return missed("%s: missing series, weights or printed average" % label)
     years = [y for y in series if y in weights]
     if not years:
-        return False, "%s: no year has both a value and a weight" % label
+        return missed("%s: no year has both a value and a weight" % label)
     total_w = sum(weights[y] for y in years)
     if not total_w:
-        return False, "%s: weights sum to zero" % label
+        return refused("%s: weights sum to zero" % label)
     computed = sum(series[y] * weights[y] for y in years) / total_w
     if abs(computed - printed) > max(tol * abs(printed), 0.005):
-        return False, "%s: computed %.4f != printed %s" % (label, computed, printed)
+        return refused("%s: computed %.4f != printed %s" % (label, computed, printed))
     return True, "%s: %.4f ~= %s" % (label, computed, printed)
 
 
@@ -347,7 +350,7 @@ def check_mean_equals(values, printed, label, tol=0.005):
         return missed("%s: missing values or printed average" % label)
     computed = sum(values) / len(values)
     if abs(computed - printed) > max(tol * abs(printed), 0.005):
-        return False, "%s: mean %.4f != printed %s" % (label, computed, printed)
+        return refused("%s: mean %.4f != printed %s" % (label, computed, printed))
     return True, "%s: mean %.4f ~= %s" % (label, computed, printed)
 
 
@@ -368,9 +371,9 @@ def check_allocation(qib, nii, retail):
         return missed("one or more allocation percentages missing")
     total = sum(parts)
     if total > 100.0001:
-        return False, "allocation sums to %s > 100" % total
+        return refused("allocation sums to %s > 100" % total)
     if qib < 50:
-        return False, "book-built QIB portion %s%% < 50%%" % qib
+        return refused("book-built QIB portion %s%% < 50%%" % qib)
     return True, "QIB %s + NII %s + Retail %s = %s" % (qib, nii, retail, total)
 
 
@@ -407,15 +410,15 @@ def check_timeline(dates):
     for (ka, a), (kb, b) in zip(present, present[1:]):
         if (ka, kb) in strict:
             if not a < b:
-                return False, "%s %s not < %s %s" % (ka, a, kb, b)
+                return refused("%s %s not < %s %s" % (ka, a, kb, b))
         elif a > b:
-            return False, "%s %s > %s %s" % (ka, a, kb, b)
+            return refused("%s %s > %s %s" % (ka, a, kb, b))
     if dates.get("close_date") and dates.get("listing_date"):
         c = date(*[int(x) for x in dates["close_date"].split("-")])
         l = date(*[int(x) for x in dates["listing_date"].split("-")])
         wd = _working_days_between(c, l)
         if wd > 3:
-            return False, ("listing %s more than 3 working days after close %s "
+            return refused("listing %s more than 3 working days after close %s "
                             "(%s working days, Sat/Sun skipped, holidays ignored)" % (l, c, wd))
     return True, " < ".join("%s=%s" % (k, v) for k, v in present)
 
@@ -426,7 +429,7 @@ def check_category_sum(parts, total, tol=0.0):
         return missed("missing parts or total")
     s = sum(parts)
     if abs(s - total) > tol:
-        return False, "parts sum %s != printed total %s" % (s, total)
+        return refused("parts sum %s != printed total %s" % (s, total))
     return True, "parts sum %s == total %s" % (s, total)
 
 
@@ -434,7 +437,7 @@ def check_track_record(total_issues, closed_below):
     if total_issues is None or closed_below is None:
         return missed("missing")
     if closed_below > total_issues:
-        return False, "closed below issue price %s > total issues %s" % (closed_below, total_issues)
+        return refused("closed below issue price %s > total issues %s" % (closed_below, total_issues))
     return True, "%s of %s" % (closed_below, total_issues)
 
 
@@ -451,7 +454,7 @@ def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=Non
     if pre_pct is None or post_pct is None:
         return missed("missing")
     if not post_pct < pre_pct:
-        return False, "post-issue %s%% not < pre-issue %s%%" % (post_pct, pre_pct)
+        return refused("post-issue %s%% not < pre-issue %s%%" % (post_pct, pre_pct))
     if shares_held and fresh_shares and pre_pct:
         # A promoter who is ALSO a selling shareholder is diluted twice: by the
         # fresh issue AND by the shares they sell in the offer for sale. Ignoring
@@ -461,8 +464,8 @@ def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=Non
         expected_post = (shares_held - (sold_shares or 0.0)) * 100.0 / (pre_shares + fresh_shares)
         drift = abs(expected_post - post_pct) / max(abs(expected_post), 1e-6)
         if drift > tol:
-            return False, "formula post %.4f%% != printed %s%% (%.4f%%)" % (
-                expected_post, post_pct, drift * 100)
+            return refused("formula post %.4f%% != printed %s%% (%.4f%%)" % (
+                expected_post, post_pct, drift * 100))
         return True, "%s%% -> %s%% (formula %.4f%% within %.1f%%)" % (
             pre_pct, post_pct, expected_post, tol * 100)
     return True, "%s%% -> %s%%" % (pre_pct, post_pct)
@@ -475,8 +478,8 @@ def check_waca_multiple(cap_price, waca, printed_multiple, tol=0.01):
     computed = cap_price / waca
     drift = abs(computed - printed_multiple) / abs(printed_multiple)
     if drift > tol:
-        return False, "%s/%s = %.2f vs printed %s (%.2f%%)" % (
-            cap_price, waca, computed, printed_multiple, drift * 100)
+        return refused("%s/%s = %.2f vs printed %s (%.2f%%)" % (
+            cap_price, waca, computed, printed_multiple, drift * 100))
     return True, "%.2f ~= %s" % (computed, printed_multiple)
 
 
@@ -488,16 +491,16 @@ def check_fy_series(series, fiscal_years):
         return missed("fiscal years not read from a header row")
     years = sorted(int(y) for y in fiscal_years)
     if any(years[i] + 1 != years[i + 1] for i in range(len(years) - 1)):
-        return False, "fiscal years not consecutive: %s" % years
+        return missed("fiscal years not consecutive: %s" % years)
     if sorted(int(k) for k in series) != years:
-        return False, "series years %s != header years %s" % (sorted(series), years)
+        return refused("series years %s != header years %s" % (sorted(series), years))
     # A prose sentence enumerates its periods ("for Fiscal 2026, Fiscal 2025 and
     # Fiscal 2024 were `(147.30) million, ...") and those year tokens parse as
     # money. If one survived into a value slot the row was mis-read: null it.
     leaked = [k for k, v in series.items() if float(v) in {float(y) for y in years}]
     if leaked:
-        return False, "year token leaked into the value of %s (%s)" % (
-            sorted(leaked), [series[k] for k in sorted(leaked)])
+        return refused("year token leaked into the value of %s (%s)" % (
+            sorted(leaked), [series[k] for k in sorted(leaked)]))
     return True, "%s years %s" % (len(series), years)
 
 
@@ -507,10 +510,10 @@ def check_sign_consistency(eps_series, pat_series):
         return missed("no shared years")
     shared = set(eps_series) & set(pat_series)
     if not shared:
-        return False, "no shared years"
+        return missed("no shared years")
     bad = [y for y in shared if (eps_series[y] < 0) != (pat_series[y] < 0)]
     if bad:
-        return False, "sign mismatch in %s" % sorted(bad)
+        return refused("sign mismatch in %s" % sorted(bad))
     return True, "signs agree across %s years" % len(shared)
 
 
@@ -518,7 +521,7 @@ def check_percentage(pct):
     if pct is None:
         return missed("missing")
     if not 0 < pct <= 100:
-        return False, "%s outside (0, 100]" % pct
+        return refused("%s outside (0, 100]" % pct)
     return True, "%s" % pct
 
 
@@ -526,7 +529,7 @@ def check_cin(cin):
     if not cin:
         return missed("missing")
     if not CIN_RX.fullmatch(cin):
-        return False, "%s does not match the CIN pattern" % cin
+        return refused("%s does not match the CIN pattern" % cin)
     return True, cin
 
 
@@ -534,7 +537,7 @@ def check_text_length(text, limit):
     if not text:
         return missed("missing")
     if len(text) > limit:
-        return False, "%s chars > %s" % (len(text), limit)
+        return refused("%s chars > %s" % (len(text), limit))
     return True, "%s chars" % len(text)
 
 
@@ -542,7 +545,7 @@ def check_min_count(n, minimum):
     if n is None:
         return missed("missing")
     if n < minimum:
-        return False, "%s < required %s" % (n, minimum)
+        return refused("%s < required %s" % (n, minimum))
     return True, "%s" % n
 
 
@@ -562,12 +565,12 @@ def check_objects_total(listed_sum, unpriced, fresh_issue, tol=0.01):
         return missed("fresh issue amount not printed")
     if unpriced:
         if listed_sum > fresh_issue * (1 + tol):
-            return False, "priced objects %.2f exceed fresh issue %.2f" % (listed_sum, fresh_issue)
+            return refused("priced objects %.2f exceed fresh issue %.2f" % (listed_sum, fresh_issue))
         return True, ("priced objects %.2f <= fresh issue %.2f; %d object(s) unpriced "
                       "([bullet]), exact sum not verifiable at RHP stage"
                       % (listed_sum, fresh_issue, unpriced))
     if abs(listed_sum - fresh_issue) > fresh_issue * tol:
-        return False, "objects sum %.2f != fresh issue %.2f" % (listed_sum, fresh_issue)
+        return refused("objects sum %.2f != fresh issue %.2f" % (listed_sum, fresh_issue))
     return True, "%.2f == %.2f" % (listed_sum, fresh_issue)
 
 
@@ -575,7 +578,7 @@ def check_date_before(a, b, label):
     if not a or not b:
         return missed("missing")
     if not a < b:
-        return False, "%s not before %s (%s)" % (a, b, label)
+        return refused("%s not before %s (%s)" % (a, b, label))
     return True, "%s < %s" % (a, b)
 
 
@@ -712,6 +715,36 @@ def _agrees_within(a, b, tol=0.005):
     if a is None or b is None or a == 0:
         return False
     return abs(a - b) / abs(a) <= tol
+
+
+# A WACA-table cell: Not Applicable / N.A., Nil, or a number. Footnote markers
+# ("0.00(1) (2)", "Nil(3)") and asterisks are dropped first so they never read as
+# cells; a range dash and words such as "times" are not cells.
+_WACA_FOOTNOTE_RX = re.compile(r"\(\d{1,2}\)|\*+")
+_WACA_CELL_RX = re.compile(
+    r"(?P<na>\bNot\s+Applicable\b|\bN\.\s?A\.?(?!\w)|\bNA\b)"
+    r"|(?P<nil>\bNil\b)"
+    r"|(?P<num>(?<![\w.])\d[\d,]*(?:\.\d+)?(?![.\d])(?!(?![xX])\w))", re.I)
+
+
+def _waca_row_cells(text):
+    """[(kind, value)] in column order; kind is NA, NIL or NUM (value a float)."""
+    out = []
+    for m in _WACA_CELL_RX.finditer(_WACA_FOOTNOTE_RX.sub(" ", text or "")):
+        if m.group("na"):
+            out.append(("NA", None))
+        elif m.group("nil"):
+            out.append(("NIL", None))
+        else:
+            out.append(("NUM", float(m.group("num").replace(",", ""))))
+    return out
+
+
+def _promoter_row_says_bonus_nil(line, surname):
+    """True only when the promoter row "<surname> <shares> <WACA> <one-year>"
+    prints Nil in its last-one-year cell (the third cell after the name)."""
+    cells = _waca_row_cells(re.sub(r"^\s*" + re.escape(surname), "", line or "", flags=re.I))
+    return len(cells) >= 3 and cells[2][0] == "NIL"
 
 
 def _put_table_or_prose(emit, name, table_value, table_page, check_name, check_result,
@@ -1218,7 +1251,7 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("price_band_floor", floor, page_for(i), "price_band_ordering", band)
     emit.put("price_band_cap", cap, page_for(i), "price_band_ordering", band)
     emit.put("face_value", face, page_for(i), "face_value_positive",
-             (face is not None and face > 0, "%s" % face))
+             judge(face is not None, face is not None and face > 0, "%s" % face))
 
     # ---- A3: lot size + multiple -------------------------------------------
     lot = lot_multiple = None
@@ -1232,9 +1265,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("lot_size", lot, page_for(j), "lot_min_application_value",
              check_lot_value(lot, floor, segment))
     emit.put("lot_multiple", lot_multiple, page_for(j), "lot_multiple_matches_lot",
-             (lot_multiple is not None and lot_multiple == lot,
-              "%s == lot %s" % (lot_multiple, lot) if lot_multiple == lot
-              else "%s != lot %s" % (lot_multiple, lot)))
+             judge(lot_multiple is not None and lot is not None, lot_multiple == lot,
+                   "%s == lot %s" % (lot_multiple, lot) if lot_multiple == lot
+                   else "%s != lot %s" % (lot_multiple, lot)))
 
     # ---- A4: floor/cap as multiples of face value --------------------------
     # Two printed wordings: "THE FLOOR PRICE AND THE CAP PRICE ARE x TIMES AND y
@@ -1306,9 +1339,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
 
     _put_table_or_prose(
         emit, "fresh_issue_amount", amt_floor, page_for(fi), "fresh_issue_amount_consistent",
-        (amt_floor is not None and amt_cap == amt_floor,
-         "%s at both prices" % amt_floor if amt_floor == amt_cap
-         else "%s vs %s" % (amt_floor, amt_cap)),
+        judge(amt_floor is not None and amt_cap is not None, amt_cap == amt_floor,
+              "%s at both prices" % amt_floor if amt_floor == amt_cap
+              else "%s vs %s" % (amt_floor, amt_cap)),
         prose_fresh_amt, page_for(pf_idx))
 
     # An offer-table AMOUNT is only ever published when the shares x price
@@ -1400,7 +1433,7 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         if m:
             ronw = -float(m.group(2)) if m.group(1) else float(m.group(2))
     emit.put("weighted_average_ronw", ronw, page_for(ri), "ronw_within_plausible_range",
-             (ronw is not None and -1000 <= ronw <= 1000, "%s" % ronw))
+             judge(ronw is not None, ronw is not None and -1000 <= ronw <= 1000, "%s" % ronw))
 
     # ---- A12/A13/A14: regulation, allocation, designated exchange ----------
     gi = _find(lines, re.compile(r"BOOK BUILDING PROCESS IN ACCORDANCE WITH REGULATION", re.I))
@@ -1779,7 +1812,8 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
                 post_pct_cap = vals[6]
             sh_page = page_for(si)
     emit.put("promoter_shares_held", shares_held, sh_page, "promoter_shares_positive",
-             (shares_held is not None and shares_held > 0, "%s" % shares_held))
+             judge(shares_held is not None, shares_held is not None and shares_held > 0,
+                   "%s" % shares_held))
     sold_by_prom = next((r["shares_offered"] for r in pss
                          if prom and r["name"].lower() == prom.lower()), 0.0)
     dil = check_holding_dilution(pre_pct, post_pct_cap, shares_held, shares_cap,
@@ -1804,22 +1838,37 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         wi = -1 if waca is None else wi
     emit.put("promoter_waca", waca, page_for(wi) if wi >= 0 else pss_page,
              "promoter_waca_positive",
-             (waca is not None and waca > 0, "%s" % waca))
-    if wi >= 0 and re.search(r"\bNil\b", lines[wi], re.I):
+             judge(waca is not None, waca is not None and waca > 0, "%s" % waca))
+    # #1420 round 2: a stated absence is read from the field's OWN cell. The
+    # promoter row is "<surname> <shares> <WACA> <last-one-year cell>"; a Nil in
+    # any other cell is not a statement about waca_last_1y.
+    if wi >= 0 and _promoter_row_says_bonus_nil(lines[wi], surname):
         emit.null("waca_last_1y", "bonus_nil", page_for(wi))
 
-    waca_3y = mult_3y = None
+    # "Last three years <WACA> <cap multiple> <lowest> - <highest>": each field
+    # takes its own column. Deepa prints "0.00(1) (2) Not Applicable Nil(3) -
+    # 80.00(1)", a WACA of 0.00 and a multiple that does not apply; only the cell
+    # that itself reads Not Applicable is a stated absence.
+    na_3y = "not_applicable_no_qualifying_transaction"
     t3 = _find(lines, re.compile(r"^\s*Last three years\b", re.I))
-    if t3 >= 0 and re.search(r"Not Applicable", lines[t3], re.I):
-        emit.null("waca_last_3y", "not_applicable_no_qualifying_transaction", page_for(t3))
-        emit.null("cap_multiple_last_3y", "not_applicable_no_qualifying_transaction", page_for(t3))
+    cells_3y = []
+    if t3 >= 0:
+        cells_3y = _waca_row_cells(re.sub(r"^\s*Last three years\b", "", lines[t3], flags=re.I))
+    waca_cell = cells_3y[0] if cells_3y else None
+    mult_cell = cells_3y[1] if len(cells_3y) > 1 else None
+    waca_3y = waca_cell[1] if waca_cell and waca_cell[0] == "NUM" else None
+    mult_3y = mult_cell[1] if mult_cell and mult_cell[0] == "NUM" else None
+    wc = check_waca_multiple(cap, waca_3y, mult_3y)
+    if waca_cell and waca_cell[0] == "NA":
+        emit.null("waca_last_3y", na_3y, page_for(t3))
+    elif waca_3y is not None and mult_cell and mult_cell[0] == "NA":
+        emit.put("waca_last_3y", waca_3y, page_for(t3), "waca_non_negative",
+                 judge(True, waca_3y >= 0, "%s (multiple not applicable)" % waca_3y))
     else:
-        if t3 >= 0:
-            vals = money_values(lines[t3])
-            if len(vals) >= 2:
-                waca_3y, mult_3y = vals[0], vals[1]
-        wc = check_waca_multiple(cap, waca_3y, mult_3y)
         emit.put("waca_last_3y", waca_3y, page_for(t3), "cap_over_waca_equals_printed_multiple", wc)
+    if mult_cell and mult_cell[0] == "NA":
+        emit.null("cap_multiple_last_3y", na_3y, page_for(t3))
+    else:
         emit.put("cap_multiple_last_3y", mult_3y, page_for(t3),
                  "cap_over_waca_equals_printed_multiple", wc)
 
@@ -2433,8 +2482,8 @@ def check_cover_arithmetic(shares, price, amount, amount_unit, tol=0.05):
     printed = amount * _UNIT_RUPEES[amount_unit]
     drift = abs(computed - printed) / abs(printed)
     if drift > tol:
-        return False, "%s x %s = %.2f vs printed %.2f (%.2f%%)" % (
-            shares, price, computed, printed, drift * 100)
+        return refused("%s x %s = %.2f vs printed %.2f (%.2f%%)" % (
+            shares, price, computed, printed, drift * 100))
     return True, "%.2f ~= %.2f (%.2f%%)" % (computed, printed, drift * 100)
 
 
@@ -2456,7 +2505,7 @@ def check_cover_price(price):
     if price is None:
         return missed("price not printed on the cover")
     if not 1 <= price <= 100000:
-        return False, "price %s outside 1-100000 rupees" % price
+        return refused("price %s outside 1-100000 rupees" % price)
     return True, "%s" % price
 
 
@@ -2464,7 +2513,7 @@ def check_cover_lot(lot):
     if lot is None:
         return missed("lot size not printed on the cover")
     if not 1 <= lot <= 100000:
-        return False, "lot size %s outside 1-100000 shares" % lot
+        return refused("lot size %s outside 1-100000 shares" % lot)
     return True, "%s" % lot
 
 
@@ -2472,7 +2521,7 @@ def check_cover_face_value(face):
     if face is None:
         return missed("face value not printed on the cover")
     if face <= 0:
-        return False, "face value %s not positive" % face
+        return refused("face value %s not positive" % face)
     if face not in _TYPICAL_FACE_VALUES:
         return True, "WARN: %s is not one of %s" % (face, list(_TYPICAL_FACE_VALUES))
     return True, "%s" % face
@@ -2482,7 +2531,7 @@ def check_cover_share_count(shares):
     if shares is None:
         return missed("share count not printed on the cover")
     if not 1000 <= shares <= 1e10:
-        return False, "share count %s outside 1e3-1e10" % shares
+        return refused("share count %s outside 1e3-1e10" % shares)
     return True, "%s" % shares
 
 
@@ -2615,7 +2664,7 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
     else:
         price_check = _combine(
             check_cover_price(floor),
-            ((cap is not None and floor <= cap), "%s-%s" % (floor, cap)))
+            judge(cap is not None, cap is not None and floor <= cap, "%s-%s" % (floor, cap)))
     emit.put("price_band_floor", floor, cover_page, "cover_price_within_bounds", price_check)
     emit.put("price_band_cap", cap, cover_page, "cover_price_within_bounds", price_check)
     emit.put("face_value", face, cover_page, "cover_face_value_plausible",

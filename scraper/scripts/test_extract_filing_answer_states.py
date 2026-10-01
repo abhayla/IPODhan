@@ -121,16 +121,61 @@ def test_prasol_basis_mismatch_is_refused_and_carries_the_refused_value(monkeypa
     assert got["check"]["detail"] == "ratio_basis_differs_from_statement", got
 
 
-# (d) STATED_NOT_PRINTED: Deepa's price band ad prints "Last three years ...
-#     Not Applicable" in the WACA table (reason on the shared allow-list).
+# (d) Per-cell answers. Deepa's price band ad prints "Last three years 0.00(1)
+#     (2) Not Applicable Nil(3) - 80.00(1)" under the columns WACA | cap price is
+#     x times the WACA | lowest - highest price. Only the multiple's OWN cell
+#     reads Not Applicable; the WACA cell prints 0.00. Round 1 nulled both as
+#     stated absences because the phrase appeared somewhere on the row, so
+#     OD-158 would have CLEARED a stored WACA the document actually prints.
 
 
-def test_deepa_not_applicable_is_stated_not_printed():
+def test_deepa_last_three_years_reads_each_field_from_its_own_cell():
     env = run(json_pages("deepa-price-band-ad-pages.json"), "PRICE_BAND_AD", "deepa-ad")
-    for name in ("waca_last_3y", "cap_multiple_last_3y"):
-        got = env["fields"][name]
-        assert got["state"] == "STATED_NOT_PRINTED", got
-        assert got["check"]["detail"] == "not_applicable_no_qualifying_transaction", got
+    waca = env["fields"]["waca_last_3y"]
+    assert (waca["state"], waca["value"]) == ("VALUE", 0.0), waca
+    mult = env["fields"]["cap_multiple_last_3y"]
+    assert mult["state"] == "STATED_NOT_PRINTED", mult
+    assert mult["check"]["detail"] == "not_applicable_no_qualifying_transaction", mult
+
+
+def test_the_waca_row_splits_into_cells_with_footnotes_dropped():
+    """Deepa's real rows, verbatim from the fixture (page 1, lines 58 and 72)."""
+    cells = extract_filing._waca_row_cells
+    assert cells("0.00(1) (2) Not Applicable Nil(3) – 80.00(1)") == [
+        ("NUM", 0.0), ("NA", None), ("NIL", None), ("NUM", 80.0)]
+    assert cells("preceding Nil(3) Not Applicable Nil(3) – Nil(3)") == [
+        ("NIL", None), ("NA", None), ("NIL", None), ("NIL", None)]
+
+
+def test_bonus_nil_is_read_only_from_the_promoter_rows_one_year_cell():
+    """waca_last_1y is a stated absence only when the promoter row's own
+    last-one-year cell - the cell after shares and WACA (T-430 layout "name
+    shares waca nil") - reads Nil. The first row is Deepa's real promoter line
+    (page 1 line 101) without the first name; a Nil in any other cell is not a
+    statement about the one-year WACA."""
+    says = extract_filing._promoter_row_says_bonus_nil
+    assert says("Agarwal 40,005,000 0.50", "Agarwal") is False
+    assert says("Agarwal 40,005,000 0.50 Nil", "Agarwal") is True
+    assert says("Agarwal 40,005,000 0.50 1.25 Nil", "Agarwal") is False
+    assert says("Agarwal Nil 40,005,000 0.50", "Agarwal") is False
+
+
+# (e) A failed check is REFUSED only when it says so. Deepa's ad with its
+#     "Offer for Sales 11,848,340 1,990.52 ..." row REMOVED (the test drops that
+#     one line; everything else is the real capture): the OFS amount was never
+#     read, so issue_structure cannot be judged. Round 1 emitted REFUSED with
+#     refused_value FRESH_AND_OFS, which OD-153 would act on as a refusal.
+
+
+def test_an_unread_ofs_row_leaves_issue_structure_missed_not_refused():
+    pages = [(i, "\n".join(l for l in t.split("\n") if not l.startswith("Offer for Sales")))
+             for i, t in json_pages("deepa-price-band-ad-pages.json")]
+    env = run(pages, "PRICE_BAND_AD", "deepa-ad-no-ofs-row")
+    got = env["fields"]["issue_structure"]
+    assert got["state"] == "MISSED", got
+    assert "refused_value" not in got, got
+    full = run(json_pages("deepa-price-band-ad-pages.json"), "PRICE_BAND_AD", "deepa-ad")
+    assert full["fields"]["issue_structure"]["state"] == "VALUE", full["fields"]["issue_structure"]
 
 
 def test_a_reason_off_the_allow_list_is_missed_even_when_it_says_not_in_document():
@@ -229,6 +274,102 @@ def test_an_inline_check_that_fails_on_a_value_never_read_is_missed():
     emit.put("promoter_waca", None, 7, "promoter_waca_positive", (False, "None"))
     got = emit.fields["promoter_waca"]
     assert got["state"] == "MISSED" and "refused_value" not in got, got
-    emit.put("promoter_waca", -3.0, 7, "promoter_waca_positive", (False, "-3.0"))
+
+
+def test_a_plain_failed_tuple_is_missed_even_with_a_value():
+    """REFUSED is opt-in (#1420 round 2): a bare (False, detail) is a check
+    nobody marked as a refusal, so it keeps the stored value (MISSED). Only the
+    Refused marker - from a check, or judge() on a present value - refuses."""
+    emit = extract_filing.Emitter("doc")
+    emit.put("issue_structure", "FRESH_AND_OFS", 3, "issue_structure_from_ofs_row",
+             (False, "ofs=None"))
+    got = emit.fields["issue_structure"]
+    assert got["state"] == "MISSED" and "refused_value" not in got, got
+    emit.put("promoter_waca", -3.0, 7, "promoter_waca_positive",
+             answer_states.judge(True, False, "-3.0"))
     got = emit.fields["promoter_waca"]
     assert got["state"] == "REFUSED" and got["refused_value"] == -3.0, got
+    emit.put("promoter_waca", -3.0, 7, "promoter_waca_positive",
+             answer_states.judge(False, False, "-3.0"))
+    assert emit.fields["promoter_waca"]["state"] == "MISSED", emit.fields["promoter_waca"]
+
+
+# Every check function that can refuse, with arguments that make it refuse and
+# the positions of the inputs it judges. A new check_* function must be listed
+# here or in NEVER_REFUSES, so a refusal is never added without this test.
+REFUSING_ARGS = {
+    "check_allocation": ((40.0, 30.0, 40.0), (0, 1, 2)),
+    "check_category_sum": (([1.0, 2.0], 5.0), (0, 1)),
+    "check_cin": (("NOT-A-CIN",), (0,)),
+    "check_cover_arithmetic": ((1000.0, 10.0, 1.0, "crores"), (0, 1, 2, 3)),
+    "check_cover_face_value": ((-1.0,), (0,)),
+    "check_cover_lot": ((10 ** 6,), (0,)),
+    "check_cover_price": ((10 ** 6,), (0,)),
+    "check_cover_share_count": ((10.0,), (0,)),
+    "check_date_before": (("2026-02-01", "2026-01-01", "x"), (0, 1)),
+    "check_face_multiple": ((100.0, 10.0, 5.0), (0, 1, 2)),
+    "check_fy_series": (({2024: 1.0, 2025: 2.0}, [2024, 2025, 2026]), (0, 1)),
+    "check_holding_dilution": ((50.0, 60.0), (0, 1)),
+    "check_lot_value": ((1.0, 100.0), (0, 1)),
+    "check_mcap_consistency": ((1000.0, 100.0, 1e6, 1000.0, 200.0, 1e6), (0, 1, 2, 3, 4, 5)),
+    "check_mean_equals": (([1.0, 2.0], 5.0, "x"), (0, 1)),
+    "check_min_count": ((1, 3), (0,)),
+    "check_monotonic_mcap": ((200.0, 100.0), (0, 1)),
+    "check_monotonic_shares": ((100.0, 200.0), (0, 1)),
+    "check_objects_total": ((200.0, 0, 100.0), (0, 2)),
+    "check_percentage": ((150.0,), (0,)),
+    "check_price_band": ((500.0, 900.0), (0, 1)),
+    "check_ratio_equals": ((1.0, 2.0, 5.0, "x"), (0, 1, 2)),
+    "check_shares_amount": ((1000.0, 10.0, 5.0), (0, 1, 2)),
+    "check_sign_consistency": (({2025: 1.0}, {2025: -1.0}), (0, 1)),
+    "check_sum_equals": (([1.0, 2.0], 10.0, "x"), (0, 1)),
+    "check_text_length": (("abcdef", 3), (0,)),
+    "check_timeline": (({"open_date": "2026-02-02", "close_date": "2026-02-01"},), (0,)),
+    "check_track_record": ((1, 5), (0, 1)),
+    "check_waca_multiple": ((100.0, 10.0, 5.0), (0, 1, 2)),
+    "check_weighted_average": (({2025: 1.0}, {2025: 1}, 5.0, "x"), (0, 1, 2)),
+}
+NEVER_REFUSES = {"check_cover_issue_size"}  # WARN level: an out-of-band size is published
+
+
+def test_every_check_function_is_classified():
+    names = {n for n, _f in _check_functions()}
+    listed = set(REFUSING_ARGS) | NEVER_REFUSES
+    assert names == listed, {"unclassified": names - listed, "stale": listed - names}
+
+
+@pytest.mark.parametrize("name", sorted(REFUSING_ARGS))
+def test_a_check_refuses_only_when_every_judged_input_is_present(name):
+    fn = getattr(extract_filing, name)
+    args, inputs = REFUSING_ARGS[name]
+    result = fn(*args)
+    assert isinstance(result, answer_states.Refused), (name, result)
+    assert answer_states.check_state(123.0, result) == "REFUSED", (name, result)
+    for i in inputs:
+        absent = list(args)
+        absent[i] = None
+        got = fn(*absent)
+        assert answer_states.check_state(123.0, got) == "MISSED", (name, i, got)
+
+
+@pytest.mark.parametrize("name", sorted(NEVER_REFUSES))
+def test_a_never_refusing_check_never_returns_the_marker(name):
+    fn = getattr(extract_filing, name)
+    assert not isinstance(fn(1e9, "crores", "MAINBOARD"), answer_states.Refused)
+
+
+def test_a_disagreeing_ratio_refusal_carries_a_list(monkeypatch):
+    """ratio_rows_disagree_for_latest_period is the one refusal whose
+    refused_value is a LIST (every value the note printed for the latest
+    period) with no refused_page; the OD-153 consumer must handle that shape.
+    The note is the existing two_tables_disagree_on_latest layout from
+    test_financial_ratios.py (same device, no new fixture)."""
+    import test_financial_ratios as tfr
+    note = next(c[1] for c in tfr.LAYOUTS if c[0] == "two_tables_disagree_on_latest")
+    extra = _statement_years(monkeypatch, [2026, 2025])
+    env = run(note + extra, "RHP", "disagree.txt")
+    got = env["fields"]["current_ratio"]
+    assert got["state"] == "REFUSED", got
+    assert got["check"]["detail"] == "ratio_rows_disagree_for_latest_period", got
+    assert got["refused_value"] == [1.4, 1.45], got
+    assert got["refused_page"] is None, got
