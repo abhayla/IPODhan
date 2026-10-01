@@ -239,6 +239,12 @@ jobs:
         # its fixture red here rather than silently disarming the audit.
         run: node --test scripts/tests/document-state-checks.test.mjs
 
+      - name: Create-provenance check self-tests (#1196)
+        # The nightly check u_create_column_without_provenance and the repair
+        # tool share scripts/lib/create-provenance-checks.mjs; this runs its
+        # self-test so a weakened predicate turns red here.
+        run: node --test scripts/tests/create-provenance-checks.test.mjs
+
       - name: Delisted-row check self-tests (#983)
         # d_delisted_reads imports its predicate from scripts/lib/delisting-checks.mjs.
         run: node --test scripts/tests/delisting-checks.test.mjs
