@@ -1361,6 +1361,7 @@ jobs:
           tests/integration/document-field-receipts.integration.test.ts
           tests/integration/relaunch-clears-admin.integration.test.ts
           tests/integration/postponed-relaunch-1298.integration.test.ts
+          tests/integration/relaunch-merge-unmerge-restores-refill-1298.integration.test.ts
           tests/integration/postponed-relaunch-refill-1298.integration.test.ts
           tests/integration/document-decides-board-1233.integration.test.ts
           tests/integration/document-extraction-attempts.integration.test.ts

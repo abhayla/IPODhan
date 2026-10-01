@@ -2394,6 +2394,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // Row snapshots are spliced in as JSON TEXT and parsed by Postgres, so a numeric's scale
       // and a timestamp's text survive exactly.
       const rawArray = (texts: string[]) => `[${texts.join(',')}]`;
+      const loggedPatch = JSON.stringify(patch);
       const survivorPatchJson =
         `{"format":2,"patch":${JSON.stringify(patch)},"keepRowBefore":${keepRowText},` +
         `"fieldSourcesBefore":{"keep":${rawArray(keepFieldSources)},"drop":${rawArray(dropFieldSources)}}}`;
@@ -2564,9 +2565,32 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         `"nulledRefs":${JSON.stringify(capture.nulledRefs)},` +
         `"sourceKeysBefore":${rawArray(keysBefore)},"supersededKeyIds":${JSON.stringify(supersededKeyIds)},` +
         `"keepRowAfter":${keepAfterText ?? 'null'},"redirectId":${JSON.stringify(redirectRows[0]?.id ?? null)}}`;
+      // #1298 follow-up (OD-92 "every automatic merge is reversible"): the survivor_patch above was
+      // written BEFORE the relaunch clear + refill ran, so it does not name the columns they changed
+      // and an unmerge would leave them as the relaunch left them. Name every survivor column whose
+      // value differs between the logged before-row and the final after-row (updated_at is restored on
+      // its own rule), so the unmerge restores the exact pre-merge row. Compared inside the database,
+      // so a numeric's scale and a timestamp's text are compared exactly.
+      const changedAfterLog = keepAfterText
+        ? (
+            (await tx.execute(sql`
+              select coalesce(jsonb_agg(jsonb_build_object(
+                       'column', k, 'value', a.after -> k, 'source', 'ADMIN', 'confidence', 100,
+                       'note', ${`restored by unmerge: changed by this merge's relaunch clear/refill (§2.9, #1298)`}::text)), '[]'::jsonb)::text as extra
+              from (select ${keepAfterText}::jsonb as after, ${keepRowText}::jsonb as before) a,
+                   lateral jsonb_object_keys(a.after) k
+              where k <> 'updated_at'
+                and (a.before -> k) is distinct from (a.after -> k)
+                and k <> all (array(select jsonb_array_elements(${loggedPatch}::jsonb) ->> 'column'))
+            `)) as unknown as { rows: { extra: string }[] }
+          ).rows[0]?.extra ?? '[]'
+        : '[]';
       await tx
         .update(ipoMergeLog)
-        .set({ restoreData: sql`${restoreJson}::jsonb` as unknown as Record<string, unknown> })
+        .set({
+          restoreData: sql`${restoreJson}::jsonb` as unknown as Record<string, unknown>,
+          survivorPatch: sql`jsonb_set(survivor_patch, '{patch}', coalesce(survivor_patch->'patch', '[]'::jsonb) || ${changedAfterLog}::jsonb)` as unknown as Record<string, unknown>,
+        })
         .where(eq(ipoMergeLog.id, logRow!.id));
       // Child-table repoint/delete and the dropped `ipos` row delete both already ran above
       // (DEFECT 2 fix) — before this patch loop, so a unique-constrained carried value never has
