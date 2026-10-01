@@ -72,7 +72,8 @@ describe('PeerCompanyRepository.replaceForIpo (F-1 / GitHub #443)', () => {
     expect(written).toHaveLength(1);
     expect(written[0].companyName).toBe('ABC Limited');
     expect(written[0].peRatio).toBe('99.00');
-    expect(calls).toEqual(['delete', 'insert']);
+    // OD-156 round 2: the whole-list path deletes only STORED non-document rows; none are stored here.
+    expect(calls).toEqual(['insert']);
   });
 
   it('two rows with genuinely different keys both survive the de-dupe', async () => {

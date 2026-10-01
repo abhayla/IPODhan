@@ -24,6 +24,9 @@ import { BrlmTrackRecordRepository } from '../../../packages/shared/src/reposito
 import { FinancialDataRepository } from '../../../packages/shared/src/repositories/financial-data-repository';
 import { ListingPerformanceRepository } from '../../../packages/shared/src/repositories/listing-performance-repository';
 import { PeerCompanyRepository } from '../../src/repositories/peer-company-repository.js';
+import { findOrphanPeerSourceKeys, retireOrphanPeerSources, PRE_OD157_ORPHAN_REASON } from '../../src/services/orphan-peer-sources.js';
+// The nightly floor's own SQL text (r_child_provenance_orphan), run here against ipodhan_test.
+import { CHILD_PROVENANCE_ORPHAN_SQL } from '../../../scripts/lib/detection-floor-checks.mjs';
 import type {
   FilingExtraction,
   FilingPersisterDeps,
@@ -126,6 +129,21 @@ const EXTRACT_GG_PY = [
 ].join('\n');
 let germanGreenJson = '';
 
+// OD-156 (#1166 item 1): the same issuer's real DRHP (cover + peer pages), so a
+// DRHP peer set can be stored and then met by the RHP's.
+const EXTRACT_DRHP_PY = [
+  'import json, sys',
+  'from extract_filing import run',
+  'd = sys.argv[1]',
+  "cover = json.load(open(d + '/a-one-steels-india-ltd-drhp-cover-pages.json', encoding='utf-8'))",
+  "peer = json.load(open(d + '/a-one-steels-india-ltd-drhp-peer-pages.json', encoding='utf-8'))",
+  "pages = [tuple(p) for p in cover] + [tuple(p) for p in peer['pages']]",
+  "tables = {int(k): v for k, v in peer['tables'].items()}",
+  "out = run(pages, 'DRHP', 'a-one-steels-drhp', 'MAINBOARD', tables_for_page=lambda i: tables.get(i, []))",
+  'sys.stdout.write(json.dumps(out))',
+].join('\n');
+let drhpJson = '';
+
 function runRealExtractor(script: string = EXTRACT_PY): string {
   const res = spawnSync(PYTHON as string, ['-c', script, FIXTURE_DIR], {
     cwd: SCRIPTS_DIR,
@@ -158,6 +176,8 @@ let deps: FilingPersisterDeps;
 async function cleanup() {
   if (!pool) return;
   await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+  await db.delete(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
+  await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO_ID));
   await db.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO_ID));
   await db.delete(schema.promoters).where(eq(schema.promoters.ipoId, IPO_ID));
   await db.delete(schema.documents).where(eq(schema.documents.id, DOC_ID));
@@ -171,6 +191,7 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
     if (!DATABASE_URL) return;
     extractionJson = runRealExtractor();
     germanGreenJson = runRealExtractor(EXTRACT_GG_PY);
+    drhpJson = runRealExtractor(EXTRACT_DRHP_PY);
     pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
     const dbCheck = await pool.query('select current_database()');
     const currentDb = dbCheck.rows[0].current_database as string;
@@ -252,7 +273,7 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
       promoters: new PromotersRepository(db as never, redis as never),
       intermediaries: new IpoIntermediariesRepository(db as never, redis as never),
       brlmTrackRecord: new BrlmTrackRecordRepository(db as never, redis as never),
-      peerCompanies: new PeerCompanyRepository(db as never),
+      peerCompanies: new PeerCompanyRepository(db as never, redis as never),
       financialData: new FinancialDataRepository(db as never, redis as never),
       fieldSources,
       ipoDetailsWriter,
@@ -270,6 +291,8 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
   beforeEach(async () => {
     if (!pool) return;
     await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+    await db.delete(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
+    await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO_ID));
     await db.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO_ID));
     await db.delete(schema.promoters).where(eq(schema.promoters.ipoId, IPO_ID));
     if (redis) {
@@ -523,6 +546,296 @@ describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
     // The two peers the document added do carry DOC provenance.
     expect(docKeys.has(rowKeyForName('Jai Balaji Industries Ltd.') as string)).toBe(true);
     expect(docKeys.has(rowKeyForName('Shyam Metallics and Energy Ltd.') as string)).toBe(true);
+  });
+
+  // ------------------------------------------------- OD-156 / OD-157 (#1166 items 1 and 3)
+  type PeerList = { value: Record<string, unknown>[] };
+  const peersOf = (e: FilingExtraction) => (e.fields.peer_companies as unknown as PeerList).value;
+  const CG_ONLY = 'S1166 Chittorgarh Only Peer Ltd';
+  const ADMIN_ADDED = 'S1166 Admin Added Peer Ltd';
+
+  async function seedNonDocumentPeers() {
+    await db.insert(schema.peerCompanies).values([
+      { ipoId: IPO_ID, companyName: CG_ONLY, normalizedName: rowKeyForName(CG_ONLY) as string, isListed: true, peRatio: '12.00', dataSource: 'CHITTORGARH', lastUpdated: new Date() },
+      // An admin-added row carries no document type (admin-list-write.ts inserts the admin's values only).
+      { ipoId: IPO_ID, companyName: ADMIN_ADDED, normalizedName: rowKeyForName(ADMIN_ADDED) as string, isListed: true, dataSource: 'ADMIN', lastUpdated: new Date() },
+    ] as never);
+  }
+
+  async function liveSourcesFor(rowKey: string) {
+    return db
+      .select()
+      .from(schema.fieldSources)
+      .where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies'), eq(schema.fieldSources.rowKey, rowKey)));
+  }
+
+  async function retiredFor(rowKey: string) {
+    return db
+      .select()
+      .from(schema.fieldSourcesRetired)
+      .where(and(eq(schema.fieldSourcesRetired.ipoId, IPO_ID), eq(schema.fieldSourcesRetired.rowKey, rowKey)));
+  }
+
+  it('OD-156: a real DRHP names-only set records its document type on every peer row', async () => {
+    const drhp = JSON.parse(drhpJson) as FilingExtraction;
+    expect(peersOf(drhp).map((p) => p.name).sort()).toEqual([...EXPECTED_PEERS].sort());
+    await persistFilingExtraction(IPO_ID, drhp, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const rows = await storedPeers();
+    expect(rows).toHaveLength(3);
+    for (const r of rows) expect(r.sourceDocumentType, r.companyName).toBe('DRHP');
+  });
+
+  it('OD-156/157: the RHP names-only list drops a DRHP peer; Chittorgarh-only and admin peers stay; its source records are retired, not live', async () => {
+    await seedNonDocumentPeers();
+    await persistFilingExtraction(IPO_ID, JSON.parse(drhpJson) as FilingExtraction, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const dropped = 'Shyam Metallics and Energy Ltd.';
+    const droppedKey = rowKeyForName(dropped) as string;
+    if (CHILD_CONSOLIDATION) expect((await liveSourcesFor(droppedKey)).length).toBeGreaterThan(0);
+
+    const rhp = loadExtraction();
+    (rhp.fields.peer_companies as unknown as PeerList).value = peersOf(rhp).filter((p) => p.name !== dropped);
+    expect(peersOf(rhp)).toHaveLength(2);
+    const before = Date.now();
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const names = (await storedPeers()).map((r) => r.companyName).sort();
+    expect(names).toEqual([ADMIN_ADDED, CG_ONLY, 'Jai Balaji Industries Ltd.', 'MSP Steel and Power Limited'].sort());
+    expect(await liveSourcesFor(droppedKey)).toHaveLength(0);
+    if (CHILD_CONSOLIDATION) {
+      const retired = await retiredFor(droppedKey);
+      expect(retired.length).toBeGreaterThan(0);
+      for (const r of retired) {
+        expect(r.tableName).toBe('peer_companies');
+        expect(r.retiredAt.getTime()).toBeGreaterThanOrEqual(before - 5 * 60_000);
+        expect(r.retiredReason).toContain('RHP');
+        expect((r.record as { rowKey?: string }).rowKey).toBe(droppedKey);
+      }
+    }
+  });
+
+  it('OD-156/157: a real peer TABLE with figures (German Green) stored from a DRHP loses the peer the RHP no longer names', async () => {
+    await seedNonDocumentPeers();
+    const gg = () => JSON.parse(germanGreenJson) as FilingExtraction;
+    await persistFilingExtraction(IPO_ID, gg(), { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    expect(await storedPeers()).toHaveLength(7);
+    const dropped = 'VMS TMT Limited';
+    const droppedKey = rowKeyForName(dropped) as string;
+
+    const rhp = gg();
+    (rhp.fields.peer_companies as unknown as PeerList).value = peersOf(rhp).filter((p) => p.name !== dropped);
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const after = await storedPeers();
+    expect(after.map((r) => r.companyName)).not.toContain(dropped);
+    expect(after).toHaveLength(6);
+    expect(after.map((r) => r.companyName)).toEqual(expect.arrayContaining([CG_ONLY, ADMIN_ADDED]));
+    const cg = after.find((r) => r.companyName === CG_ONLY)!;
+    expect(Number(cg.peRatio)).toBeCloseTo(12, 2);
+    for (const r of after.filter((x) => x.dataSource === 'DRHP')) expect(r.sourceDocumentType, r.companyName).toBe('RHP');
+    expect(await liveSourcesFor(droppedKey)).toHaveLength(0);
+    if (CHILD_CONSOLIDATION) expect((await retiredFor(droppedKey)).length).toBeGreaterThan(0);
+  });
+
+  it('OD-156: an OLDER document list never removes a peer a newer document stored', async () => {
+    await persistFilingExtraction(IPO_ID, loadExtraction(), { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const drhp = JSON.parse(drhpJson) as FilingExtraction;
+    (drhp.fields.peer_companies as unknown as PeerList).value = peersOf(drhp).filter((p) => p.name !== 'Jai Balaji Industries Ltd.');
+    await persistFilingExtraction(IPO_ID, drhp, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    expect((await storedPeers()).map((r) => r.companyName).sort()).toEqual([...EXPECTED_PEERS].sort());
+  });
+
+  it('OD-156 fail closed: a document peer of UNKNOWN type (written before OD-156) is never removed', async () => {
+    await db.insert(schema.peerCompanies).values({
+      ipoId: IPO_ID, companyName: 'S1166 Legacy Document Peer Ltd', normalizedName: rowKeyForName('S1166 Legacy Document Peer Ltd') as string,
+      isListed: true, dataSource: 'DRHP', lastUpdated: new Date(),
+    } as never);
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'PROSPECTUS', documentId: DOC_ID, apply: true }, deps);
+    expect((await storedPeers()).map((r) => r.companyName)).toContain('S1166 Legacy Document Peer Ltd');
+  });
+  // ------------------------------------------- OD-156 / OD-157 round 2 (#1166, Tier A findings)
+  it('§9.2 item 19: an admin-held value on a DRHP peer survives an RHP names-only list that drops the peer', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(drhpJson) as FilingExtraction, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const held = 'Shyam Metallics and Energy Ltd.';
+    const heldKey = rowKeyForName(held) as string;
+    // The admin edited ONE value on this row: a row hold, not a list hold (the list stays scraper-owned).
+    await db.update(schema.peerCompanies).set({ peRatio: '22.50' }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, heldKey)));
+    await db.insert(schema.fieldProtectionMetadata).values({ ipoId: IPO_ID, tableName: `peer_companies:${heldKey}`, fieldName: 'peRatio', isProtected: true } as never);
+
+    const rhp = loadExtraction();
+    (rhp.fields.peer_companies as unknown as PeerList).value = peersOf(rhp).filter((p) => p.name !== held);
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const row = (await storedPeers()).find((r) => r.normalizedName === heldKey);
+    expect(row, 'the held row survives').toBeDefined();
+    expect(row!.peRatio).toBe('22.50');
+    expect(await retiredFor(heldKey)).toHaveLength(0);
+  });
+
+  /** The Chittorgarh path: createPeerCompanies -> replaceForIpo with no document type. */
+  async function chittorgarhList(peers: Array<{ companyName: string; peRatio?: number; eps?: number }>, repo = deps.peerCompanies as PeerCompanyRepository) {
+    const { createPeerCompanies } = await import('../../src/services/data-persister.js');
+    return createPeerCompanies(repo, IPO_ID, peers.map((p) => ({ ...p, isListed: true, dataSource: 'CHITTORGARH' })) as never);
+  }
+
+  it('§1.7 / OD-156: a Chittorgarh whole-list replace keeps every document peer, its figures and its stamp; it only adds peers and fills empty cells', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const before = await storedPeers();
+    expect(before).toHaveLength(5);
+    // One empty figure cell on a document row (the gap rank 2 may fill).
+    const gapKey = rowKeyForName('Kamdhenu Limited') as string;
+    await db.update(schema.peerCompanies).set({ peRatio: null }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, gapKey)));
+    const docSourcesBefore = CHILD_CONSOLIDATION
+      ? (await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')))).length
+      : 0;
+
+    // Chittorgarh names two document peers (one with a conflicting EPS, one filling the gap) and one new peer.
+    await chittorgarhList([
+      { companyName: 'Beekay Steel Industries Ltd', eps: 999 },
+      { companyName: 'Kamdhenu Limited', peRatio: 31.5 },
+      { companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 },
+    ]);
+
+    const after = await storedPeers();
+    const byKey = new Map(after.map((r) => [r.normalizedName, r]));
+    for (const docRow of before) {
+      const row = byKey.get(docRow.normalizedName);
+      expect(row, docRow.companyName).toBeDefined();
+      expect(row!.dataSource, docRow.companyName).toBe('DRHP');
+      expect(row!.sourceDocumentType, docRow.companyName).toBe('RHP');
+      for (const col of ['eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'] as const) expect(row![col], `${docRow.companyName}.${col}`).toBe(docRow[col]);
+    }
+    expect(Number(byKey.get(rowKeyForName('Beekay Steel Industries Ltd') as string)!.eps)).toBeCloseTo(18.94, 2);
+    expect(Number(byKey.get(gapKey)!.peRatio)).toBeCloseTo(31.5, 2);
+    expect(after.find((r) => r.companyName === 'S1166 Chittorgarh New Peer Ltd')?.dataSource).toBe('CHITTORGARH');
+    expect(after).toHaveLength(6);
+    const retired = await db.select().from(schema.fieldSourcesRetired).where(eq(schema.fieldSourcesRetired.ipoId, IPO_ID));
+    expect(retired).toHaveLength(0);
+    // Round 3: the filled cell is recorded as Chittorgarh's; every other document cell keeps its document record.
+    const cellSources = await liveSourcesFor(gapKey);
+    expect(cellSources.find((r) => r.fieldName === 'peRatio')?.source).toBe('CHITTORGARH');
+    if (CHILD_CONSOLIDATION) {
+      const all = await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.tableName, 'peer_companies')));
+      expect(all.filter((r) => r.source === 'CHITTORGARH').map((r) => `${r.rowKey}.${r.fieldName}`)).toEqual([`${gapKey}.peRatio`]);
+      expect(all.length).toBeGreaterThanOrEqual(docSourcesBefore);
+    }
+  });
+
+  /** A document row with one empty cell that Chittorgarh then fills (kamdhenu.peRatio = 31.5). */
+  async function seedChittorgarhFilledCell() {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const key = rowKeyForName('Kamdhenu Limited') as string;
+    await db.update(schema.peerCompanies).set({ peRatio: null }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, key)));
+    await db.delete(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.rowKey, key), eq(schema.fieldSources.fieldName, 'peRatio')));
+    await chittorgarhList([{ companyName: 'Kamdhenu Limited', peRatio: 31.5 }]);
+    return key;
+  }
+  const cellOf = async (key: string, col: string) => (await liveSourcesFor(key)).find((r) => r.fieldName === col);
+  const kamdhenuIn = (e: FilingExtraction) => peersOf(e).find((p) => p.name === 'Kamdhenu Limited')!;
+
+  it('round 3: a Chittorgarh-filled cell on a document row is recorded as Chittorgarh and its cache keys are dropped', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const key = rowKeyForName('Kamdhenu Limited') as string;
+    await db.update(schema.peerCompanies).set({ peRatio: null }).where(and(eq(schema.peerCompanies.ipoId, IPO_ID), eq(schema.peerCompanies.normalizedName, key)));
+    const cacheKey = `field-source:${IPO_ID}:peer_companies:${key}:peRatio`;
+    await redis.set(cacheKey, '"stale"');
+    await chittorgarhList([{ companyName: 'Kamdhenu Limited', peRatio: 31.5 }], new PeerCompanyRepository(db as never, redis as never));
+    expect((await cellOf(key, 'peRatio'))?.source).toBe('CHITTORGARH');
+    expect(await redis.exists(cacheKey)).toBe(0);
+    const row = (await storedPeers()).find((r) => r.normalizedName === key)!;
+    expect(row.dataSource).toBe('DRHP');
+  });
+
+  it('round 3: a later document read that PRINTS the cell replaces the Chittorgarh value and its record', async () => {
+    const key = await seedChittorgarhFilledCell();
+    const rhp = JSON.parse(germanGreenJson) as FilingExtraction;
+    kamdhenuIn(rhp).pe = '25.50';
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const row = (await storedPeers()).find((r) => r.normalizedName === key)!;
+    expect(Number(row.peRatio)).toBeCloseTo(25.5, 2);
+    if (CHILD_CONSOLIDATION) expect((await cellOf(key, 'peRatio'))?.source).toBe('DRHP');
+  });
+
+  it('round 3: a later document read that prints NOTHING in the cell keeps the Chittorgarh value under its Chittorgarh record', async () => {
+    const key = await seedChittorgarhFilledCell();
+    const rhp = JSON.parse(germanGreenJson) as FilingExtraction;
+    for (const k of ['pe', 'pe_basic']) kamdhenuIn(rhp)[k] = null;
+    await persistFilingExtraction(IPO_ID, rhp, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+    const row = (await storedPeers()).find((r) => r.normalizedName === key)!;
+    expect(Number(row.peRatio)).toBeCloseTo(31.5, 2);
+    expect((await cellOf(key, 'peRatio'))?.source).toBe('CHITTORGARH');
+  });
+
+  it('round 3: an ADMIN peer row with no list hold survives a Chittorgarh list, named or not', async () => {
+    await seedNonDocumentPeers();
+    const adminKey = rowKeyForName(ADMIN_ADDED) as string;
+    await chittorgarhList([{ companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 }]);
+    let admin = (await storedPeers()).find((r) => r.normalizedName === adminKey);
+    expect(admin?.dataSource).toBe('ADMIN');
+    await chittorgarhList([{ companyName: ADMIN_ADDED, peRatio: 5 }, { companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 }]);
+    admin = (await storedPeers()).find((r) => r.normalizedName === adminKey);
+    expect(admin?.dataSource).toBe('ADMIN');
+    expect(admin?.peRatio).toBeNull();
+  });
+
+  it('round 3: an OLDER document list with DIFFERENT figures never overwrites a newer document figure', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'PROSPECTUS', documentId: DOC_ID, apply: true }, deps);
+    const drhp = JSON.parse(germanGreenJson) as FilingExtraction;
+    peersOf(drhp).find((p) => p.name === 'Beekay Steel Industries Ltd')!.eps_basic = '20.00';
+    await persistFilingExtraction(IPO_ID, drhp, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const row = (await storedPeers()).find((r) => r.companyName === 'Beekay Steel Industries Ltd')!;
+    expect(Number(row.eps)).toBeCloseTo(18.94, 2);
+    expect(row.sourceDocumentType).toBe('PROSPECTUS');
+  });
+
+  it('OD-157: a Chittorgarh list that drops its own peer retires the source records and drops their cache keys', async () => {
+    await seedNonDocumentPeers();
+    const cgKey = rowKeyForName(CG_ONLY) as string;
+    await db.insert(schema.fieldSources).values({ ipoId: IPO_ID, tableName: 'peer_companies', rowKey: cgKey, fieldName: 'peRatio', source: 'CHITTORGARH', confidence: 80 } as never);
+    const cached = [`field-source:${IPO_ID}:peer_companies:${cgKey}:peRatio`, `field-sources:table:${IPO_ID}:peer_companies`, `field-sources:ipo:${IPO_ID}:all`];
+    for (const k of cached) await redis.set(k, '"stale"');
+
+    await chittorgarhList([{ companyName: 'S1166 Chittorgarh New Peer Ltd', peRatio: 9 }], new PeerCompanyRepository(db as never, redis as never));
+
+    expect((await storedPeers()).map((r) => r.companyName)).not.toContain(CG_ONLY);
+    expect(await liveSourcesFor(cgKey)).toHaveLength(0);
+    const retired = await retiredFor(cgKey);
+    expect(retired).toHaveLength(1);
+    expect(retired[0].retiredReason).toMatch(/^replaced by /);
+    for (const k of cached) expect(await redis.exists(k), k).toBe(0);
+  });
+
+  it('OD-156: a document list WITH figures from an OLDER type keeps the newer stamp on the rows it rewrites', async () => {
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'PROSPECTUS', documentId: DOC_ID, apply: true }, deps);
+    await persistFilingExtraction(IPO_ID, JSON.parse(germanGreenJson) as FilingExtraction, { docType: 'DRHP', documentId: DOC_ID, apply: true }, deps);
+    const rows = await storedPeers();
+    expect(rows).toHaveLength(5);
+    for (const r of rows) expect(r.sourceDocumentType, r.companyName).toBe('PROSPECTUS');
+  });
+
+  it('r_child_provenance_orphan: the nightly SQL flags a seeded orphan on ipodhan_test, passes it once the row exists, and the repair retires only orphans', async () => {
+    const orphanKey = 's1166 orphan probe';
+    await db.insert(schema.fieldSources).values({ ipoId: IPO_ID, tableName: 'peer_companies', rowKey: orphanKey, fieldName: 'peRatio', source: 'CHITTORGARH', confidence: 80 } as never);
+    const run = async () => (await pool.query(CHILD_PROVENANCE_ORPHAN_SQL)).rows.filter((r: { ipoId: string }) => r.ipoId === IPO_ID);
+    expect((await run()).map((r: { rowKey: string; records: number }) => [r.rowKey, r.records])).toEqual([[orphanKey, 1]]);
+
+    // The repair finds exactly that key (scoped to this IPO) and retires it with the pre-OD-157 reason.
+    const found = await findOrphanPeerSourceKeys(db as never, [IPO_ID]);
+    expect(found).toEqual([{ ipoId: IPO_ID, rowKey: orphanKey, records: 1 }]);
+    const [result] = await retireOrphanPeerSources(db as never, found);
+    expect(result.retiredKeys).toEqual([orphanKey]);
+    expect(await liveSourcesFor(orphanKey)).toHaveLength(0);
+    expect((await retiredFor(orphanKey)).map((r) => r.retiredReason)).toEqual([PRE_OD157_ORPHAN_REASON]);
+    expect(await run()).toEqual([]);
+
+    // A clean IPO: a record whose row exists is never flagged, and the repair leaves it live.
+    await db.insert(schema.peerCompanies).values({ ipoId: IPO_ID, companyName: 'S1166 Orphan Probe', normalizedName: orphanKey, isListed: true, dataSource: 'CHITTORGARH', lastUpdated: new Date() } as never);
+    await db.insert(schema.fieldSources).values({ ipoId: IPO_ID, tableName: 'peer_companies', rowKey: orphanKey, fieldName: 'eps', source: 'CHITTORGARH', confidence: 80 } as never);
+    expect(await run()).toEqual([]);
+    expect(await findOrphanPeerSourceKeys(db as never, [IPO_ID])).toEqual([]);
+    // A stale scan never retires a key that gained a row: the repair re-reads under the lock.
+    const [stale] = await retireOrphanPeerSources(db as never, [{ ipoId: IPO_ID, rowKey: orphanKey, records: 1 }]);
+    expect(stale.retiredKeys).toEqual([]);
+    expect(await liveSourcesFor(orphanKey)).toHaveLength(1);
   });
   }
 );

@@ -1,0 +1,11 @@
+{
+  "id": "r_child_provenance_orphan",
+  "findingClass": "A replacing source set deleted a child row (first case: a peer_companies row dropped by a document or Chittorgarh peer list) but the row's field_sources records stayed live, so every reader of field_sources (admin provenance view, nightly audits, the walk) read a deleted row as live provenance (#1166 item 3, OD-157).",
+  "round7Findings": [],
+  "failThreshold": "FAIL when any field_sources row with table_name 'peer_companies' and a non-empty row_key has no peer_companies row of the same ipo_id whose normalized_name equals that row_key. Retired records live in field_sources_retired (OD-157) and are therefore never counted. Reported per IPO by name and slug with each orphan row key and its record count, never as a bare count (signal-ownership.md R1).",
+  "severity": "P2",
+  "unverifiableWhen": "Never: both tables are read directly.",
+  "note": "r_child_provenance_orphan: implemented in scripts/audit-detection-floor.mjs (checkR_childProvenanceOrphan via evaluateChildProvenanceOrphans + CHILD_PROVENANCE_ORPHAN_SQL in scripts/lib/detection-floor-checks.mjs). Positive control: scripts/tests/audit-detection-floor.test.mjs (verdict) and scraper/tests/integration/rhp-promoters-peers-persist.integration.test.ts (the same SQL on ipodhan_test: a seeded orphan is flagged, the clean case passes). Covers peer_companies only; the other keyed child tables (promoters, ipo_intermediaries, ipo_risk_factors, financial_statements, ipo_valuation) are not covered (unmeasured). Rows deleted BEFORE OD-157 shipped are repaired by scraper/scripts/repair-retire-orphan-peer-sources.ts (dry run default; moves them to field_sources_retired with reason 'pre-OD-157 orphan').",
+  "owner": "#1166 items 1 and 3 (OD-156, OD-157)",
+  "section": "checks"
+}

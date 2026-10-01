@@ -3086,6 +3086,8 @@ export async function persistFilingExtraction(
         nav: fig('nav', 'nav'),
         pbvRatio: fig('pbvRatio', 'pb'),
         dataSource: source,
+        // OD-156: the real document type; data_source is 'DRHP' for every document.
+        sourceDocumentType: options.docType,
         lastUpdated: new Date(),
         };
       });
@@ -3151,6 +3153,8 @@ export async function persistFilingExtraction(
           await deps.peerCompanies.replaceForIpo(ipoId, peerRows as never, {
             nullNeverOverwrites: true,
             fillGapsOnly: nameOnly,
+            documentType: options.docType,
+            replacedBy: `the ${options.docType} peer list (document ${options.documentId ?? 'unknown'})`,
           });
           await trackField('peer_companies', 'rows');
           await resolveEmptySection('peer_companies');

@@ -1595,3 +1595,27 @@ export function classifyRowKeyProbeError(err, migrationApplied) {
   }
   return { status: 'UNVERIFIABLE', reason: `ipos/field_sources not readable: ${err.message}` };
 }
+
+// ---- r_child_provenance_orphan (OD-157, #1166 item 3) ------------------------------------------
+// A live field_sources record whose peer_companies row key names no stored peer row reads a deleted
+// row as live. The SQL is exported so the real-DB positive control
+// (scraper/tests/integration/rhp-promoters-peers-persist.integration.test.ts) runs the SAME text
+// the nightly floor runs; `evaluateChildProvenanceOrphans` is the verdict both use.
+export const CHILD_PROVENANCE_ORPHAN_SQL = `SELECT i.id AS "ipoId", i.company_name AS "companyName", i.slug, fs.row_key AS "rowKey", count(*)::int AS records
+       FROM field_sources fs
+       JOIN ipos i ON i.id = fs.ipo_id
+      WHERE fs.table_name = 'peer_companies' AND fs.row_key <> ''
+        AND NOT EXISTS (SELECT 1 FROM peer_companies p WHERE p.ipo_id = fs.ipo_id AND p.normalized_name = fs.row_key)
+      GROUP BY i.id, i.company_name, i.slug, fs.row_key
+      ORDER BY i.company_name, fs.row_key`;
+
+/**
+ * Runs the orphan query through `q(sql)` (returns rows) and decides the verdict. FAIL lists every
+ * orphan by IPO name, slug and row key with its record count (signal-ownership.md R1), never a
+ * bare count.
+ */
+export async function evaluateChildProvenanceOrphans(q) {
+  const rows = await q(CHILD_PROVENANCE_ORPHAN_SQL);
+  const lines = rows.map((r) => `${r.companyName} (${r.slug}): '${r.rowKey}' ${r.records} record(s)`);
+  return { status: rows.length === 0 ? 'PASS' : 'FAIL', rows, lines };
+}
