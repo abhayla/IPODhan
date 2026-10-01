@@ -10,11 +10,6 @@
     "reason": "Row bookkeeping updated_at; its only readers are hours-wide freshness windows, no ordering decision against a DB-stamped time."
   },
   {
-    "key": "packages/shared/src/repositories/document-fetch-state-repository.ts :: set: { updatedAt: new Date() },",
-    "count": 1,
-    "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
-  },
-  {
     "key": "packages/shared/src/repositories/document-fetch-state-repository.ts :: .set({ ...(patch as Record<string, unknown>), updatedAt: new Date() } as never)",
     "count": 1,
     "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
@@ -25,14 +20,24 @@
     "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
   },
   {
-    "key": "packages/shared/src/repositories/document-repository.ts :: updatedAt: new Date(),",
-    "count": 2,
-    "reason": "documents.updated_at bookkeeping; item 9 orders by documents.created_at (DB default now()), never updated_at."
+    "key": "packages/shared/src/repositories/document-fetch-state-repository.ts :: set: { updatedAt: new Date() },",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
   },
   {
     "key": "packages/shared/src/repositories/document-repository.ts :: .set({ filingDate, updatedAt: new Date() })",
     "count": 1,
     "reason": "documents.updated_at bookkeeping; item 9 orders by documents.created_at (DB default now()), never updated_at."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-repository.ts :: updatedAt: new Date(),",
+    "count": 2,
+    "reason": "documents.updated_at bookkeeping; item 9 orders by documents.created_at (DB default now()), never updated_at."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-repository.ts :: zipMembersCheckedAt: patch.at ?? new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
   },
   {
     "key": "packages/shared/src/repositories/field-extraction-failures-repository.ts :: .set({ resolvedAt: new Date() })",
@@ -45,7 +50,27 @@
     "reason": "Row bookkeeping updated_at; read only in hours-wide freshness windows."
   },
   {
+    "key": "packages/shared/src/repositories/ipo-pipeline-steps-repository.ts :: const set: Record<string, unknown> = { status: input.status, updatedAt: now };",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-pipeline-steps-repository.ts :: if (isTerminal) set.lastRunAt = now;",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-pipeline-steps-repository.ts :: if (isTerminal) values.lastRunAt = now;",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
     "key": "packages/shared/src/repositories/ipo-repository.ts :: .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })",
+    "count": 1,
+    "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)",
     "count": 1,
     "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
   },
@@ -55,9 +80,14 @@
     "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
   },
   {
-    "key": "packages/shared/src/repositories/ipo-repository.ts :: .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)",
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: at: new Date().toISOString(),",
     "count": 1,
-    "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: dataLineage: { tool: 'merge-duplicate-ipo', mergedFrom: dropId, note: p.note, at: new Date().toISOString() },",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
   },
   {
     "key": "packages/shared/src/repositories/ipo-repository.ts :: updatedAt: new Date(),",
@@ -70,9 +100,554 @@
     "reason": "Row bookkeeping updated_at; read only in hours-wide freshness windows."
   },
   {
+    "key": "packages/shared/src/repositories/listing-performance-repository.ts :: lastUpdated: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "packages/shared/src/repositories/scraper-log-repository.ts :: }, { days, cutoffDate: new Date(Date.now() - days * 24 * 60 * 60 * 1000) });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "packages/shared/src/services/admin-list-write.ts :: if (isHiddenIpo({ hiddenAt })) throw new Refusal({ kind: 'HIDDEN', reason: IPO_HIDDEN_ADMIN_REASON });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "packages/shared/src/services/plan-invalidating-rebuild.ts :: expiresAt: expiresAtToIso(o.expires_at),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/base/BaseScraperOrchestrator.ts :: timestamp: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/index.ts :: { lastRunAt: lastRunAt?.toISOString() ?? 'never' },",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/index.ts :: { lockResource: CYCLE_LOCK_RESOURCE, holderStartedAt },",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/index.ts :: const startedAt = Date.now();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/jobs/financial-data-job.ts :: scrapedAt: new Date(),",
+    "count": 3,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/repositories/anchor-investor-repository.ts :: updatedAt: new Date()",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scheduler/closed-ipo-job.ts :: firstAttemptAt: now,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scheduler/closed-ipo-job.ts :: lastAttemptAt: now,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scheduler/closed-ipo-job.ts :: updatedAt: now,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scheduler/closed-ipo-snapshot.ts :: takenAt: now.toISOString(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scheduler/job-lock.ts :: acquiredAt: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scheduler/jobs/health-check.ts :: timestamp: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scheduler/jobs/registrar-health-check-job.ts :: .set({ allotmentUrlHealthy: healthy, allotmentUrlCheckedAt: new Date() })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scheduler/jobs/stage-reconciler-job.ts :: today: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scheduler/post-listing-price-wake.ts :: const startedAt = Date.now();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scheduler/post-listing-price-wake.ts :: deadlineAt: startedAt + PRICE_JOB_DEADLINE_MS,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/bse-api-scraper.ts :: const timestamp = (maxdt && parseIstMdyToUtcIso(maxdt)) || new Date().toISOString();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/bse-api-scraper.ts :: timestamp,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/investorgain-gmp-orchestrator-v2.ts :: timestamp: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/investorgain-gmp-orchestrator.ts :: timestamp: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/investorgain-gmp-scraper.ts :: const gmpUpdatedAt = parseGMPTimestamp(record['Updated-On']);",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/investorgain-gmp-scraper.ts :: gmpUpdatedAt,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/listing-performance-updater.ts :: const timestamp = new Date().toISOString();",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/listing-performance-updater.ts :: timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/moneycontrol-orchestrator-v2.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/moneycontrol-rss.ts :: pubDate: parseDate(pubDate) || new Date().toISOString(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/nse-api-client.ts :: const timestamp = observedAt || new Date().toISOString();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/nse-api-client.ts :: fields.upiCutoffTime = match ? match[1] : value;",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/nse-api-client.ts :: timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/nse-api-client.ts :: timestamp: new Date().toISOString()",
+    "count": 3,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/nse-api-client.ts :: timestamp: new Date().toISOString(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/nse-api-client.ts :: timestamp: parseNseObservedTimestampIST(entry.timestamp) || timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scrapers/nse-scraper.ts :: timestamp: new Date().toISOString()",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scrapers/nse-subscription-parser.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/backfill-gmp-historical.ts :: const timestamp = new Date().toISOString();",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/backfill-gmp-historical.ts :: timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scripts/backfill-historical-ipos.ts :: endTime: endTime.toISOString(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scripts/backfill-historical-ipos.ts :: startTime: startTime.toISOString(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scripts/backfill-historical-ipos.ts :: timestamp: new Date().toISOString()",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/backfill-listing-performance.ts :: const timestamp = new Date().toISOString();",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/backfill-listing-performance.ts :: timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scripts/scrape-coolcaps.ts :: lastScrapedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/scrape-coolcaps.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/validate-backfill.ts :: const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/validate-backfill.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/verify-subscription-scraper.ts :: const timestamp = new Date().toISOString();",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/scripts/verify-subscription-scraper.ts :: timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/scripts/verify-subscription-scraper.ts :: timestamp: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/admin-alerts.ts :: at: (d.now ?? new Date()).toISOString(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/admin-alerts.ts :: await d.record({ ...event, at: now.toISOString() });",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/admin-alerts.ts :: if (opts.digestIfAlreadySent) await d.record({ ...event, at: now.toISOString() });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/base-scraper-orchestrator.ts :: lastScrapedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/base-scraper-orchestrator.ts :: lastScrapedAt: new Date(), // Always update scrape timestamp",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/base-scraper-orchestrator.ts :: timestamp: new Date().toISOString()",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-consolidation-orchestrator.ts :: createdAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-consolidation-orchestrator.ts :: data.lastScrapedAt = new Date();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-consolidation-orchestrator.ts :: updatedAt: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-consolidation-service.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: .set({ leadManagers: sanitized, updatedAt: new Date() })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: { ipoId: context.ipoId, companyName: context.companyName, sourceTimestamp: parsed.toISOString(), now: now.toISOString() },",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: const scrapedAt = new Date();",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: createdAt: new Date()",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: lastScrapedAt: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: lastUpdated: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: patch.updatedAt = new Date();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: return { timestamp: now };",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: scrapedAt,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: scrapedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: timestamp: Date = new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: timestamp: p.timestamp ? new Date(p.timestamp) : new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: updatedAt: new Date()",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/data-persister.ts :: updatedAt: new Date(),",
+    "count": 4,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/deploy-drift-monitor.ts :: await saveState(deps.redis, slot, { mainSha, firstSeenAt: now.toISOString(), alertedForSha: null });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-cycle.ts :: result.push({ ...ipo, ...(oldestEligibleDocumentAt ? { oldestEligibleDocumentAt } : {}) });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-discovery-runner.ts :: await this.deps.store.update(row.id, { lastAttemptAt: this.now() });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-discovery-runner.ts :: lastAttemptAt: now,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-state-machine.ts :: blockedSinceAt,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-state-machine.ts :: const blockedSinceAt = row.blockedSinceAt ?? now;",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-state-machine.ts :: nextRetryAt: nextAttemptSlotStart('BLOCKED_ALL', now),",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-state-machine.ts :: nextRetryAt: nextAttemptSlotStart('NOT_FOUND', now),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-state-machine.ts :: nextRetryAt: nextAttemptSlotStart('NOT_YET_FILED', now),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/document-state-machine.ts :: nextRetryAt: nextAttemptSlotStart('WANTED', now),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/field-plan-generator.ts :: lastAttemptAt: outcome.at ?? new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/field-plan-walk.ts :: return { rank, source, outcome, value: null, at: new Date().toISOString(), ...extra };",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/filing-auto-persist.ts :: .setFetchStateExtracted({ stateId, extractedAt: now, extractorVersion: version })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/filing-auto-persist.ts :: extractedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/filing-persist-deps.ts :: .set({ issueType: issueType as never, updatedAt: new Date() })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/filing-persist-deps.ts :: .values({ ipoId, ...values, updatedAt: new Date() } as never)",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/filing-persist-deps.ts :: set: { ...patch, updatedAt: new Date() } as never,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/filing-persister.ts :: lastUpdated: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/in-memory-document-fetch-state-store.ts :: const updated: DocumentFetchStateRow = { ...row, ...patch, updatedAt: new Date() };",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/in-memory-document-fetch-state-store.ts :: createdAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/in-memory-document-fetch-state-store.ts :: firstSeenAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/in-memory-document-fetch-state-store.ts :: this.rows.set(key, { ...row, state: 'SUPERSEDED', updatedAt: new Date() });",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/in-memory-document-fetch-state-store.ts :: updatedAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/services/ipo-alerts-client.ts :: reset_time: new Date(Date.now() + this.rateLimiter.getTimeUntilReset()).toISOString()",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/live-slot-miss-monitor.ts :: endUtc: new Date(startUtc.getTime() + SLOT_MINUTES * 60_000),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/services/scraper-failure-tracker.ts :: record.lastFailureTime = now;",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/utils/distributed-lock.ts :: const expiresAt = Date.now() + mergedConfig.ttl;",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/utils/distributed-lock.ts :: return { acquired: true, token, expiresAt };",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "scraper/src/utils/match-ipo.ts :: const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "scraper/src/utils/transform-past-ipo.ts :: extractedAt: new Date().toISOString(), // Audit trail (AC2)",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
     "key": "web/app/api/admin/anchor-investors/route.ts :: timestamp: new Date().toISOString(),",
     "count": 1,
     "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/app/api/admin/dynamic/[table]/[id]/route.ts :: camelCaseUpdates.updatedAt = new Date();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/app/api/admin/gmp/[ipoId]/route.ts :: timestamp: recordedAt ? new Date(recordedAt) : new Date(),",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
   },
   {
     "key": "web/app/api/admin/ipos/[id]/route.ts :: timestamp: new Date().toISOString(),",
@@ -98,5 +673,325 @@
     "key": "web/app/api/admin/scraper/status/route.ts :: timestamp: new Date().toISOString(),",
     "count": 1,
     "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/lib/admin-accounts/admin-account-repository.ts :: .set({ disabledAt: now, updatedAt: now })",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/admin-accounts/admin-account-repository.ts :: .set({ lastSeenAt: now, expiresAt })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/admin-accounts/admin-account-repository.ts :: .set({ passwordHash, updatedAt: new Date() })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/admin-accounts/admin-account-repository.ts :: createdAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/admin-accounts/admin-account-repository.ts :: expiresAt: new Date(now.getTime() + SESSION_TTL_MS),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/admin-accounts/admin-account-repository.ts :: lastSeenAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/alerts/email-alerts.ts :: timestamp: new Date().toISOString()",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/alerts/slack-alerts.ts :: timestamp: new Date().toISOString()",
+    "count": 3,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/api-client.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/auth/admin-auth.ts :: timestamp: new Date().toISOString(),",
+    "count": 7,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/cache/api-cache.ts :: responseTime: cacheHitTime,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/cache/api-cache.ts :: responseTime: fallbackTime,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/cache/api-cache.ts :: responseTime: fetchTime,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/errors/api-error-response.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/monitoring/alerts.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/monitoring/sentry-utils.ts :: timestamp: Date.now() / 1000,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/monitoring/sentry-utils.ts :: timestamp: new Date().toISOString(),",
+    "count": 4,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/personalization/behavior-tracker.ts :: this.profile.analytics.lastActiveAt = new Date().toISOString();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/personalization/behavior-tracker.ts :: this.profile.history.updatedAt = new Date().toISOString();",
+    "count": 6,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/personalization/behavior-tracker.ts :: this.profile.preferences.updatedAt = new Date().toISOString();",
+    "count": 4,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/personalization/behavior-tracker.ts :: this.profile.updatedAt = new Date().toISOString();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/personalization/behavior-tracker.ts :: timestamp: new Date().toISOString(),",
+    "count": 4,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/personalization/user-profile.ts :: firstSeenAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/personalization/user-profile.ts :: lastActiveAt: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/personalization/user-profile.ts :: lastActiveAt: now,",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/personalization/user-profile.ts :: updatedAt: now,",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/anchor-investor-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/audit-log-repository.ts :: timestamp: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/document-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/field-extraction-failures-repository.ts :: .set({ resolvedAt: new Date() })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/field-protection-repository.ts :: manuallyEditedAt: new Date(),",
+    "count": 3,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/field-protection-repository.ts :: updatedAt: new Date(),",
+    "count": 3,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/field-sources-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-details-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-field-plan-repository.ts :: confirmedAt: oldest,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/repositories/ipo-financials-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-repository.ts :: .set({ ...data, updatedAt: new Date() })",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-repository.ts :: timestamp: latestTimestamp,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/repositories/ipo-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-score-realtime-repository.ts :: calculatedAt: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-score-realtime-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-score-repository.ts :: calculatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/ipo-score-repository.ts :: updatedAt: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/listing-performance-repository.ts :: lastUpdated: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/repositories/listing-performance-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/repositories/scraper-log-repository.ts :: }, { days, cutoffDate: new Date(Date.now() - days * 24 * 60 * 60 * 1000) });",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/scrapers/base-scraper.ts :: timestamp: new Date(),",
+    "count": 2,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scrapers/sources/gmp-api-scraper.ts :: timestamp: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scrapers/sources/historical-ipo-scraper.ts :: currentPriceUpdatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scrapers/sources/historical-ipo-scraper.ts :: gmpUpdatedAtHistorical: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/scrapers/sources/historical-ipo-scraper.ts :: historicalDataScrapedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scrapers/sources/historical-ipo-scraper.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scrapers/sources/market-holidays-scraper.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scrapers/sources/prospectus-scraper.ts :: uploadedAt: doc.uploadedAt || new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/scrapers/utils/http-client.ts :: this.lastRequestTime = Date.now();",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/scripts/calculate-ratings.ts :: const timestamp = new Date().toISOString();",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/scripts/calculate-ratings.ts :: startTime: new Date(),",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/services/ipo-visibility-service.ts :: hiddenAt: now,",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/services/ipo-visibility-service.ts :: return { ok: true, ipoId: row.id, slug: row.slug, hiddenAt: now } as const;",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/services/notification-service.ts :: const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/services/notification-service.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/services/status-updater-service.ts :: await db.update(ipos).set({ status: target, updatedAt: now }).where(eq(ipos.id, r.id));",
+    "count": 1,
+    "reason": "UNVERIFIED, not triaged (#1312)"
+  },
+  {
+    "key": "web/lib/utils/bulk-actions.ts :: createdAt: new Date().toISOString(),",
+    "count": 1,
+    "reason": "Pre-existing when the scan widened to web/lib, scraper/src and app-clock variables (#1312); whether it is ordered against a database time is UNVERIFIED, not triaged."
+  },
+  {
+    "key": "web/lib/utils/chart-data.ts :: timestamp,",
+    "count": 2,
+    "reason": "UNVERIFIED, not triaged (#1312)"
   }
 ]
