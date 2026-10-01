@@ -37,6 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
+import { fetchNseHolidayMaster, judgeMarketHolidaysAgainstNse } from './lib/nse-holiday-calendar.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
@@ -4090,6 +4091,36 @@ async function runCheck(fn, ids = []) {
   return runCheckAgainstIds(fn, ids, { record, results });
 }
 
+// F-220 / F-221 (#1380 follow-up): market_holidays is the exchange holiday calendar OD-21's
+// working-day rules count against (spec §4.6, §5.3). This check reads NSE's OWN list live (the same
+// non-ingested cross-check pattern as the ipowatch/chittorgarh oracles above, one polite request
+// after a cookie warm-up) and compares, by date, the distinct TRADING dates stored for the current
+// IST year (every exchange label) with NSE's CM list for that year. Any missing or extra date FAILs.
+// NSE unreachable / malformed / no rows for the year = UNVERIFIABLE (blind, never PASS). Repair:
+// scraper/scripts/repair-market-holidays-from-nse.ts --year <Y>.
+async function checkMarketHolidaysMatchNse() {
+  const id = 'market_holidays_match_nse';
+  const name = "market_holidays for the current year equals NSE's own CM trading-holiday list (by date, every exchange label)";
+  const year = Number(istDayIso().slice(0, 4));
+  const fetched = await fetchNseHolidayMaster();
+  // Stored dates are read only when NSE answered; the verdict itself is the tested pure function.
+  const rows = fetched.ok
+    ? await q(
+        `SELECT DISTINCT to_char(date, 'YYYY-MM-DD') AS d FROM market_holidays
+          WHERE type = 'TRADING' AND date >= $1::date AND date <= $2::date`,
+        [`${year}-01-01`, `${year}-12-31`]
+      )
+    : [];
+  const v = judgeMarketHolidaysAgainstNse(fetched, year, rows.map((r) => r.d));
+  for (const d of v.missing) notify(id, 'P1', `${year}|missing|${d}`, `NSE trading holiday missing from market_holidays: ${d}`, `${d} ${v.holidays?.find((h) => h.date === d)?.description ?? ''}`);
+  for (const d of v.extra) notify(id, 'P1', `${year}|extra|${d}`, `market_holidays holds a date NSE trades on: ${d}`, d);
+  if (v.status === 'FAIL') {
+    record('market_holidays_match_nse', name, 'FAIL', `missing ${v.missing.length} [${v.missing.slice(0, MAX_OFFENDERS).join(', ')}]; extra ${v.extra.length} [${v.extra.slice(0, MAX_OFFENDERS).join(', ')}] | ${v.detail} | repair: scraper/scripts/repair-market-holidays-from-nse.ts --year ${year}`);
+  } else {
+    record('market_holidays_match_nse', name, v.status, v.detail);
+  }
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   // Item 9: probe data_conflicts.document_id ONCE, before any check builds a predicate that
@@ -4168,6 +4199,7 @@ async function main() {
   await runCheck(checkR_childProvenanceOrphan, ['r_child_provenance_orphan']);
   await runCheck(checkH_marketHolidayShiftedCopy, ['h_market_holiday_shifted_copy']);
   await runCheck(checkP_planNotPrintedOverFailedRead, ['p_plan_not_printed_over_failed_read']);
+  await runCheck(checkMarketHolidaysMatchNse, ['market_holidays_match_nse']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

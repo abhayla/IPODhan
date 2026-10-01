@@ -1,0 +1,10 @@
+{
+  "id": "market_holidays_match_nse",
+  "findingClass": "a year's market_holidays rows disagree with the exchange's own trading-holiday list (typed from festival dates, or shifted one day by an IST-to-UTC date conversion), so OD-21 working-day counts (listing_t3 / listing_t6) and the scheduler calendar gates count the wrong days",
+  "round7Findings": [],
+  "githubIssue": "https://github.com/abhayla/IPODhan/issues/1380 (F-220, F-221, 2026-10-02): staging 2026 held 20 BOTH/TRADING rows typed from festival dates (web/scripts/seed-market-holidays.ts) — 3 NSE weekday holidays missing (09-14, 10-20, 11-10), 2 misdated (03-30, 11-25), 3 false (02-16, 10-29, 10-30); the web writer stored every NSE date one day early via toISOString.",
+  "failThreshold": "any date in NSE's CM (equity) trading-holiday list for the current IST year that has no market_holidays TRADING row (any exchange label), or any distinct market_holidays TRADING date in that year that NSE does not list. NSE's list is fetched LIVE (https://www.nseindia.com/api/holiday-master?type=trading, one request after a homepage cookie warm-up) and read by scripts/lib/nse-holiday-calendar.mjs, the same reader the repair tool uses; compared by compareYearToNse(). Repair: scraper/scripts/repair-market-holidays-from-nse.ts --year <Y>.",
+  "severity": "P1",
+  "unverifiableWhen": "NSE's holiday-master cannot be fetched (HTTP error, timeout, block), its body is not JSON or has no CM array, it lists no row for the current year, or a row of the current year has a date that does not parse — the check is BLIND then, never PASS",
+  "section": "checks"
+}
