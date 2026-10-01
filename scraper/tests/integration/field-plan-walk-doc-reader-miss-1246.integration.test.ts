@@ -4,7 +4,7 @@
 // REAL walk + REAL DOC fetcher + REAL DataConsolidationOrchestrator + REAL ipo_field_plan claim SQL +
 // the PRODUCTION OD-153 clear deps (makeRereadRefusalClear) on ipodhan_test.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { Pool } from 'pg';
+import { createTestPoolFromUrl } from '../test-utils/db';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, sql } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias (worktree junction guard, as the sibling walk tests).
@@ -33,7 +33,7 @@ const SLUG = 'zzq1246-doc-reader-miss-testco';
 const noRedis = { get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0, keys: async () => [], scan: async () => ['0', []] };
 
 describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read refusal -> rank 2 is asked and written (ipodhan_test)', () => {
-  let pool: Pool;
+  let pool: ReturnType<typeof createTestPoolFromUrl>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let planRepo: IpoFieldPlanRepository;
   let fieldSources: FieldSourcesRepository;
@@ -55,7 +55,7 @@ describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read r
   }
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
+    pool = createTestPoolFromUrl(DATABASE_URL as string);
     const cur = (await pool.query('select current_database() AS d')).rows[0].d as string;
     if (cur !== 'ipodhan_test') throw new Error(`Refusing to run against ${cur}; ipodhan_test only`);
     db = drizzle(pool, { schema });

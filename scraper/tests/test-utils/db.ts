@@ -48,6 +48,14 @@ export async function getTestDb() {
 }
 
 /**
+ * Pool for a test that is handed a DATABASE_URL (ipodhan_test); UTC session like the shared pool.
+ * The caller owns it and must end() it.
+ */
+export function createTestPoolFromUrl(connectionString: string, max = 4): Pool {
+  return new Pool({ connectionString, max, options: '-c timezone=UTC' });
+}
+
+/**
  * Clean up test database connection
  * Closes the connection pool
  */
