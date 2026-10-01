@@ -14,12 +14,6 @@
   ],
   "exclusions": [
     {
-      "file": "scripts/tests/audit-ipo-coverage.test.mjs",
-      "kind": "broken",
-      "issue": "#1173",
-      "reason": "The self-test is a real defect finder, not a broken test: audit-ipo-coverage.mjs's subRows SELECT is missing face_value, authoritative_issue_price and company_website, which three SUBSTANCE_CHECKS predicates read — those predicates silently no-op on every row today. Wiring this into CI now would fail every PR on a pre-existing production defect it did not cause. Excluded until the SELECT is fixed (issue #1173), then it wires in as a normal pass."
-    },
-    {
       "file": "scripts/tests/assert-schema-drift.test.ts",
       "kind": "broken",
       "issue": "#1176",
