@@ -877,6 +877,110 @@ def demote_dependents_of_ambiguous(fields, guarded):
         field.pop("refused_page", None)
 
 
+# --------------------------------------------------------------------------- #
+# #1477 / F-231: an OCR-read price band whose leading digit(s) were lost.
+#
+# A lost leading digit leaves a well-formed price ("172.00" -> "72.00") that passes every
+# type, range and ordering check. The advert prints each end of the band more than once
+# (the "Price Band of x to y" P/E line, "FLOOR PRICE x" / "CAP PRICE y", "lower / upper end
+# of the Price Band (x)"). The rule, deterministic and judged on the WHOLE advert text:
+#   REFUSED when the advert's other mentions of that end never print the read number AND
+#   at least one of them prints it with extra leading digits (172 ends in 72).
+# A mention equal to the read value settles it (an OCR glyph read as a digit, "7172.00"
+# for "Rs 172.00", must not refuse a correct 172). No mention at all leaves the value
+# alone: nothing in the advert contradicts it. When one end is refused, the other end -
+# read off the same line by the same pass - is refused with it (B4(c), fail closed).
+# --------------------------------------------------------------------------- #
+OCR_PRICE_LOST_DIGIT_REASON = "ocr_price_band_leading_digit_lost"
+OCR_PRICE_SIBLING_REASON = "ocr_price_band_sibling_refused"
+OCR_BAND_MAX_RATIO = 1.4  # SME cap / floor limit (extract_filing.check_price_band); MAINBOARD is 1.2
+_AMT = r"(?:[^\s\d(]\s*)?([\d,]+(?:\.\d+)?)"
+_BAND_MENTION_RX = {
+    "price_band_floor": [
+        re.compile(r"FLOOR\s+PRICE\s*(?:OF\s*)?\(?\s*" + _AMT, re.I),
+        re.compile(r"LOWER\s+END\s+OF\s+THE\s+PRICE\s+BAND\s*\(\s*" + _AMT, re.I),
+        re.compile(r"PRICE\s+BAND\s+OF\s*" + _AMT + r"\s*TO\b", re.I),
+    ],
+    "price_band_cap": [
+        re.compile(r"CAP\s+PRICE\s*(?:OF\s*)?\(?\s*" + _AMT, re.I),
+        re.compile(r"(?:UPPER|HIGHER)\s+END\s+OF\s+THE\s+PRICE\s+BAND\s*\(\s*" + _AMT, re.I),
+        re.compile(r"PRICE\s+BAND\s+OF\s*(?:[^\s\d(]\s*)?[\d,]+(?:\.\d+)?\s*TO\s*" + _AMT, re.I),
+    ],
+}
+
+
+def _whole_rupees(token):
+    try:
+        value = float(token.replace(",", ""))
+    except ValueError:
+        return None
+    return str(int(round(value))) if value > 0 else None
+
+
+def band_mentions(name, texts):
+    """Every whole-rupee number the advert prints for one end of the band, outside the
+    "PRICE BAND:" headline the reader itself read."""
+    found = []
+    for text in texts:
+        for rx in _BAND_MENTION_RX.get(name, ()):
+            for m in rx.finditer(text or ""):
+                w = _whole_rupees(m.group(1))
+                if w is not None:
+                    found.append(w)
+    return found
+
+
+def guard_price_band_lost_digit(fields, page_text):
+    """REFUSE an OCR-only price band whose read numbers lost leading digit(s).
+
+    `page_text` maps page index -> that page's text. For each end the candidates are the read
+    number plus every longer number the advert prints for that end that ENDS in the read digits
+    (172 for a read 72), unless the advert also prints the read number itself for that end.
+    The band is refused (both ends, B4(c)) only when some candidate pair other than the read
+    pair is itself a valid band (floor < cap <= 1.4 x floor, the widest any segment allows):
+    then the advert's own text says the read lost a digit. Measured on 76 real adverts: a
+    rupee glyph OCR'd as a digit ("8429" for Rs 429) gives no valid alternative band and is
+    never refused, while every lost-digit read is (#1477, F-231). Returns `fields`."""
+    floor_f, cap_f = (fields or {}).get("price_band_floor"), (fields or {}).get("price_band_cap")
+    if not floor_f or not cap_f:
+        return fields
+    if floor_f.get("source_text") != "OCR" and cap_f.get("source_text") != "OCR":
+        return fields
+    floor_v, cap_v = _read_value(floor_f), _read_value(cap_f)
+    if floor_v is None or cap_v is None:
+        return fields
+    texts = [page_text[k] for k in sorted(page_text)]
+    cands, lost = {}, {}
+    for name, value in (("price_band_floor", floor_v), ("price_band_cap", cap_v)):
+        read = str(int(round(float(value))))
+        mentions = band_mentions(name, texts)
+        longer = [] if read in mentions else sorted(
+            {m for m in mentions if len(m) > len(read) and m.endswith(read)}, key=int)
+        cands[name] = [int(read)] + [int(m) for m in longer]
+        lost[name] = longer
+    read_pair = (cands["price_band_floor"][0], cands["price_band_cap"][0])
+    alternative = next(((f, c) for f in cands["price_band_floor"] for c in cands["price_band_cap"]
+                        if (f, c) != read_pair and f < c <= OCR_BAND_MAX_RATIO * f), None)
+    if alternative is None:
+        return fields
+    for name, field, value in (("price_band_floor", floor_f, floor_v), ("price_band_cap", cap_f, cap_v)):
+        if lost[name]:
+            detail = "%s: read %s, the advert prints %s for this end (band %s-%s)" % (
+                OCR_PRICE_LOST_DIGIT_REASON, value, "/".join(lost[name]), alternative[0], alternative[1])
+        else:
+            detail = "%s:%s" % (OCR_PRICE_SIBLING_REASON,
+                                "price_band_cap" if name == "price_band_floor" else "price_band_floor")
+        page = field.get("page") if field.get("page") is not None else field.get("refused_page")
+        field.update({
+            "value": None, "page": None,
+            "check": {"name": "price_band_leading_digit_intact", "passed": False, "detail": detail},
+            "state": "REFUSED",
+            "refused_value": value,
+            "refused_page": page,
+        })
+    return fields
+
+
 def main():
     # MINOR-3: `import memory_guard` resolves via the script's own directory
     # on sys.path — true automatically when this file is run directly

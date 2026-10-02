@@ -176,7 +176,7 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  * '@2026-10-02' were read before those readers existed. Same cycle bounds as above; the re-read
  * passes order IPOs by how soon their files are purged (document-cycle.ts `orderForRereads`).
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-03';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-04';
 
 /**
  * #771 round 3 review (MAJOR): a version bump re-opens a COMPLETED document
@@ -215,6 +215,11 @@ export const EXTRACTOR_VERSION_CHANGES: Readonly<Record<string, readonly string[
   // promoter tables) read the prospectus family; item 44's OCR amount and CIN guards apply to a
   // price-band ad's OCR pages, so PRICE_BAND_AD is re-opened here for the first time since the baseline.
   'extract_filing.py@2026-10-03': ['RHP', 'DRHP', 'PROSPECTUS', 'PRICE_BAND_AD'],
+  // Item 39 round 2 + #1477: the price band ad's band / face-value glyph slot no longer eats a leading
+  // digit (18 of 76 staging adverts read differently, 16 of them had been REFUSED), the OCR lost-digit
+  // guard, and the cover reader on the advert. Item 46 round 2 (PR #1480): financial statement
+  // fiscal-year / two-line headers and the ratio note (prospectus family).
+  'extract_filing.py@2026-10-04': ['RHP', 'DRHP', 'PROSPECTUS', 'PRICE_BAND_AD'],
 };
 
 function deriveRereadFloors(changes: Readonly<Record<string, readonly string[]>>): Record<string, string> {

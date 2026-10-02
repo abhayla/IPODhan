@@ -55,7 +55,8 @@ import type {
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import type { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { PEER_VALUE_COLUMNS } from '../repositories/peer-company-repository.js';
-import { upsertIPO } from './data-persister.js';
+import { upsertIPO, recordDocumentSourceHints } from './data-persister.js';
+import { normalizeCompanyUrl } from './company-host-source.js';
 import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import { headingHashForRiskFactor } from '@ipodhan/shared/utils/risk-factor-heading-key';
 import {
@@ -1924,6 +1925,32 @@ export async function persistFilingExtraction(
       }
     }
     bump(written, 'ipos', 1);
+  }
+
+  // Item 39 round 2 (spec 2.5.6 item 2; Appendix A row 30, DOC > CG, check E7): the cover reader's
+  // issuer website reaches `ipos.company_website` through its ONE existing writer,
+  // `recordDocumentSourceHints` (write-once: a stored value - another cover's or an admin's - is never
+  // replaced; host refused unless it is a public https host, `normalizeCompanyUrl`). Only a passing
+  // VALUE (every cover place agreed) and only from an RHP-family document (OD-96): a price band
+  // advert's website is carried in its envelope, never written. A MISSED / REFUSED read writes
+  // nothing, so a stored value stays (OD-158).
+  const docWebsite = str(extraction, 'company_website');
+  if (docWebsite !== null) {
+    if (!documentMayWriteField('ipos', 'companyWebsite', options.docType)) {
+      skippedNoColumn.push(`company_website: OD-96, ${options.docType} is outside the field's document family`);
+    } else if (existing.companyWebsite) {
+      skippedNoColumn.push('company_website: write-once, the column already holds a website');
+    } else if (normalizeCompanyUrl(docWebsite) === null) {
+      skippedFailedCheck.push('company_website: E7 host refused (not a public https issuer host)');
+    } else if (apply) {
+      await recordDocumentSourceHints(
+        deps.ipoRepository,
+        ipoId,
+        { companyWebsite: docWebsite },
+        { companyWebsite: existing.companyWebsite ?? null }
+      );
+      iposFields.push('companyWebsite');
+    }
   }
 
   // -------------------------------------------------------- 2. ipo_details

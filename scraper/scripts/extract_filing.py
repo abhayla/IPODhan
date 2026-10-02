@@ -1227,6 +1227,10 @@ def litigation_notices(lines):
     return found, anchor
 
 
+# One optional rupee glyph (never a digit) and the space after it, before a printed amount.
+_GLYPH_SLOT = r"(?:[^\s\d]\s*)?"
+
+
 def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     all_lines = [(i, _normalize_numbers(ln)) for i, t in page_texts for ln in (t or "").split("\n")]
     lines = [ln for _i, ln in all_lines]
@@ -1240,9 +1244,13 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     floor = cap = face = None
     i = _find(lines, re.compile(r"PRICE BAND\s*:", re.I))
     if i >= 0:
-        m = re.search(r"PRICE BAND\s*:\s*\S?\s*([\d,]+(?:\.\d+)?)\s*TO\s*\S?\s*([\d,]+(?:\.\d+)?)",
-                      lines[i], re.I)
-        fm = re.search(r"FACE VALUE OF\s*\S?\s*([\d,]+(?:\.\d+)?)", lines[i], re.I)
+        # #1477 / F-231: the optional slot before each number is the rupee glyph, and only a NON-digit
+        # can be one. As `\S?` it swallowed the price's own leading digit whenever the glyph was not
+        # printed (OCR drops it): "PRICE BAND: 172.00 TO 182.00" read 72 / 82 (glass-wall), and a
+        # face value of 10 read 0.
+        m = re.search(r"PRICE BAND\s*:\s*" + _GLYPH_SLOT + r"([\d,]+(?:\.\d+)?)\s*TO\s*" + _GLYPH_SLOT
+                      + r"([\d,]+(?:\.\d+)?)", lines[i], re.I)
+        fm = re.search(r"FACE VALUE OF\s*" + _GLYPH_SLOT + r"([\d,]+(?:\.\d+)?)", lines[i], re.I)
         if m:
             floor, cap = _num(m.group(1)), _num(m.group(2))
         if fm:
@@ -2997,6 +3005,25 @@ def _normalise_unread_pages(unread_pages):
     return out
 
 
+def read_advert_cover_fields(page_texts, emit):
+    """Item 39 round 2 (spec 2.5.6 item 2: "the price band advert ... where printed"): the cover
+    reader also runs on a price band advertisement, which prints the issuer's website and
+    contact block and, on some, the registrar.
+
+    A field the advert's own reader already answered (compliance_officer) keeps that answer;
+    the cover reader only adds a field the advert's reader did not emit or MISSED. Every cover field is RHP-family in the field manifest, so
+    by OD-96 the persister never writes an advert's answer; it is carried in the envelope as the
+    advert's answer (a witness), and for the same reason a refused cover field does not count
+    against the advert's own extraction status."""
+    shadow = Emitter(emit.source_doc)
+    cover_block.read_cover_block(page_texts, shadow)
+    for name, field in shadow.fields.items():
+        own = emit.fields.get(name)
+        if own is None or (own.get("state") == answer_states.MISSED
+                           and field.get("state") == answer_states.VALUE):
+            emit.fields[name] = field
+
+
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
         issue_size_rupees=None, tables_for_page=None, unread_pages=None,
         ocr_render=None):
@@ -3019,6 +3046,7 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
 
     if doc_type == "PRICE_BAND_AD":
         meta = extract_price_band_ad(page_texts, emit, segment)
+        read_advert_cover_fields(page_texts, emit)
     else:
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
                            segment=segment, doc_type=doc_type,
@@ -3031,10 +3059,14 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     status = STATUS_PARTIAL if (emit.failed or meta.get("financial_status") == "PARTIAL") else STATUS_OK
     fields = emit.fields
     if ocr_confidence:
-        from ocr_pages import annotate_fields, CONFIDENCE_FLOOR, guard_ambiguous_thousands
+        from ocr_pages import (annotate_fields, CONFIDENCE_FLOOR, guard_ambiguous_thousands,
+                               guard_price_band_lost_digit)
         fields = annotate_fields(fields, ocr_confidence, CONFIDENCE_FLOOR)
         # Item 44: an OCR-only "1.700" is never read as 1.7 (nor guessed as 1,700).
         fields = guard_ambiguous_thousands(fields, {i: t for i, t in page_texts})
+        # #1477 / F-231: an OCR-only band whose leading digit was lost ("172" read "72") is
+        # refused against the advert's own other mentions of that end.
+        fields = guard_price_band_lost_digit(fields, {i: t for i, t in page_texts})
         status = STATUS_OK_OCR if status == STATUS_OK else STATUS_PARTIAL_OCR
 
     # OD-55. Normalised LAST, so coverage outranks confidence: a document that

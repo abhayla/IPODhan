@@ -36,8 +36,9 @@ const allPresent = (): StoredFileState => ({ kind: 'present' });
 
 describe('item 45: the @2026-10-03 bump', () => {
   it('re-opens the prospectus family and the price-band ad, and nothing else', () => {
-    expect(EXTRACTOR_VERSION).toBe('extract_filing.py@2026-10-03');
-    expect([...EXTRACTOR_VERSION_CHANGES[EXTRACTOR_VERSION]].sort()).toEqual(['DRHP', 'PRICE_BAND_AD', 'PROSPECTUS', 'RHP']);
+    // The bump stays recorded after a later one (item 39 round 2 moved EXTRACTOR_VERSION to @2026-10-04).
+    expect(EXTRACTOR_VERSION >= 'extract_filing.py@2026-10-03').toBe(true);
+    expect([...EXTRACTOR_VERSION_CHANGES['extract_filing.py@2026-10-03']].sort()).toEqual(['DRHP', 'PRICE_BAND_AD', 'PROSPECTUS', 'RHP']);
   });
 });
 
