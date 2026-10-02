@@ -387,6 +387,95 @@ export function decidePurge(params: {
 }
 
 /**
+ * PR #1472 round 1 (MAJOR-2): the inputs the purge reads for ONE IPO, as `runDocumentPurge`'s
+ * aggregate query returns them. Shared by the purge itself and by the re-read ordering, so the
+ * "when will these files go" answer the re-read passes rank by is the purge's own answer.
+ */
+export interface IpoPurgeInputs {
+  closeDate: Date | string | null;
+  withdrawn: boolean;
+  /** `document_fetch_state` rows not EXTRACTED / NOT_APPLICABLE. */
+  unreadCount: number;
+  /** COMPLETED documents with no stored page text (item 18 slice 2 veto). */
+  textlessCount: number;
+  /** Most recent successful extraction on this IPO (#933 / OD-32 anchor). */
+  latestExtractedAt: Date | string | null;
+  documentCount: number;
+  /** Documents never successfully extracted: their clock has not started (item 18 s2b). */
+  unextractedCount: number;
+  /** False when the purge never considers this IPO at all (not an IPO, hidden by an admin). */
+  eligible?: boolean;
+}
+
+export type IpoPurgeDecision =
+  | PurgeDecision
+  | { purge: false; reason: 'held_own_window' | 'not_a_purge_candidate' };
+
+/**
+ * The whole purge decision for one IPO: `decidePurge` AND the item 18 s2b "every document past
+ * its own window" constraint, exactly as `runDocumentPurge` applies them. The single source both
+ * the purge and the re-read ordering call.
+ */
+export function decideIpoPurge(
+  inputs: IpoPurgeInputs,
+  opts: { retentionDays?: number; maxRetentionDays?: number; now?: Date } = {}
+): IpoPurgeDecision {
+  if (inputs.eligible === false) return { purge: false, reason: 'not_a_purge_candidate' };
+  const retentionDays = opts.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  const now = opts.now ?? new Date();
+  const decision = decidePurge({
+    closeDate: inputs.closeDate,
+    withdrawn: inputs.withdrawn,
+    allDocumentsRead: inputs.unreadCount === 0,
+    textlessCount: inputs.textlessCount,
+    lastExtractedAt: inputs.latestExtractedAt,
+    retentionDays,
+    maxRetentionDays: opts.maxRetentionDays,
+    now,
+  });
+  if (!decision.purge) return decision;
+  // `latestExtractedAt` is the newest successful extraction, so if IT is past the window every
+  // earlier one is too; an unextracted document has no clock and holds the directory.
+  const perDocument = inputs.unextractedCount > 0
+    ? [{ extractedAt: null as Date | null }]
+    : inputs.documentCount === 0
+      ? []
+      : [{ extractedAt: inputs.latestExtractedAt }];
+  if (!everyDocumentPastItsOwnWindow(perDocument, retentionDays, now)) {
+    return { purge: false, reason: 'held_own_window' };
+  }
+  return decision;
+}
+
+/**
+ * When `decideIpoPurge` first says purge for this IPO, holding its inputs fixed: `now` when it
+ * already does, else the first UTC day it will, else `null` (never: a textless or never-extracted
+ * document holds it, no clock exists, or the IPO is not a purge candidate). Evaluated with the
+ * real decision a day at a time — the decision only changes at day boundaries (`daysSince`) and,
+ * once true, stays true as time passes, so the first true day is the purge date.
+ */
+export function projectPurgeDueAt(
+  inputs: IpoPurgeInputs,
+  opts: { retentionDays?: number; maxRetentionDays?: number; now?: Date } = {}
+): Date | null {
+  const now = opts.now ?? new Date();
+  if (decideIpoPurge(inputs, { ...opts, now }).purge) return now;
+  const anchorRaw = inputs.latestExtractedAt ?? inputs.closeDate;
+  if (anchorRaw === null || anchorRaw === undefined) return null;
+  const anchor = anchorRaw instanceof Date ? anchorRaw : new Date(anchorRaw);
+  if (!Number.isFinite(anchor.getTime())) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const hard = opts.maxRetentionDays ?? DEFAULT_MAX_RETENTION_DAYS;
+  const ahead = Math.max(0, Math.ceil((anchor.getTime() - now.getTime()) / dayMs));
+  const startOfToday = Math.floor(now.getTime() / dayMs) * dayMs;
+  for (let d = 1; d <= ahead + hard + 2; d++) {
+    const at = new Date(startOfToday + d * dayMs);
+    if (decideIpoPurge(inputs, { ...opts, now: at }).purge) return at; // app-clock-ok: a projected ranking date, never written; the purge itself reads the same clock as runDocumentPurge
+  }
+  return null;
+}
+
+/**
  * Does a stored file exist for this (IPO, document type)?
  *
  * The file name carries the sha prefix, which the state row does not hold, so
@@ -411,6 +500,34 @@ export function hasStoredFile(
   } catch {
     return false;
   }
+}
+
+/**
+ * PR #1472 r1 (MINOR): `hasStoredFile` with the "could not look" case kept apart. `absent` = the
+ * IPO's directory or the file is not there (purged or never stored); `unknown` = the directory could
+ * not be READ (permissions, I/O, a lock), which is no evidence the file is gone — a caller judges
+ * it again later instead of treating the document as purged.
+ */
+export type StoredFileState = { kind: 'present' } | { kind: 'absent' } | { kind: 'unknown'; cause: string };
+
+export function storedFileState(
+  ipoId: string,
+  docType: string,
+  storeDir: string = getStoreDir(),
+  sha256?: string | null
+): StoredFileState {
+  let files: string[];
+  try {
+    files = fs.readdirSync(path.join(storeDir, ipoId));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { kind: 'absent' };
+    return { kind: 'unknown', cause: `${code ?? 'error'}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const present = sha256
+    ? files.includes(documentFileName(docType, sha256))
+    : files.some((f) => f.startsWith(`${docType}-`) && f.endsWith('.pdf'));
+  return present ? { kind: 'present' } : { kind: 'absent' };
 }
 
 export interface PurgeResult {

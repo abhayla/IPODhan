@@ -1,0 +1,115 @@
+{
+  "measured_at": "2026-10-02T17:03:24.239Z",
+  "db": "ipodhan_staging",
+  "floor": "extract_filing.py@2026-10-03",
+  "rereadIpos": 81,
+  "nse": {
+    "rank": 46,
+    "aheadOfIt": 45,
+    "slug": "national-stock-exchange-of-india-ltd",
+    "close": "2026-09-21",
+    "types": [
+      "DRHP",
+      "PRICE_BAND_AD",
+      "PRICE_BAND_AD",
+      "PRICE_BAND_AD",
+      "RHP"
+    ],
+    "purgeDueAt": null,
+    "purgeDueNow": false
+  },
+  "first10": [
+    {
+      "slug": "panchatv-bharat-ltd",
+      "close": "2026-09-15",
+      "types": [
+        "DRHP",
+        "PROSPECTUS"
+      ],
+      "purgeDueAt": "2026-10-16T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "vama-wovenfab-ltd",
+      "close": "2026-09-17",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-24T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "roopa-screen-ltd",
+      "close": "2026-09-28",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "s-k-offset-ltd",
+      "close": "2026-09-25",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "liqvd-digital-india-ltd",
+      "close": "2026-09-25",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "himalaya-nutravedics-india-ltd",
+      "close": "2026-09-24",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "vivekanand-cotspin-ltd",
+      "close": "2026-09-23",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "robokidz-eduventures-ltd",
+      "close": "2026-09-23",
+      "types": [
+        "PROSPECTUS",
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "fx-multitech-ltd",
+      "close": "2026-09-23",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-28T00:00:00.000Z",
+      "purgeDueNow": false
+    },
+    {
+      "slug": "shree-tnb-polymers-ltd",
+      "close": "2026-09-29",
+      "types": [
+        "RHP"
+      ],
+      "purgeDueAt": "2026-10-29T00:00:00.000Z",
+      "purgeDueNow": false
+    }
+  ]
+}
