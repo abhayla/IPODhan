@@ -742,3 +742,45 @@ test('mode 3 regression: "MAJOR-4" in an implements header is NOT read as rule i
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('duplicate rule id in rules.json -> exit 1, message names the id and the fix', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(
+      root,
+      'docs/design/rules.json',
+      rulesJson([rule('R-050', { hash: 'aaa000000001' }), rule('R-050', { hash: 'bbb000000002' })])
+    );
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-050'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-050\n');
+
+    const res = runCheck(root);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(
+      res.stdout + res.stderr,
+      /duplicate rule id R-050 — two parallel PRs allocated the same id; run generate-rule-index --apply/
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('unique ids (control for the duplicate-id case) -> exit 0', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(
+      root,
+      'docs/design/rules.json',
+      rulesJson([rule('R-050', { hash: 'aaa000000001' }), rule('R-051', { hash: 'bbb000000002' })])
+    );
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-050, R-051'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-050\n' + IMPLEMENTS_TAG + 'R-051\n');
+
+    const res = runCheck(root);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

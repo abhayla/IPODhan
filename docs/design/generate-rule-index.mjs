@@ -162,8 +162,27 @@ try {
   const found = extract(md).map((r) => ({ ...r, hash: hashOf(r.text) }));
 
   const prev = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : { rules: [], next_id: 1 };
-  const byHash = new Map((prev.rules || []).map((r) => [r.hash, r]));
   let nextId = prev.next_id || 1;
+
+  // DUPLICATE IDS. Two parallel PRs that each regenerate this index start from the same next_id and
+  // allocate the same R-nnn to different rules; both merge cleanly (different lines of rules.json).
+  // The first occurrence in file order keeps the id; every later one is given a fresh id.
+  const dupIds = [];
+  {
+    const seenIds = new Set();
+    for (const r of prev.rules || []) {
+      if (seenIds.has(r.id)) {
+        if (!dupIds.includes(r.id)) dupIds.push(r.id);
+        r.id = 'R-' + String(nextId++).padStart(3, '0');
+      }
+      seenIds.add(r.id);
+    }
+  }
+  if (dupIds.length && check) {
+    console.log(`DUPLICATE RULE ID — ${dupIds.join(', ')} appear(s) on more than one rule in rules.json (two parallel PRs allocated the same id). Run: node docs/design/generate-rule-index.mjs --apply`);
+    process.exit(1);
+  }
+  const byHash = new Map((prev.rules || []).map((r) => [r.hash, r]));
 
   const live = [];
   for (const r of found) {
@@ -194,6 +213,13 @@ try {
     next_id: nextId,
     rules: [...live, ...retired],
   };
+
+  const allIds = next.rules.map((r) => r.id);
+  const dupAfter = allIds.filter((id, i) => allIds.indexOf(id) !== i);
+  if (dupAfter.length) {
+    console.error(`generate-rule-index: duplicate rule id(s) after generation: ${[...new Set(dupAfter)].join(', ')}`);
+    process.exit(2);
+  }
 
   const stable = (o) => JSON.stringify({ ...o, generated_at: null }, null, 2);
 
