@@ -9,7 +9,7 @@ const PREFIXES = ['fbeff8c6', 'f6c3c6aa', 'edc03a70', 'cf004ed6', 'f18ffdc8', 'b
 const pool = await openReadOnlyPool('ipodhan_staging');
 try {
   const { rows } = await pool.query(
-    `select i.slug, d.id::text as doc, d.type::text as type, d.extracted_at, d.url,
+    `select i.slug, d.id::text as doc, d.type::text as type, d.extracted_at, d.url, (d.sha256 = s.input_ref) as wrote_e9,
             s.input_ref, s.last_run_at, s.source,
             (s.evidence ? 'ratioReasons') as has_reasons, (s.evidence ? 'ratioRead') as has_read,
             s.evidence->'ratioReasons' as reasons
@@ -21,6 +21,6 @@ try {
   for (const r of rows) {
     console.log([r.slug, r.doc.slice(0, 8), r.type, r.extracted_at?.toISOString?.() ?? r.extracted_at,
       'E9 input_ref=' + r.input_ref, 'E9 at=' + (r.last_run_at?.toISOString?.() ?? r.last_run_at),
-      'reasons=' + r.has_reasons, JSON.stringify(r.reasons), r.type !== 'PRICE_BAND_AD' ? r.url : ''].join('\t'));
+      'wroteE9=' + r.wrote_e9, 'reasons=' + r.has_reasons, JSON.stringify(r.reasons), r.type !== 'PRICE_BAND_AD' ? r.url : ''].join('\t'));
   }
 } finally { await pool.end(); }
