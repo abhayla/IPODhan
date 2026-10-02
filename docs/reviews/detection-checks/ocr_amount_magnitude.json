@@ -1,0 +1,11 @@
+{
+  "id": "ocr_amount_magnitude",
+  "findingClass": "An OCR amount off by a power of ten against a text or exchange value for the same IPO field.",
+  "round7Findings": [],
+  "failThreshold": "FAIL per IPO and field when an OCR-marked amount differs from the text or exchange value by a ratio of 10, 100 or 1000 (within 1%). Reported by IPO, field, both values and sources.",
+  "severity": "P1",
+  "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+  "note": "SPEC ONLY - this check is NOT implemented. It has no record('ocr_amount_magnitude') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage (scripts/tests/audit-detection-floor.test.mjs case 79). Case: NSE price band 1.7 against 1,700. Specified by spec 2.5.6 (OD-164), item 37.",
+  "owner": "document-yield plan (OD-164), spec 7.1 item 37",
+  "section": "notCoveredByThisManifest"
+}

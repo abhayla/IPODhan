@@ -2157,6 +2157,42 @@
       "title": "NSE's holiday API publishes only the current year, and the old writer read the corporate-bonds segment (CBM) instead of equity (CM)",
       "detail": "Measured 2026-10-02 by the PR #1448 builder: one live call (homepage cookie visit, then https://www.nseindia.com/api/holiday-master?type=trading) returned HTTP 200, 34,022 bytes, saved unchanged as scraper/tests/fixtures/nse/holiday-master-trading-2026-10-02.json. The CM (equity) list for 2026 has 20 dates, 16 on weekdays: the 15 broker-published dates of F-221 plus 2026-01-15 (Maharashtra municipal-election closure), which the broker lists omitted. The response carries no 2025 rows, so NSE's API cannot repair the 23 shifted 2025 rows of F-220 (PR #1444's repair-shifted-market-holidays.ts covers those) and cannot seed a past year. web/lib/scrapers/sources/market-holidays-scraper.ts read segment CBM (corporate bonds), not CM; the two lists are identical today, so the wrong segment produced correct dates by coincidence. Implication: a year's calendar must be reconciled from NSE while that year is current; a past year can only be checked against a saved NSE answer.",
       "phase1": false
+    },
+    {
+      "id": "F-223",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "ipos open/close dates (Chittorgarh path; retired Moneycontrol rows); OD-21 listing_t3",
+      "title": "IPO close dates are stored one day early for Chittorgarh-sourced rows, so the working-day rule flags correct listings as late",
+      "detail": "Measured 2026-10-02 on ipodhan_staging, read-only: the real listing_t3 rule with the real TradingCalendar over 312 IPOs (2025-2026 listings): 296 PASS, 16 FAIL, 12 of them at exactly 4 working days. ICICI Prudential AMC closed 2025-12-16 (business-standard, groww, upstox) but staging stores 2025-12-15. Close-date source for the 12: CHITTORGARH 10, NSE 2. Weekend open/close dates for offering_type IPO: 8 (CHITTORGARH Sunday opens: k-v-toys-india-ltd 2025-12-07, sundrex-oil-company-ltd 2025-12-21; MONEYCONTROL Saturday open+close: 4 rows; no source: 2). Mechanism suspected (not yet proven): the IST-through-UTC date shift of F-220 in the Chittorgarh date parse. Unmeasured: weekday-shifted dates beyond these 12. Tracked in the GitHub issue filed the same day.",
+      "phase1": false
+    },
+    {
+      "id": "F-224",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "Offer-document reading (RHP cover fields; OCR'd price band advert); §1.2 DOC-first fields",
+      "title": "NSE's RHP and price band advert were extracted but delivered almost none of the DOC-first fields, so rank 2/3 sources fill them",
+      "detail": "Measured 2026-10-02 on ipodhan_staging (owner data-test session), IPO national-stock-exchange-of-india-ltd, document_field_receipts (27 rows): RHP (text) gave only faceValue, cin, listingExchanges, issueType; no registrar, lead managers, ISIN, symbol, issue size or lot size. Price band advert is image-only (OCR ~0.77): priceRangeMin 1.7 / priceRangeMax 1.785 against the real band 1,700 / 1,785 (1000x small), cin ...089769 against the real ...069769. Final PROSPECTUS fetch BLOCKED_ALL. Shown values came from CHITTORGARH (issue size, band) and BSE (lot size, registrar, lead managers). Ranking itself matches §1.2. Tracked in https://github.com/abhayla/IPODhan/issues/1454. Class size unmeasured. Size of the gap for this IPO (ipo_field_plan, 176 rows): 135 have rank-1 DOC with cause NO_DOCUMENT_PROVENANCE (document read, field not extracted); only 11 were supplied by their rank-1 source. The RHP text is stored in full (668 pages, ~2.77M chars) and prints the missing values: registrar MUFG Intime (p.4), BRLMs Kotak Mahindra Capital / JM Financial (p.2), website + compliance officer (p.1), Objects of the Offer (p.112), 'does not have an identifiable promoter' (p.124). ISIN is not printed in the RHP (exchange field, correct).",
+      "phase1": false
+    },
+    {
+      "id": "F-225",
+      "sev": "CRITICAL",
+      "status": "OPEN",
+      "area": "Field-plan walk DOC reader; offer-document extractor coverage; §1.2 DOC-first; OD-73, OD-161",
+      "title": "Root cause of F-224: the walk can read document values only for ipos/ipo_details, and the extractor has no code for most RHP cover/business fields; 0 of 77 IPOs got registrar, BRLMs, website or objects from a document",
+      "detail": "Measured 2026-10-02 (ipodhan_staging read-only + the current extractor run on 5 real documents: NSE RHP, Vishal Nirmiti, TNA (SME), Armee (Cameo registrar), Veegaland PROSPECTUS). (1) field-plan-walk-doc-fetcher.ts:188 DOC_READABLE_TABLES = ['ipos','ipo_details']; :196 any other table returns not_implemented, while filing-persister.ts records child tables under field 'rows' (trackField('promoters','rows') etc.): staging-wide 28,760 child-table rank-1-DOC plan rows, 0 SUPPLIED (19,497 NOT_AVAILABLE_YET, 8,913 CHECK_FAILED, 350 PENDING); NSE's 79 risk factors are written but the plan never sees them. (2) extract_filing.py emits no registrar, BRLMs, company website, compliance officer or company description from an RHP/PROSPECTUS on 5 of 5 documents although all print them on pages 1-4 (document_field_receipts: 0 IPOs for registrar/leadManagers/companyWebsite/objectives; companyDescription 16, all price-band ads); objects heading pattern (extract_filing.py:2190) misses real headings on 5/5 and the persister never writes objectives. (3) Where BSE/Chittorgarh already own a field's provenance the walk answers 'no document provenance' instead of letting rank-1 DOC replace it, against OD-73 ('only a HIGHER-ranked source may change it'; corrected 2026-10-02, it is not OD-144), decided by OD-161. (4) Nothing detects it: the gap is parked as a temporary failure with no next due time, a document is COMPLETED even when the extractor reports PARTIAL (NSE RHP: 15 of 42 fields), and no check counts fields delivered per extracted document. Staging-wide 5,995 DOC rows on 77 IPOs carry NO_DOCUMENT_PROVENANCE.",
+      "phase1": false
+    },
+    {
+      "id": "F-226",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "OD-103 witness collection (every listed source asked once per stage); OD-58 confirmation; source mappings",
+      "title": "Other sources' answers are kept only for values the field walk writes; most stored values are written by other paths that keep no witnesses",
+      "detail": "CORRECTED 2026-10-02 after independent review. The walk's collect-all is built (field-plan-walk.ts ~1228: OD-103 'EVERY ranked answer this pass'); per OD-137 a SUPPLIED field keeps its witnesses on field_sources.witnesses and the plan row's answers stay null by design (the earlier '655 SUPPLIED rows, 0 answers' reading was the wrong column, not a defect). Measured on ipodhan_staging (read-only; ENABLE_VERDICT_WRITER=true): field_sources by writer — SYSTEM 18,396 rows, 516 with witnesses; FILING_PERSISTER 1,091 rows, 8 with; MIGRATION_SCRIPT 684, 0; CHITTORGARH_ISSUE_TYPE_FILL 234, 0. NSE (national-stock-exchange-of-india-ltd): 33 records, witnesses only on ipos.listingDate and ipos.sector (the two the walk wrote). So for most stored values no other source's answer is kept: values reach the row through write paths outside the walk. Separately, many listed source/field pairs have no mapping (NO_MAPPING), e.g. CHITTORGARH listing_exchanges 128 IPOs, status 126; BSE listing_exchanges 96. Owner direction 2026-10-02: no source may be ignored.",
+      "phase1": false
     }
   ],
   "false_assertions": [

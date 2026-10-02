@@ -1,0 +1,13 @@
+{
+  "class_id": "a completed extraction that delivered far fewer fields than its type gives raises no signal",
+  "feature": "any pipeline that marks a document COMPLETED on the extractor finishing, without comparing the fields delivered with the fields that document type should give (today: documents, document_field_receipts)",
+  "symptom": "A document that yielded 4 of 42 fields reads as done; the plan rows it should have answered are parked as temporary failures with no next due time, and a partial read is indistinguishable from a full one. An OCR amount a power of ten off likewise passes unflagged.",
+  "first_seen": "2026-10-02 (F-224, F-225) -- NSE RHP COMPLETED with 15 of 42 fields reported by the extractor and 4 DOC-first receipts; NSE price band advert OCR 1.7 against 1,700 (1000x small).",
+  "fix_prs": "none yet -- planned: spec 7.1 items 37 and 44",
+  "detection_check": "planned doc_yield_per_document and ocr_amount_magnitude (docs/reviews/detection-checks/, notCoveredByThisManifest)",
+  "status": "unguarded -- no implemented check",
+  "spec_ref": [
+    "§2.5",
+    "§4"
+  ]
+}

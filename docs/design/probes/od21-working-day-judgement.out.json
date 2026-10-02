@@ -1,0 +1,4802 @@
+{
+  "probedAt": "2026-10-02T04:13:39.647Z",
+  "database": "ipodhan_staging",
+  "rowCount": 312,
+  "calendar": {
+    "holidayCount": 68,
+    "years": [
+      2024,
+      2025,
+      2026
+    ]
+  },
+  "rules": [
+    {
+      "id": "listing_t3",
+      "validFrom": "2023-12-01",
+      "validTo": null,
+      "assertion": "DATE_WITHIN_WORKING_DAYS(listing_date, close_date, 3, exchange)"
+    },
+    {
+      "id": "listing_t6",
+      "validFrom": null,
+      "validTo": "2023-11-30",
+      "assertion": "DATE_WITHIN_WORKING_DAYS(listing_date, close_date, 6, exchange)"
+    }
+  ],
+  "verdictByRule": {
+    "PASS|listing_t3": 296,
+    "FAIL|listing_t3": 16
+  },
+  "fails": [
+    {
+      "slug": "k-v-toys-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-09",
+      "listing_date": "2025-12-15",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-15 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "icici-prudential-asset-management-company-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-15",
+      "listing_date": "2025-12-19",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-19 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "global-ocean-logistics-inda-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-18",
+      "listing_date": "2025-12-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sundrex-oil-company-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-23",
+      "listing_date": "2025-12-30",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-30 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": [
+        "2025-12-25"
+      ]
+    },
+    {
+      "slug": "bai-kakaji-polymers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-25",
+      "listing_date": "2025-12-31",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-31 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "modern-diagnostic-and-research-centre-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-01",
+      "listing_date": "2026-01-07",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-01-07 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kwality-walls-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-05-07",
+      "listing_date": "2026-02-16",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-02-16 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 0,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fractal-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-18",
+      "listing_date": "2026-02-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-02-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "rajputana-stainless-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-11",
+      "listing_date": "2026-03-19",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-19 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 6,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "innovision-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-17",
+      "listing_date": "2026-03-23",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-23 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "gsp-crop-science-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-18",
+      "listing_date": "2026-03-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "raajmarg-infra-investment-trust",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-13",
+      "listing_date": "2026-03-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 7,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vivid-electromech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-30",
+      "listing_date": "2026-04-07",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-04-07 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": [
+        "2026-03-31",
+        "2026-04-03"
+      ]
+    },
+    {
+      "slug": "property-share-investment-trust-propshare-celestia",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-04-16",
+      "listing_date": "2026-04-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-04-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 6,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "tempsens-instruments-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-24",
+      "listing_date": "2026-08-28",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-08-28 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "augmont-enterprises-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-25",
+      "listing_date": "2026-08-31",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-08-31 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    }
+  ],
+  "details": [
+    {
+      "slug": "stallion-india-fluorochemicals-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-01-20",
+      "listing_date": "2025-01-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "exato-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-02",
+      "listing_date": "2025-12-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "purple-wave-infocom-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-02",
+      "listing_date": "2025-12-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "logiciel-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-02",
+      "listing_date": "2025-12-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ravelcare-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-03",
+      "listing_date": "2025-12-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "helloji-holidays-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-04",
+      "listing_date": "2025-12-09",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "neochem-bio-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-04",
+      "listing_date": "2025-12-09",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vidya-wires-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-05",
+      "listing_date": "2025-12-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shri-kanha-stainless-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-05",
+      "listing_date": "2025-12-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "aequs-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-05",
+      "listing_date": "2025-12-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "meesho-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-05",
+      "listing_date": "2025-12-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "luxury-time-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-08",
+      "listing_date": "2025-12-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "encompass-design-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-09",
+      "listing_date": "2025-12-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "methodhub-software-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-09",
+      "listing_date": "2025-12-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "flywings-simulator-training-centre-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-09",
+      "listing_date": "2025-12-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "wakefit-innovations-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-10",
+      "listing_date": "2025-12-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "corona-remedies-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-10",
+      "listing_date": "2025-12-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "riddhi-display-equipments-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-10",
+      "listing_date": "2025-12-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "k-v-toys-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-09",
+      "listing_date": "2025-12-15",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-15 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "prodocs-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-10",
+      "listing_date": "2025-12-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "nephrocare-health-services-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-12",
+      "listing_date": "2025-12-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "park-medi-world-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-12",
+      "listing_date": "2025-12-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "unisem-agritech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-12",
+      "listing_date": "2025-12-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "pajson-agro-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-15",
+      "listing_date": "2025-12-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "hrs-aluglaze-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-15",
+      "listing_date": "2025-12-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "icici-prudential-asset-management-company-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-15",
+      "listing_date": "2025-12-19",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-19 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ashwini-container-movers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-16",
+      "listing_date": "2025-12-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "exim-routes-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-16",
+      "listing_date": "2025-12-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ksh-international-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-18",
+      "listing_date": "2025-12-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "marc-technocrats-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-19",
+      "listing_date": "2025-12-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "global-ocean-logistics-inda-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-18",
+      "listing_date": "2025-12-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "dachepalli-publishers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-24",
+      "listing_date": "2025-12-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2025-12-25"
+      ]
+    },
+    {
+      "slug": "gujarat-kidney-and-super-speciality-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2025-12-24",
+      "listing_date": "2025-12-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2025-12-25"
+      ]
+    },
+    {
+      "slug": "shyam-dhani-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-24",
+      "listing_date": "2025-12-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2025-12-25"
+      ]
+    },
+    {
+      "slug": "epw-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-24",
+      "listing_date": "2025-12-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2025-12-25"
+      ]
+    },
+    {
+      "slug": "sundrex-oil-company-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-23",
+      "listing_date": "2025-12-30",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-30 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": [
+        "2025-12-25"
+      ]
+    },
+    {
+      "slug": "nanta-tech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-26",
+      "listing_date": "2025-12-31",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "apollo-techno-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-26",
+      "listing_date": "2025-12-31",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "admach-systems-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-26",
+      "listing_date": "2025-12-31",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "dhara-rail-projects-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-26",
+      "listing_date": "2025-12-31",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "bai-kakaji-polymers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-25",
+      "listing_date": "2025-12-31",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2025-12-31 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "e-to-e-transportation-infrastructure-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2025-12-30",
+      "listing_date": "2026-01-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "modern-diagnostic-and-research-centre-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-01",
+      "listing_date": "2026-01-07",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-01-07 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "gabion-technologies-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-08",
+      "listing_date": "2026-01-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "victory-electric-vehicles-international-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-09",
+      "listing_date": "2026-01-14",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "yajur-fibres-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-09",
+      "listing_date": "2026-01-14",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "bharat-coking-coal-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-01-13",
+      "listing_date": "2026-01-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-01-15"
+      ]
+    },
+    {
+      "slug": "defrail-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-13",
+      "listing_date": "2026-01-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-01-15"
+      ]
+    },
+    {
+      "slug": "avana-electrosystems-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-14",
+      "listing_date": "2026-01-20",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-01-15"
+      ]
+    },
+    {
+      "slug": "gre-renew-enertech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-16",
+      "listing_date": "2026-01-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "narmadesh-brass-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-16",
+      "listing_date": "2026-01-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "amagi-media-labs-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-01-16",
+      "listing_date": "2026-01-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "indo-smc-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-16",
+      "listing_date": "2026-01-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "armour-security-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-19",
+      "listing_date": "2026-01-22",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "aritas-vinyl-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-20",
+      "listing_date": "2026-01-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "digilogic-systems-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-22",
+      "listing_date": "2026-01-28",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-01-26"
+      ]
+    },
+    {
+      "slug": "shadowfax-technologies-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-01-22",
+      "listing_date": "2026-01-28",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-01-26"
+      ]
+    },
+    {
+      "slug": "krm-ayurveda-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-23",
+      "listing_date": "2026-01-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-01-26"
+      ]
+    },
+    {
+      "slug": "shayona-engineering-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-27",
+      "listing_date": "2026-01-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "hannah-joseph-hospital-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-28",
+      "listing_date": "2026-02-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 2,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kasturi-metal-composite-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-29",
+      "listing_date": "2026-02-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "accretion-nutraveda-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-30",
+      "listing_date": "2026-02-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kanishk-aluminium-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-30",
+      "listing_date": "2026-02-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "msafe-equipments-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-01-30",
+      "listing_date": "2026-02-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ckk-retail-mart-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-03",
+      "listing_date": "2026-02-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "grover-jewells-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-06",
+      "listing_date": "2026-02-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "brandman-retail-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-06",
+      "listing_date": "2026-02-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "biopol-chemicals-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-10",
+      "listing_date": "2026-02-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "pan-hr-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-10",
+      "listing_date": "2026-02-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kwality-walls-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-05-07",
+      "listing_date": "2026-02-16",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-02-16 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 0,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fractal-analytics-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-11",
+      "listing_date": "2026-02-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "aye-finance-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-11",
+      "listing_date": "2026-02-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "marushika-technology-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-16",
+      "listing_date": "2026-02-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fractal-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-18",
+      "listing_date": "2026-02-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-02-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "yashhtej-industries-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-20",
+      "listing_date": "2026-02-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "gaudium-ivf-and-women-health-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-24",
+      "listing_date": "2026-02-27",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "manilam-industries-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-24",
+      "listing_date": "2026-02-27",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "clean-max-enviro-energy-solutions-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-25",
+      "listing_date": "2026-03-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shree-ram-twistex-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-25",
+      "listing_date": "2026-03-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kiaasa-retail-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-25",
+      "listing_date": "2026-03-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "accord-transformer-and-switchgear-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-25",
+      "listing_date": "2026-03-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "mobilise-app-lab-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-25",
+      "listing_date": "2026-03-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "pngs-reva-diamond-jewellery-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-26",
+      "listing_date": "2026-03-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-03"
+      ]
+    },
+    {
+      "slug": "yaap-digital-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-02-27",
+      "listing_date": "2026-03-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-03"
+      ]
+    },
+    {
+      "slug": "omnitech-engineering-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-02-27",
+      "listing_date": "2026-03-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-03"
+      ]
+    },
+    {
+      "slug": "striders-impex-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-02",
+      "listing_date": "2026-03-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-03"
+      ]
+    },
+    {
+      "slug": "acetech-e-commerce-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-04",
+      "listing_date": "2026-03-09",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sedemac-mechatronics-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-06",
+      "listing_date": "2026-03-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "elfin-agro-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-09",
+      "listing_date": "2026-03-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "srinibas-pradhan-constructions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-10",
+      "listing_date": "2026-03-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "apsis-aerocom-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-13",
+      "listing_date": "2026-03-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "rajputana-stainless-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-11",
+      "listing_date": "2026-03-19",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-19 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 6,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "innovision-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-17",
+      "listing_date": "2026-03-23",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-23 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "gsp-crop-science-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-18",
+      "listing_date": "2026-03-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "raajmarg-infra-investment-trust",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-13",
+      "listing_date": "2026-03-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-03-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 7,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "novus-loyalty-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-20",
+      "listing_date": "2026-03-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "speciality-medicines-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-24",
+      "listing_date": "2026-03-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-26"
+      ]
+    },
+    {
+      "slug": "central-mine-planning-and-design-institute-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-24",
+      "listing_date": "2026-03-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-26"
+      ]
+    },
+    {
+      "slug": "tipco-engineering-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-25",
+      "listing_date": "2026-04-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-26",
+        "2026-03-31"
+      ]
+    },
+    {
+      "slug": "highness-microelectronics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-27",
+      "listing_date": "2026-04-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-31"
+      ]
+    },
+    {
+      "slug": "amir-chand-jagdish-kumar-exports-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-27",
+      "listing_date": "2026-04-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-31"
+      ]
+    },
+    {
+      "slug": "sai-parenteral-s-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-27",
+      "listing_date": "2026-04-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-31"
+      ]
+    },
+    {
+      "slug": "powerica-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-03-27",
+      "listing_date": "2026-04-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-03-31"
+      ]
+    },
+    {
+      "slug": "vivid-electromech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-03-30",
+      "listing_date": "2026-04-07",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-04-07 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": [
+        "2026-03-31",
+        "2026-04-03"
+      ]
+    },
+    {
+      "slug": "emiac-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-04-08",
+      "listing_date": "2026-04-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "safety-controls-and-devices-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-04-08",
+      "listing_date": "2026-04-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "om-power-transmission-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-04-13",
+      "listing_date": "2026-04-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-04-14"
+      ]
+    },
+    {
+      "slug": "property-share-investment-trust-propshare-celestia",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-04-16",
+      "listing_date": "2026-04-24",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-04-24 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 6,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "mehul-telecom-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-04-21",
+      "listing_date": "2026-04-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "adisoft-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-04-27",
+      "listing_date": "2026-04-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "amba-auto-sales-and-services-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-04-29",
+      "listing_date": "2026-05-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-01"
+      ]
+    },
+    {
+      "slug": "onemi-technology-solutions-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-05-05",
+      "listing_date": "2026-05-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "value-360-communications-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-06",
+      "listing_date": "2026-05-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "recode-studios-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-07",
+      "listing_date": "2026-05-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "simca-advertising-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-12",
+      "listing_date": "2026-05-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "rfbl-flexi-pack-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-14",
+      "listing_date": "2026-05-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "goldline-pharmaceutical-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-14",
+      "listing_date": "2026-05-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "nfp-sampoorna-foods-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-20",
+      "listing_date": "2026-05-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "teamtech-formwork-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-21",
+      "listing_date": "2026-05-26",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vegorama-punjabi-angithi-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-22",
+      "listing_date": "2026-05-27",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "autofurnish-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-25",
+      "listing_date": "2026-05-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-28"
+      ]
+    },
+    {
+      "slug": "bio-medica-laboratories-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-25",
+      "listing_date": "2026-05-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-28"
+      ]
+    },
+    {
+      "slug": "q-line-biotech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-25",
+      "listing_date": "2026-05-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-28"
+      ]
+    },
+    {
+      "slug": "m-r-maniveni-foods-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-26",
+      "listing_date": "2026-06-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-28"
+      ]
+    },
+    {
+      "slug": "yaashvi-jewellers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-27",
+      "listing_date": "2026-06-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-28"
+      ]
+    },
+    {
+      "slug": "harikanta-overseas-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-27",
+      "listing_date": "2026-06-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-05-28"
+      ]
+    },
+    {
+      "slug": "rajnandini-fashion-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-05-29",
+      "listing_date": "2026-06-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "aureate-tradde-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-02",
+      "listing_date": "2026-06-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "smr-jewels-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-03",
+      "listing_date": "2026-06-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "merritronix-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-03",
+      "listing_date": "2026-06-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "cmr-green-technologies-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-06-05",
+      "listing_date": "2026-06-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vahh-chemicals-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-08",
+      "listing_date": "2026-06-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "uhm-vacation-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-08",
+      "listing_date": "2026-06-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "genxai-analytics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-09",
+      "listing_date": "2026-06-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "hexagon-nutrition-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-06-09",
+      "listing_date": "2026-06-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "utkal-speciality-industries-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-12",
+      "listing_date": "2026-06-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "susan-electricals-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-15",
+      "listing_date": "2026-06-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "horizon-reclaim-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-16",
+      "listing_date": "2026-06-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "liotech-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-19",
+      "listing_date": "2026-06-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "clay-craft-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-19",
+      "listing_date": "2026-06-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "diksha-polymers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-19",
+      "listing_date": "2026-06-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "leapfrog-engineering-services-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-19",
+      "listing_date": "2026-06-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "avience-biomedicals-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-22",
+      "listing_date": "2026-06-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "anubhav-plast-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-23",
+      "listing_date": "2026-06-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "turtlemint-fintech-solutions-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-06-23",
+      "listing_date": "2026-06-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "waterways-leisure-tourism-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-06-25",
+      "listing_date": "2026-07-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "advit-jewels-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-06-25",
+      "listing_date": "2026-07-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "riyaasat-lifestyle-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-25",
+      "listing_date": "2026-07-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "jivial-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-25",
+      "listing_date": "2026-07-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "shreedhar-spinners-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-25",
+      "listing_date": "2026-07-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-06-26"
+      ]
+    },
+    {
+      "slug": "csm-technologies-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-06-29",
+      "listing_date": "2026-07-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sri-priyanka-geo-commex",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-29",
+      "listing_date": "2026-07-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "crazy-snacks-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-06-30",
+      "listing_date": "2026-07-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "aastha-spintex-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-01",
+      "listing_date": "2026-07-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "twinkle-papers-ltd",
+      "status": "LISTED",
+      "segment": null,
+      "offering_type": "IPO",
+      "close_date": "2026-07-03",
+      "listing_date": "2026-07-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 1,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "adon-agro-commodities-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-01",
+      "listing_date": "2026-07-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "atharva-polyplast-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-02",
+      "listing_date": "2026-07-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vinit-mobile-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-02",
+      "listing_date": "2026-07-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "teja-engineering-industries-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-02",
+      "listing_date": "2026-07-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sampark-india-logistics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-02",
+      "listing_date": "2026-07-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "seemax-resources-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-02",
+      "listing_date": "2026-07-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kratikal-tech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-02",
+      "listing_date": "2026-07-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "knack-packaging-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-03",
+      "listing_date": "2026-07-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ic-electricals-co-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-07",
+      "listing_date": "2026-07-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kusumgar-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-10",
+      "listing_date": "2026-07-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "laser-power-and-infra-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-13",
+      "listing_date": "2026-07-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "devson-catalyst-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-13",
+      "listing_date": "2026-07-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "happy-steels-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-13",
+      "listing_date": "2026-07-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sbi-funds-management-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-16",
+      "listing_date": "2026-07-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "alpine-texworld-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-16",
+      "listing_date": "2026-07-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "millworks-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-16",
+      "listing_date": "2026-07-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sotefin-bharat-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-20",
+      "listing_date": "2026-07-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "caliber-mining-and-logistics-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-21",
+      "listing_date": "2026-07-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "gulf-lloyds-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-22",
+      "listing_date": "2026-07-27",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "metalic-technoforge-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-23",
+      "listing_date": "2026-07-28",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shree-balaji-mala-textiles-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-24",
+      "listing_date": "2026-07-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "xtranet-technologies-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-27",
+      "listing_date": "2026-07-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "indo-mim-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-27",
+      "listing_date": "2026-07-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "lohia-corp-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-27",
+      "listing_date": "2026-07-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "silverstorm-parks-and-resorts-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-28",
+      "listing_date": "2026-07-31",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "advance-technoforge-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-29",
+      "listing_date": "2026-08-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "propshop-events-and-exhibitions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-29",
+      "listing_date": "2026-08-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "poojaa-precision-engg-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-30",
+      "listing_date": "2026-08-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "h-r-hygiene-products-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-07-31",
+      "listing_date": "2026-08-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "manipal-health-enterprises-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-07-31",
+      "listing_date": "2026-08-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "dhaval-packaging-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-03",
+      "listing_date": "2026-08-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "juniper-green-energy-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-03",
+      "listing_date": "2026-08-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "mv-electrosystems-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-03",
+      "listing_date": "2026-08-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "oneindig-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-03",
+      "listing_date": "2026-08-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fusion-klassroom-edutech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-04",
+      "listing_date": "2026-08-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "anawil-wire-and-engineering-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-05",
+      "listing_date": "2026-08-10",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "aegeus-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-06",
+      "listing_date": "2026-08-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "g-v-electricals-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-07",
+      "listing_date": "2026-08-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ardee-industries-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-07",
+      "listing_date": "2026-08-12",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "lapl-automotive-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-10",
+      "listing_date": "2026-08-13",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "technocraft-ventures-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-11",
+      "listing_date": "2026-08-14",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "optimystix-entertainment-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-11",
+      "listing_date": "2026-08-14",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "leap-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-11",
+      "listing_date": "2026-08-14",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "molbio-diagnostics-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-12",
+      "listing_date": "2026-08-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "dhoot-transmission-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-12",
+      "listing_date": "2026-08-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sham-foam-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-13",
+      "listing_date": "2026-08-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "milky-mist-dairy-food-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-13",
+      "listing_date": "2026-08-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "q-and-t-foods-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-14",
+      "listing_date": "2026-08-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shiprocket-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-14",
+      "listing_date": "2026-08-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "behari-lal-engineering-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-14",
+      "listing_date": "2026-08-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "pramodini-medicare-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-14",
+      "listing_date": "2026-08-19",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "credent-connect-n-care-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-17",
+      "listing_date": "2026-08-20",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "technocrats-plasma-systems-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-18",
+      "listing_date": "2026-08-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ens-enterprises-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-18",
+      "listing_date": "2026-08-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "skytech-infinite-platform-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-18",
+      "listing_date": "2026-08-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "horizon-industrial-parks-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-19",
+      "listing_date": "2026-08-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fascinate-textiles-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-19",
+      "listing_date": "2026-08-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "lalithaa-jewellery-mart-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-19",
+      "listing_date": "2026-08-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shankesh-jewellers-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-20",
+      "listing_date": "2026-08-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sunshine-pictures-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-20",
+      "listing_date": "2026-08-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "gaja-alternative-asset-management-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-21",
+      "listing_date": "2026-08-26",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "dhanwel-hybrid-seeds-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-22",
+      "listing_date": "2026-08-26",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "mopshop-distribution-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-22",
+      "listing_date": "2026-08-26",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "tempsens-instruments-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-24",
+      "listing_date": "2026-08-28",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-08-28 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "augmont-enterprises-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-25",
+      "listing_date": "2026-08-31",
+      "outcome": {
+        "status": "FAIL",
+        "ruleId": "listing_t3",
+        "cause": "[listing_t3] listing_date 2026-08-31 is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+      },
+      "workingDays": 4,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "abh-healthcare-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-28",
+      "listing_date": "2026-09-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 2,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "hy-tech-engineers-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-27",
+      "listing_date": "2026-09-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "symbiotec-pharmalab-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-27",
+      "listing_date": "2026-09-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "madhur-knit-crafts-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-27",
+      "listing_date": "2026-09-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "skyways-air-services-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-27",
+      "listing_date": "2026-09-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "annu-projects-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-28",
+      "listing_date": "2026-09-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sumax-engineering-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-28",
+      "listing_date": "2026-09-02",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "lumino-industries-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-08-31",
+      "listing_date": "2026-09-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kwick-forensic-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-08-31",
+      "listing_date": "2026-09-03",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "paluck-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-01",
+      "listing_date": "2026-09-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "esds-software-solution-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-01",
+      "listing_date": "2026-09-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "complete-sports-and-management-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-01",
+      "listing_date": "2026-09-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "priority-jewels-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-01",
+      "listing_date": "2026-09-04",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "purple-style-labs-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-02",
+      "listing_date": "2026-09-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "phychem-technologies-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-04",
+      "listing_date": "2026-09-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 1,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ashutosh-fibre-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-02",
+      "listing_date": "2026-09-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shanti-inorganics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-02",
+      "listing_date": "2026-09-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "farm-peace-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-05",
+      "listing_date": "2026-09-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 2,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "deepa-jewellers-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-03",
+      "listing_date": "2026-09-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fly-hi-maritime-travels-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-05",
+      "listing_date": "2026-09-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 2,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "rays-of-belief-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-03",
+      "listing_date": "2026-09-08",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "qualiance-international-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-08",
+      "listing_date": "2026-09-11",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "apana-logistics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-09",
+      "listing_date": "2026-09-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "pranav-constructions-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-09",
+      "listing_date": "2026-09-15",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "prasol-chemicals-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-10",
+      "listing_date": "2026-09-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "glass-wall-systems-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-10",
+      "listing_date": "2026-09-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "kanohar-electricals-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-10",
+      "listing_date": "2026-09-16",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "rentomojo-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "manipal-payment-and-identity-solutions-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "asset-reconstruction-company-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "karamtara-engineering-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "lcc-projects-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "steamhouse-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "amtech-esters-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "vinod-texworld-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "infrax-renewable-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-11",
+      "listing_date": "2026-09-17",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-09-14"
+      ]
+    },
+    {
+      "slug": "veegaland-developers-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-15",
+      "listing_date": "2026-09-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "raksan-transformers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-15",
+      "listing_date": "2026-09-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "om-galaxy-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-15",
+      "listing_date": "2026-09-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "maharaja-and-speedex-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-15",
+      "listing_date": "2026-09-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "panchatv-bharat-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-15",
+      "listing_date": "2026-09-18",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "manika-plastech-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-16",
+      "listing_date": "2026-09-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "injecto-polymers-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-16",
+      "listing_date": "2026-09-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "century-business-media-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-16",
+      "listing_date": "2026-09-21",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "quanto-agroworld-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-17",
+      "listing_date": "2026-09-22",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shakti-polytarp-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-17",
+      "listing_date": "2026-09-22",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vama-wovenfab-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-17",
+      "listing_date": "2026-09-22",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "ss-retail-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-18",
+      "listing_date": "2026-09-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "jindal-supreme-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-18",
+      "listing_date": "2026-09-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "hero-motors-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-18",
+      "listing_date": "2026-09-23",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "kheria-autocomp-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-21",
+      "listing_date": "2026-09-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sonaselection-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-21",
+      "listing_date": "2026-09-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "national-stock-exchange-of-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-21",
+      "listing_date": "2026-09-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "spectraa-technology-solutions-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-21",
+      "listing_date": "2026-09-24",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "axiom-gas-engineering-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-22",
+      "listing_date": "2026-09-25",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "fx-multitech-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-23",
+      "listing_date": "2026-09-28",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "robokidz-eduventures-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-23",
+      "listing_date": "2026-09-28",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "vivekanand-cotspin-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-23",
+      "listing_date": "2026-09-28",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "varmora-granito-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-24",
+      "listing_date": "2026-09-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "himalaya-nutravedics-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-24",
+      "listing_date": "2026-09-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "anand-seamless-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-24",
+      "listing_date": "2026-09-29",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "swastika-infra-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "elevate-campuses-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "s-k-offset-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "coreintegra-consulting-services-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "adroit-industries-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "unitec-fibres-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "armee-infotech-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "sai-urja-indo-ventures-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "pooja-logistics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "liqvd-digital-india-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-25",
+      "listing_date": "2026-09-30",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "moneyview-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-28",
+      "listing_date": "2026-10-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "peshwa-wheat-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-28",
+      "listing_date": "2026-10-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "a-one-steels-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-28",
+      "listing_date": "2026-10-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "green-asia-impex-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-10-01",
+      "listing_date": "2026-10-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 0,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "roopa-screen-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-28",
+      "listing_date": "2026-10-01",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": []
+    },
+    {
+      "slug": "shree-tnb-polymers-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "acevector-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "dudani-retail-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "orient-cables-india-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "german-green-steel-and-power-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "runwal-enterprises-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "bench-mark-infotech-services-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "himalayan-solar-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-29",
+      "listing_date": "2026-10-05",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "pind-hospitality-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-30",
+      "listing_date": "2026-10-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "acme-universal-safezone-9-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-30",
+      "listing_date": "2026-10-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "shah-investor-s-home-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-10-01",
+      "listing_date": "2026-10-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 2,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "shivchem-agro-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-09-30",
+      "listing_date": "2026-10-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "srit-india-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "close_date": "2026-09-30",
+      "listing_date": "2026-10-06",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "papadmalji-agro-foods-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-10-01",
+      "listing_date": "2026-10-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "vans-electroengineerings-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-10-01",
+      "listing_date": "2026-10-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    },
+    {
+      "slug": "black-opal-consultants-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "close_date": "2026-10-01",
+      "listing_date": "2026-10-07",
+      "outcome": {
+        "status": "PASS",
+        "ruleId": "listing_t3"
+      },
+      "workingDays": 3,
+      "holidaysSkipped": [
+        "2026-10-02"
+      ]
+    }
+  ]
+}

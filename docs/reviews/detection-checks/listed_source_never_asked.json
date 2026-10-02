@@ -1,0 +1,11 @@
+{
+  "id": "listed_source_never_asked",
+  "findingClass": "A source and field pair Appendix A lists that is never asked or has no mapping.",
+  "round7Findings": [],
+  "failThreshold": "FAIL per source and field when it has no mapping or no recorded answer or abstention across the IPOs it applies to. Reported by source, field and the IPOs affected, with identities.",
+  "severity": "P1",
+  "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+  "note": "SPEC ONLY - this check is NOT implemented. It has no record('listed_source_never_asked') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage (scripts/tests/audit-detection-floor.test.mjs case 79). Extends the manifest-rank-coverage-gaps baseline. Specified by spec 2.5.6 (OD-164), item 37.",
+  "owner": "document-yield plan (OD-164), spec 7.1 item 37",
+  "section": "notCoveredByThisManifest"
+}

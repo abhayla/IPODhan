@@ -1,0 +1,12 @@
+{
+  "class_id": "document answers recorded under a table the pull walk cannot read are invisible to the plan",
+  "feature": "any consolidated writer that records a document-derived value under a table or field key which the plan-side DOC reader does not serve (today: DOC_READABLE_TABLES in field-plan-walk-doc-fetcher.ts covers ipos and ipo_details; the persister records child tables under field \"rows\")",
+  "symptom": "A writer stores a document's answer in a place the reader that closes the plan row cannot see, so the plan row stays open (NOT_AVAILABLE_YET or CHECK_FAILED) for ever while the data sits in the table. Any new table, key or field name added to the writer without the same addition to the reader reproduces it.",
+  "first_seen": "2026-10-02 (F-225) -- ipodhan_staging: 28,760 child-table rank-1-DOC plan rows, 0 SUPPLIED (19,497 NOT_AVAILABLE_YET, 8,913 CHECK_FAILED, 350 PENDING); NSE's 79 risk factors are written but the plan never sees them.",
+  "fix_prs": "none yet -- planned: spec 7.1 item 38 (OD-164(a))",
+  "detection_check": "planned doc_rank1_unanswered_with_offer_doc (docs/reviews/detection-checks/doc_rank1_unanswered_with_offer_doc.json, notCoveredByThisManifest): rank-1 DOC rows unanswered while a COMPLETED offer document exists, by IPO",
+  "status": "unguarded -- no implemented check; the planned check is not yet in audit-detection-floor.mjs",
+  "spec_ref": [
+    "§2.5"
+  ]
+}

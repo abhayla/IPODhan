@@ -16,6 +16,13 @@
     "R-138": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-139": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-140": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
-    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code."
+    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-268": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written.",
+    "R-269": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written.",
+    "R-270": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written.",
+    "R-271": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written.",
+    "R-272": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written.",
+    "R-273": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written.",
+    "R-274": "OD-164 (2026-10-02): owned by build items 37 to 45 (spec 7.1), NOT BUILT; no build card exists yet. Declared unclaimed until each item is contracted and its card written."
   }
 }

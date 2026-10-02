@@ -1,0 +1,11 @@
+{
+  "id": "witness_missing_on_stored_value",
+  "findingClass": "A stored value whose Appendix A listed sources have no recorded answer.",
+  "round7Findings": [],
+  "failThreshold": "FAIL per IPO and field when field_sources.witnesses holds no answer for a listed source other than the winner. Reported by IPO, table, field and writer.",
+  "severity": "P1",
+  "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+  "note": "SPEC ONLY - this check is NOT implemented. It has no record('witness_missing_on_stored_value') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage (scripts/tests/audit-detection-floor.test.mjs case 79). Baseline: 20,008 of 20,532 stored values on staging 2026-10-02 (F-226). Specified by spec 2.5.6 (OD-164), item 37.",
+  "owner": "document-yield plan (OD-164), spec 7.1 item 37",
+  "section": "notCoveredByThisManifest"
+}
