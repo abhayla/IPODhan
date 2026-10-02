@@ -4485,9 +4485,9 @@ reading the document would not have shown. The current state:
 <!-- generated:source-depth — regenerate with `node docs/design/generate-appendix-a.mjs --write`. Hand-editing these numbers is what D2/D21 exist to catch: this table said three-sources 97 / two 22 / one 71 for the whole of this session while the spec's own STATS().depth returned 50/72/68 (Moneycontrol's retirement moved fields between buckets and nobody regenerated the count that describes it). -->
 | | Fields |
 |---|---:|
-| Three sources | **50** |
-| Two sources, reason stated (§A.3) | 72 |
-| One source, reason stated (§A.3) | 68 |
+| Three sources | **43** |
+| Two sources, reason stated (§A.3) | 77 |
+| One source, reason stated (§A.3) | 70 |
 | No source — computed (class C) or written by our own pipeline (class I) | 50 |
 | **Total** | **240** |
 <!-- end-source-depth -->
@@ -4646,7 +4646,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 5 | `ipos.open_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 6 | `ipos.close_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 7 | `ipos.listing_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 8 | `ipos.status` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
+| 8 | `ipos.status` | T | NSE | BSE | — | BSE · — · — | NSE · — · — | — | **E-1** (§1.2.1) **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 9 | `ipos.registrar` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E3 | VERIFIED: NSE issueInfo returns "Name of the Registrar"; BSE detail returns Registrar with address |
 | 10 | `ipos.registrar_id` | C | — | — | — | — · — · — | — · — · — | — | computed: FK resolved from registrar |
 | 11 | `ipos.rating_override` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
@@ -4655,13 +4655,13 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 14 | `ipos.price_range_min` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 15 | `ipos.price_range_max` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 16 | `ipos.last_scraped_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 17 | `ipos.listing_exchanges` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 | OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union. |
+| 17 | `ipos.listing_exchanges` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A15 | OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union. **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 18 | `ipos.face_value` | D | DOC | BSE | NSE | DOC · BSE · CG | DOC · NSE · CG | A2 |  |
 | 19 | `ipos.allotment_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 20 | `ipos.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source |
 | 21 | `ipos.lead_managers` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E1 | VERIFIED: NSE returns "Book Running Lead Managers"; BSE returns Book_Running_Lead_Manager |
 | 22 | `ipos.isin` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E7 |  |
-| 23 | `ipos.segment` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 |  |
+| 23 | `ipos.segment` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A15 |  **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 24 | `ipos.offering_type` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A11 |  |
 | 25 | `ipos.scraper_locked` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 26 | `ipos.last_manual_edit_at` | I | — | — | — | — · — · — | — · — · — | — |  |
@@ -4673,24 +4673,24 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 32 | `ipos.cin` | D | DOC | — | — | DOC · — · — | DOC · — · — | E7 | no rank 2: no website or exchange publishes the CIN |
 | 33 | `ipo_details.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source |
 | 34 | `ipo_details.issue_type` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A11 | CORRECTED: NSE returns "Issue Type: Book Building". BSE detail does NOT carry it - an earlier draft ranked BSE here |
-| 35 | `ipo_details.fresh_issue` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A5 |  |
-| 36 | `ipo_details.ofs_issue` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A6 |  |
+| 35 | `ipo_details.fresh_issue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A5 |  **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
+| 36 | `ipo_details.ofs_issue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A6 |  **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 37 | `ipo_details.face_value` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A2 |  |
 | 38 | `ipo_details.basis_of_allotment_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 39 | `ipo_details.initiation_of_refunds_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 40 | `ipo_details.credit_of_shares_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 41 | `ipo_details.exchanges` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 |  |
+| 41 | `ipo_details.exchanges` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A15 |  **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 42 | `ipo_details.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 43 | `ipo_details.last_verified_at` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 44 | `ipo_details.compliance_officer` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
 | 45 | `ipo_details.compliance_officer_phone` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
 | 46 | `ipo_details.compliance_officer_email` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
-| 47 | `ipo_details.upi_cutoff_time` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | B7 | clock time, not a date — deliberately NOT in E-1 |
+| 47 | `ipo_details.upi_cutoff_time` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | B7 | clock time, not a date — deliberately NOT in E-1 **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 48 | `ipo_details.designated_exchange` | D | DOC | — | — | DOC · — · — | DOC · — · — | A14 | no rank 2: observed absent from both exchange payloads 2026-09-09 - neither NSE issueInfo nor BSE detail names a designated exchange |
 | 49 | `ipo_details.lot_multiple` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A3 |  |
 | 50 | `ipo_details.allocation_pct` | D | DOC | — | — | DOC · — · — | DOC · — · — | A13 | no rank 2: observed absent 2026-09-09 - an earlier draft matched "Anchor Allocation Report" and mistook a document link for the allocation percentages |
 | 51 | `ipo_details.pre_ipo_placement` | D | DOC | — | — | DOC · — · — | DOC · — · — | D6 | no rank 2: disclosure exists only in the filing; stored as a boolean today, but a pre-IPO placement reduces the fresh issue and should carry an amount — issue-size fields are provisional until sourced from a PROSPECTUS |
-| 52 | `ipo_details.bid_windows` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | B8 | clock windows, not dates — deliberately NOT in E-1 |
+| 52 | `ipo_details.bid_windows` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | B8 | clock windows, not dates — deliberately NOT in E-1 **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 53 | `ipo_details.promoter_shares_held` | D | DOC | — | — | DOC · — · — | DOC · — · — | D2 | no rank 2: capital-structure table only |
 | 54 | `ipo_details.sebi_regulation_cited` | D | DOC | — | — | DOC · — · — | DOC · — · — | A12 | no rank 2: printed only on the advertisement |
 | 55 | `ipo_details.promoter_group_transactions_since_drhp` | D | DOC | — | — | DOC · — · — | DOC · — · — | D7 | no rank 2: disclosure exists only in the filing |
@@ -4714,9 +4714,9 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 73 | `ipo_details.max_retail_subscription` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
 | 74 | `ipo_details.max_employee_subscription` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
 | 75 | `ipo_details.employee_discount` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
-| 76 | `ipo_details.sponsor_banks` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E6 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo "Sponsor Bank", BSE detail Sponsor_Bank. An earlier draft called it filing-only |
-| 77 | `ipo_details.tick_size` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "Tick Size", BSE Tick_Size |
-| 78 | `ipo_details.ipo_market_timings` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | B8 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "IPO Market Timings", BSE IPO_Market_Timings |
+| 76 | `ipo_details.sponsor_banks` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | E6 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo "Sponsor Bank", BSE detail Sponsor_Bank. An earlier draft called it filing-only **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
+| 77 | `ipo_details.tick_size` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "Tick Size", BSE Tick_Size **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
+| 78 | `ipo_details.ipo_market_timings` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | B8 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "IPO Market Timings", BSE IPO_Market_Timings **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 79 | `ipo_details.category_details` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A13 | no rank 2: the exchange circular carries the allocation |
 | 80 | `ipo_details.sub_categories_upi` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | B7 | no rank 2: the exchange circular carries the allocation |
 | 81 | `financial_data.revenue_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
@@ -4749,7 +4749,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 108 | `financial_data.quick_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
 | 109 | `financial_data.inventory_turnover` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
 | 110 | `financial_statements.fiscal_year` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | CG restated table carries this per fiscal year |
-| 111 | `financial_statements.revenue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | CG restated table carries this per fiscal year |
+| 111 | `financial_statements.revenue` | D | DOC | — | — | DOC · — · — | DOC · — · — | C1 | CG restated table carries this per fiscal year **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 112 | `financial_statements.total_income` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | CG restated table carries this per fiscal year |
 | 113 | `financial_statements.ebitda` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | CG restated table carries this per fiscal year |
 | 114 | `financial_statements.pat` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | CG restated table carries this per fiscal year |
@@ -4836,7 +4836,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 195 | `documents.extraction_error` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 196 | `documents.retry_count` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 197 | `documents.sha256` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 198 | `documents.filing_date` | D | DOC | BSE | — | DOC · BSE · — | DOC · — · — | B9 | historical — never moves; the doc-type healing rule depends on it |
+| 198 | `documents.filing_date` | D | DOC | — | — | DOC · — · — | DOC · — · — | B9 | historical — never moves; the doc-type healing rule depends on it **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 199 | `subscriptions.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 200 | `subscriptions.qib_subscription` | X | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: no document can carry a live figure |
 | 201 | `subscriptions.nii_subscription` | X | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: no document can carry a live figure |
@@ -4870,12 +4870,12 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 229 | `ipo_demand_graph.cumulative_quantity` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book |
 | 230 | `ipo_demand_graph.exchange` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book |
 | 231 | `registrars.name` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
-| 232 | `registrars.short_name` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 232 | `registrars.short_name` | D | DOC | REG | — | DOC · REG · — | DOC · REG · — | E3 |  **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 233 | `registrars.email` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
 | 234 | `registrars.phone` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
 | 235 | `registrars.website` | D | REG | DOC | CG | REG · DOC · CG | REG · DOC · CG | E3 | the registrar itself is authoritative for its own URL |
 | 236 | `registrars.allotment_check_url` | I | REG | — | — | REG · — · — | REG · — · — | — | no rank 2: the registrar owns this URL |
-| 237 | `registrars.address` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 237 | `registrars.address` | D | DOC | REG | — | DOC · REG · — | DOC · REG · — | E3 |  **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 238 | `registrars.active` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 239 | `registrars.allotment_url_healthy` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 240 | `registrars.allotment_url_checked_at` | I | — | — | — | — · — · — | — · — · — | — |  |

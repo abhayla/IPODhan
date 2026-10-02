@@ -86,9 +86,14 @@ const KNOWN_CORRECTIONS = {
   // dropFromCapability: BSE stays capable:true (MAINBOARD/SME_BSE still rank it) — only the rank
   // list for SME_NSE changes; MONEYCONTROL is dropped everywhere including capability, since S0a
   // removed it from the field's capability universe entirely.
-  'financial_statements.revenue': { dropSource: 'MONEYCONTROL', dropFromCapability: true, types: ['MAINBOARD', 'SME_BSE', 'SME_NSE'] },
-  'ipo_details.fresh_issue': { dropSource: 'BSE', dropFromCapability: false, types: ['SME_NSE'] },
-  'ipo_details.ofs_issue': { dropSource: 'BSE', dropFromCapability: false, types: ['SME_NSE'] },
+  // flipIncapable (OD-167, 2026-10-02): the source was re-checked on three IPOs, is not printed, and
+  // is removed from every rank; its capability entry stays but is capable:false (asserted below).
+  'financial_statements.revenue': [
+    { dropSource: 'MONEYCONTROL', dropFromCapability: true, types: ['MAINBOARD', 'SME_BSE', 'SME_NSE'] },
+    { dropSource: 'CHITTORGARH', flipIncapable: true, types: ['MAINBOARD', 'SME_BSE', 'SME_NSE'] }, // OD-167
+  ],
+  'ipo_details.fresh_issue': [{ dropSource: 'BSE', flipIncapable: true, types: ['MAINBOARD', 'SME_BSE', 'SME_NSE'] }], // OD-167 (SME_NSE: spec resolve() already dropped it)
+  'ipo_details.ofs_issue': [{ dropSource: 'BSE', flipIncapable: true, types: ['MAINBOARD', 'SME_BSE', 'SME_NSE'] }], // OD-167
 };
 
 // F-156 / OD-67 (item 11, 2026-09-24): the manifest's `unit` now follows the amount-columns
@@ -135,7 +140,7 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
       mismatches.push(`${key}: missing from generated manifest`);
       continue;
     }
-    const correction = KNOWN_CORRECTIONS[key];
+    const corrections = KNOWN_CORRECTIONS[key] ?? [];
 
     const expectedUnit = KNOWN_UNIT_CORRECTIONS[key] ?? original.unit;
     if (JSON.stringify(gen.unit) !== JSON.stringify(expectedUnit)) {
@@ -147,7 +152,13 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
     }
 
     const expectedCapability = { ...original.capability };
-    if (correction && correction.dropFromCapability) delete expectedCapability[correction.dropSource];
+    for (const c of corrections) {
+      if (c.dropFromCapability) delete expectedCapability[c.dropSource];
+      if (c.flipIncapable) {
+        if (gen.capability[c.dropSource]?.capable !== false) mismatches.push(`${key}: ${c.dropSource} must be capable:false (OD-167)`);
+        expectedCapability[c.dropSource] = gen.capability[c.dropSource];
+      }
+    }
     if (JSON.stringify(gen.capability) !== JSON.stringify(expectedCapability)) {
       mismatches.push(`${key}: capability differs beyond the documented correction (if any)`);
     }
@@ -156,10 +167,10 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
     // generator emits all three phase-1 types per the card, which is additive, never a mismatch.
     for (const type of Object.keys(original.rank)) {
       const genRank = gen.rank[type] ?? [];
-      const expectedRank =
-        correction && correction.types.includes(type)
-          ? original.rank[type].filter((s) => s !== correction.dropSource)
-          : original.rank[type];
+      const expectedRank = corrections.reduce(
+        (ranks, c) => (c.types.includes(type) ? ranks.filter((s) => s !== c.dropSource) : ranks),
+        original.rank[type],
+      );
       if (JSON.stringify(genRank) !== JSON.stringify(expectedRank)) {
         mismatches.push(`${key}: rank.${type} ${JSON.stringify(genRank)} != ${JSON.stringify(expectedRank)}`);
       }

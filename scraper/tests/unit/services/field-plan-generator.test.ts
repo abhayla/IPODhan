@@ -103,7 +103,7 @@ describe('generateFieldPlan - over the real manifest', () => {
       const row = rowFor(generateFieldPlan(ipo, manifest), 'financial_statements', 'revenue')!;
       expect([row.rank1Source, row.rank2Source, row.rank3Source]).toEqual([
         'DOC',
-        'CHITTORGARH',
+        null, // OD-167 (2026-10-02): CHITTORGARH removed (page prints Total Income, not revenue)
         null,
       ]);
     }

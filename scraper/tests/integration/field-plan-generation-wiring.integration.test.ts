@@ -186,9 +186,10 @@ describe.skipIf(!DATABASE_URL)(`field-plan generation wiring (${RUN_LABEL})`, ()
     // Moneycontrol is retired (OD-3; field-manifest.json v2, PR #738) — the manifest's
     // financial_statements.revenue rank array for SME_BSE now has only 2 entries, so
     // rank3Source resolves to null (field-plan-generator.ts: `ranks[2] ?? null`).
+    // OD-167 (2026-10-02): CHITTORGARH removed (its page prints Total Income, not revenue), so rank2 is null too.
     expect([revenueRow!.rank1Source, revenueRow!.rank2Source, revenueRow!.rank3Source]).toEqual([
       'DOC',
-      'CHITTORGARH',
+      null,
       null,
     ]);
   });
