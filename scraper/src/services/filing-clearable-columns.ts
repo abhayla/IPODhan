@@ -41,6 +41,8 @@ const ONE_TO_ONE: ReadonlyArray<readonly [ClearableTable, string, string]> = [
   ['ipos', 'listingDate', 'listing_date'],
   ['ipos', 'companyDescription', 'business_description'],
   ['ipos', 'cin', 'cin'],
+  ['ipos', 'leadManagers', 'lead_managers'],
+  ['ipos', 'registrar', 'registrar_name'],
   ['ipo_details', 'basisOfAllotmentDate', 'basis_of_allotment_date'],
   ['ipo_details', 'initiationOfRefundsDate', 'refund_date'],
   ['ipo_details', 'creditOfSharesDate', 'credit_date'],
