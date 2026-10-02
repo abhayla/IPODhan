@@ -122,6 +122,10 @@ vi.mock('../../../src/services/step-ledger-recorders.js', () => ({
   recordDocumentRunSteps: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../../src/services/filing-auto-persist.js', () => ({
+  // Item 45: the re-read selection reads these three (document-cycle.ts selectRereadCandidates).
+  EXTRACTABLE_DOC_TYPES: ['PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'],
+  rereadSinceFor: () => 'extract_filing.py@2026-10-03',
+  versionAtLeast: (recorded: string | null, floor: string) => recorded === floor,
   processPendingFilings: vi.fn().mockResolvedValue({
     ipoId: 'n/a',
     considered: 0,

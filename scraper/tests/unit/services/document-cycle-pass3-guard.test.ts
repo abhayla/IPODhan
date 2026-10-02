@@ -191,6 +191,10 @@ vi.mock('../../../src/services/step-ledger-recorders.js', () => ({
 }));
 
 vi.mock('../../../src/services/filing-auto-persist.js', () => ({
+  // Item 45: the re-read selection reads these three (document-cycle.ts selectRereadCandidates).
+  EXTRACTABLE_DOC_TYPES: ['PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'],
+  rereadSinceFor: () => 'extract_filing.py@2026-10-03',
+  versionAtLeast: (recorded: string | null, floor: string) => recorded === floor,
   processPendingFilings: vi.fn(),
   buildAutoPersistDeps: vi.fn().mockImplementation(() => ({})),
   DEFAULT_MAX_SPAWNS_PER_CYCLE: 3,

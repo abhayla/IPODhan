@@ -169,8 +169,14 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  * stored document. The re-read volume is bounded by the document cycle, not by this constant: at
  * most DEFAULT_MAX_SPAWNS_PER_CYCLE (3) extractor spawns per cycle across every IPO, one slot
  * reserved for a re-read first, never-read documents next, the rest topped up (document-cycle.ts).
+ *
+ * Item 45 (OD-164(g), spec §2.5.6 item 7) bumped it to '@2026-10-03': items 39 (cover block), 40
+ * (objects of the offer), 44 (OCR amount and CIN guards) and 46 (peer, ratio and promoter table
+ * readers) changed what a stored offer document yields, and documents already re-read at
+ * '@2026-10-02' were read before those readers existed. Same cycle bounds as above; the re-read
+ * passes order IPOs by how soon their files are purged (document-cycle.ts `orderForRereads`).
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-02';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-03';
 
 /**
  * #771 round 3 review (MAJOR): a version bump re-opens a COMPLETED document
@@ -205,6 +211,10 @@ export const EXTRACTOR_VERSION_CHANGES: Readonly<Record<string, readonly string[
   // family only, as for the two bumps above (the #1429 reader change is the ratio reader); a price-band
   // ad is NOT re-opened here, so no clear runs for its values until a bump names PRICE_BAND_AD.
   'extract_filing.py@2026-10-02': ['RHP', 'DRHP', 'PROSPECTUS'],
+  // Item 45 (OD-164(g)): items 39 (cover block), 40 (objects of the offer) and 46 (peer, ratio and
+  // promoter tables) read the prospectus family; item 44's OCR amount and CIN guards apply to a
+  // price-band ad's OCR pages, so PRICE_BAND_AD is re-opened here for the first time since the baseline.
+  'extract_filing.py@2026-10-03': ['RHP', 'DRHP', 'PROSPECTUS', 'PRICE_BAND_AD'],
 };
 
 function deriveRereadFloors(changes: Readonly<Record<string, readonly string[]>>): Record<string, string> {

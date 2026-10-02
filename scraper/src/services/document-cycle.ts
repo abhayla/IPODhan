@@ -87,6 +87,9 @@ import {
   type SpawnBudget,
   FILING_EXTRACTION_LOCK_TTL_MS,
   EXTRACTOR_VERSION,
+  rereadSinceFor,
+  versionAtLeast,
+  EXTRACTABLE_DOC_TYPES,
 } from './filing-auto-persist.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
 import { isExtractableDocType } from '../config/document-admission-status.js';
@@ -1452,6 +1455,176 @@ export async function loadExtractionOnlyCandidateIpos(): Promise<ExtractionOnlyC
 }
 
 /**
+ * Item 45 (OD-164(g), spec §2.5.6 item 7): one stored, already-read document an extractor version
+ * bump may re-open. `recordedVersion` is the version `document_fetch_state` holds for it (by document
+ * id, else by its IPO's row for that type — the same fallback `selectPendingFilings` reads).
+ */
+export interface StoredReadDocument {
+  ipoId: string;
+  type: string;
+  extractionStatus: string | null;
+  purgedUnread: boolean;
+  sha256: string | null;
+  recordedVersion: string | null;
+}
+
+/** An IPO holding at least one version re-read, with the date its files become purgeable. */
+export interface RereadCandidate extends ExtractionOnlyCandidate {
+  /**
+   * When OD-32 lets the purge delete this IPO's files: its latest successful extraction plus the
+   * retention days, once the issue has closed. `null` = no purge clock yet (not closed), so the file
+   * is not about to go.
+   */
+  purgeDueAt: Date | null;
+}
+
+/**
+ * Item 45: the IPOs whose stored documents a version bump re-opens. A document qualifies when it is
+ * COMPLETED, of a filing type (`EXTRACTABLE_DOC_TYPES`), below its type's re-read floor (`rereadSinceFor`, derived from
+ * EXTRACTOR_VERSION_CHANGES — the same filter `selectPendingFilings` applies), not purged unread, and
+ * its file is still on disk. A purged file is never a candidate, so it is never retried: there is
+ * nothing to read, and the reason is counted in `skippedNoFile`.
+ */
+const FILING_REREAD_TYPES: ReadonlySet<string> = new Set(EXTRACTABLE_DOC_TYPES.map((t) => String(t).toUpperCase()));
+
+export function selectRereadCandidates(
+  ipos: ReadonlyArray<ExtractionOnlyCandidate & { closeDate: Date | string | null; latestExtractedAt: Date | string | null }>,
+  documentsByIpoId: ReadonlyMap<string, StoredReadDocument[]>,
+  options: {
+    storeDir?: string;
+    retentionDays?: number;
+    now?: Date;
+    hasStoredFile?: (ipoId: string, docType: string, storeDir: string, sha256?: string | null) => boolean;
+  } = {}
+): { candidates: RereadCandidate[]; skippedNoFile: number } {
+  const storeDir = options.storeDir ?? getStoreDir();
+  const fileExists = options.hasStoredFile ?? hasStoredFile;
+  const retentionDays = options.retentionDays ?? getRetentionDays();
+  const now = options.now ?? new Date();
+  const candidates: RereadCandidate[] = [];
+  let skippedNoFile = 0;
+  for (const ipo of ipos) {
+    let pending = false;
+    for (const d of documentsByIpoId.get(ipo.id) ?? []) {
+      const type = d.type.toUpperCase();
+      // The filing re-read path's own types (anchors and corrigenda have their own readers, not re-opened here).
+      if (d.extractionStatus !== 'COMPLETED' || d.purgedUnread || !FILING_REREAD_TYPES.has(type) || !d.sha256) continue;
+      if (versionAtLeast(d.recordedVersion, rereadSinceFor(type))) continue;
+      if (!fileExists(ipo.id, type, storeDir, d.sha256)) {
+        skippedNoFile++;
+        continue;
+      }
+      pending = true;
+    }
+    if (!pending) continue;
+    const close = ipo.closeDate ? new Date(ipo.closeDate) : null;
+    const closed = close !== null && close.getTime() <= now.getTime();
+    const last = ipo.latestExtractedAt ? new Date(ipo.latestExtractedAt) : null;
+    const purgeDueAt = closed ? new Date((last ?? close).getTime() + retentionDays * 86_400_000) : null;
+    const { closeDate: _c, latestExtractedAt: _l, ...identity } = ipo;
+    candidates.push({ ...identity, purgeDueAt });
+  }
+  return { candidates, skippedNoFile };
+}
+
+/**
+ * Item 45: the order the two re-read passes (reservation pre-pass and top-up) visit IPOs in. An IPO
+ * whose files the OD-32 purge deletes soonest goes first — after that date its re-read can never run —
+ * then IPOs with a re-read and no purge clock, then everything else in the caller's (lifecycle) order.
+ * Generic: a recently listed IPO with a re-read pending (whose files go about seven days after its last
+ * read) is reached before an upcoming one whose files stay until it closes. Stable, never mutates input.
+ */
+export function orderForRereads<T extends { id: string }>(
+  ipos: readonly T[],
+  rereads: ReadonlyMap<string, RereadCandidate>
+): T[] {
+  const rank = (ipo: T): number => {
+    const r = rereads.get(ipo.id);
+    if (!r) return Number.POSITIVE_INFINITY;
+    return r.purgeDueAt ? r.purgeDueAt.getTime() : Number.MAX_SAFE_INTEGER;
+  };
+  return ipos
+    .map((ipo, index) => ({ ipo, index, key: rank(ipo) }))
+    .sort((a, b) => (a.key === b.key ? a.index - b.index : a.key < b.key ? -1 : 1))
+    .map((e) => e.ipo);
+}
+
+/**
+ * Item 45: the IPO order the re-read passes use this cycle. Every cycle candidate stays in it; an IPO
+ * outside the cycle's candidates that holds a re-read is added, soonest-purged first, at most `cap` of
+ * them (EXTRACTION_ONLY_PER_CYCLE, the same small cap the never-read extraction-only set uses); the rest
+ * wait for a later cycle. Spawns are still bounded by the cycle's one SpawnBudget, not by this list.
+ */
+export function planRereadPasses(
+  cycleCandidates: readonly ExtractionOnlyCandidate[],
+  rereadCandidates: readonly RereadCandidate[],
+  cap: number = EXTRACTION_ONLY_PER_CYCLE
+): { order: ExtractionOnlyCandidate[]; outOfWindow: ExtractionOnlyCandidate[]; outOfWindowDeferred: number } {
+  const byId = new Map(rereadCandidates.map((c) => [c.id, c]));
+  const inCycle = new Set(cycleCandidates.map((c) => c.id));
+  const outside = orderForRereads(rereadCandidates.filter((c) => !inCycle.has(c.id)), byId);
+  const limit = Math.max(0, cap);
+  const outOfWindow = outside.slice(0, limit).map(({ purgeDueAt: _p, ...c }) => c as ExtractionOnlyCandidate);
+  return {
+    order: orderForRereads([...cycleCandidates, ...outOfWindow], byId),
+    outOfWindow,
+    outOfWindowDeferred: Math.max(0, outside.length - limit),
+  };
+}
+
+/**
+ * Item 45: every IPO (live window or not) holding a stored, already-read document below its type's
+ * re-read floor. ONE query; the floor, extractable-type and on-disk filters run in the pure
+ * `selectRereadCandidates` above. Read-only.
+ */
+export async function loadRereadCandidates(): Promise<{ candidates: RereadCandidate[]; skippedNoFile: number }> {
+  const result = await db.execute(sql`
+    SELECT i.id, i.company_name AS "companyName", i.slug, i.segment, i.close_date AS "closeDate",
+           (SELECT max(x.extracted_at) FROM documents x
+             WHERE x.ipo_id = i.id AND x.extraction_status = 'COMPLETED') AS "latestExtractedAt",
+           d.type::text AS type, d.sha256 AS "sha256",
+           COALESCE(
+             (SELECT s.extractor_version FROM document_fetch_state s WHERE s.document_id = d.id LIMIT 1),
+             (SELECT s.extractor_version FROM document_fetch_state s
+               WHERE s.ipo_id = d.ipo_id AND s.doc_type::text = d.type::text LIMIT 1)
+           ) AS "recordedVersion"
+      FROM documents d
+      JOIN ipos i ON i.id = d.ipo_id
+     WHERE d.extraction_status = 'COMPLETED'
+       AND d.purged_unread = false
+       AND d.sha256 IS NOT NULL
+  `);
+  const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+  const ipoById = new Map<string, ExtractionOnlyCandidate & { closeDate: Date | string | null; latestExtractedAt: Date | string | null }>();
+  const docsByIpoId = new Map<string, StoredReadDocument[]>();
+  for (const r of rows) {
+    const id = String(r.id);
+    if (!ipoById.has(id)) {
+      ipoById.set(id, {
+        id,
+        companyName: String(r.companyName ?? ''),
+        slug: (r.slug as string | null) ?? null,
+        segment: (r.segment as string | null) ?? null,
+        closeDate: (r.closeDate as Date | string | null) ?? null,
+        latestExtractedAt: (r.latestExtractedAt as Date | string | null) ?? null,
+      });
+    }
+    const doc: StoredReadDocument = {
+      ipoId: id,
+      type: String(r.type ?? ''),
+      extractionStatus: 'COMPLETED',
+      purgedUnread: false,
+      sha256: (r.sha256 as string | null) ?? null,
+      recordedVersion: (r.recordedVersion as string | null) ?? null,
+    };
+    const list = docsByIpoId.get(id);
+    if (list) list.push(doc);
+    else docsByIpoId.set(id, [doc]);
+  }
+  return selectRereadCandidates([...ipoById.values()], docsByIpoId);
+}
+
+/**
  * Demote any FOUND row whose file is no longer on disk back to WANTED (M7).
  *
  * Purged too early, disk wiped, a failed rename — whatever the cause, without
@@ -2285,11 +2458,44 @@ export async function runDocumentCycle(
         //      still lets re-reads use the rest of the budget, exactly as
         //      before this fix.
         const RESERVED_REREAD_SLOTS = 1;
+        // Item 45 (OD-164(g), spec §2.5.6 item 7): the re-read passes visit IPOs soonest-purged first
+        // (`orderForRereads`), and also reach an IPO outside the live window whose stored document a
+        // version bump re-opened — at most EXTRACTION_ONLY_PER_CYCLE of those per cycle, the same small
+        // cap the never-read extraction-only set uses. Re-reads stay inside the same spawn budget.
+        let rereadById = new Map<string, RereadCandidate>();
+        let outOfWindowRereads: ExtractionOnlyCandidate[] = [];
+        let rereadOrder: ExtractionOnlyCandidate[] = extractionCandidates;
+        try {
+          const { candidates: rereadCandidates, skippedNoFile } = await loadRereadCandidates();
+          rereadById = new Map(rereadCandidates.map((c) => [c.id, c]));
+          const plan = planRereadPasses(extractionCandidates, rereadCandidates);
+          outOfWindowRereads = plan.outOfWindow;
+          rereadOrder = plan.order;
+          // A re-read reaches only these IPOs; their anchors are not this pass's business.
+          for (const c of outOfWindowRereads) anchorsHandledIpoIds.add(c.id);
+          if (rereadCandidates.length > 0 || skippedNoFile > 0) {
+            logger.info(
+              {
+                rereadIpos: rereadCandidates.length,
+                outOfWindowSelected: outOfWindowRereads.length,
+                outOfWindowDeferred: plan.outOfWindowDeferred,
+                skippedNoFile,
+                extractorVersion: EXTRACTOR_VERSION,
+              },
+              'Extractor-version re-read candidates (item 45): purged files are skipped, never retried'
+            );
+          }
+        } catch (error) {
+          logger.warn(
+            { cause: error instanceof Error ? error.message : String(error) },
+            'Loading re-read candidates failed (non-fatal) — this cycle re-reads in lifecycle order, live window only'
+          );
+        }
         spawnBudget.phase = 'rereads';
         const reservationCap = Math.min(RESERVED_REREAD_SLOTS, spawnBudget.remaining);
         const budgetBeforeReservation = spawnBudget.remaining;
         spawnBudget.remaining = reservationCap;
-        for (const ipo of extractionCandidates) {
+        for (const ipo of rereadOrder) {
           if (boxBusyThisCycle || spawnBudget.remaining <= 0) break;
           const outcome = await callOnce(ipo);
           // #1247 r1 review (MINOR-2): an 'error' (this ONE IPO's call threw)
@@ -2318,7 +2524,9 @@ export async function runDocumentCycle(
         }
 
         spawnBudget.phase = 'rereads';
-        for (const ipo of rereadIpos) {
+        const topUpIds = new Set(rereadIpos.map((c) => c.id));
+        for (const c of outOfWindowRereads) if (!topUpIds.has(c.id)) rereadIpos.push(c);
+        for (const ipo of orderForRereads(rereadIpos, rereadById)) {
           if (boxBusyThisCycle || spawnBudget.remaining <= 0) break;
           const outcome = await callOnce(ipo);
           if (!outcome.ok) {
