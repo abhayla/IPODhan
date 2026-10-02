@@ -1,0 +1,1 @@
+ALTER TABLE "ipos" ADD COLUMN "answers_round_at" timestamp;

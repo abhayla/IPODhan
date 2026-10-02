@@ -63,6 +63,7 @@ import {
 } from './document-store.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { walkFieldPlanForIPO } from './field-plan-walk.js';
+import { runAnswersOnlyRound, buildAnswersRoundStore } from './field-plan-answers-round.js';
 import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { createFieldSourceOverridesReader } from '../config/field-source-overrides-reader.js';
 import {
@@ -2623,6 +2624,38 @@ export async function runDocumentCycle(
           },
           'PASS 3 field-plan walk summary for this cycle (item 6)'
         );
+
+        // Item 42 (OD-163(a)+(b)): stored values written outside the walk get their listed sources'
+        // answers recorded (answers only, no page value). Runs AFTER every candidate's due fields, in
+        // what is left of the SAME PASS 3 deadline (B4(a): the live tier runs first), and never for
+        // a LISTED IPO here -- LISTED runs it in the 22:00 closed-IPO job inside that job's cap.
+        if (!fieldPlanWalkExhausted && fieldPlanHoldDeps.trackHeldFieldWitnesses && FEATURE_FLAGS.ENABLE_VERDICT_WRITER) {
+          const answersRoundStore = buildAnswersRoundStore(db as never);
+          for (const ipo of candidates) {
+            if (now() >= fieldPlanDeadlineMs) break;
+            try {
+              await runAnswersOnlyRound(
+                ipo.id,
+                {
+                  fieldPlanRepository: walkRepository as never,
+                  orchestrator: fieldPlanOrchestrator,
+                  sourceFetchers: fieldPlanFetchers,
+                  ipoRepository,
+                  overrides: fieldSourceOverridesReader,
+                  trackHeldFieldWitnesses: fieldPlanHoldDeps.trackHeldFieldWitnesses,
+                },
+                answersRoundStore,
+                { deadlineMs: fieldPlanDeadlineMs, now },
+                { listedAllowed: false }
+              );
+            } catch (error) {
+              logger.warn(
+                { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+                'answers-only round threw for one IPO (non-fatal); no value was changed'
+              );
+            }
+          }
+        }
       }
     }
 

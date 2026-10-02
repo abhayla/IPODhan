@@ -95,6 +95,7 @@ import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
 import { plantFieldPlanForIpo, createIpoTypeShareLock } from './services/field-plan-planting.js';
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
+import { runAnswersOnlyRound, buildAnswersRoundStore } from './services/field-plan-answers-round.js';
 import { fieldManifestFingerprint } from '@ipodhan/shared/utils/field-manifest-fingerprint';
 import {
   buildFieldPlanWalkOrchestrator,
@@ -2537,23 +2538,41 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
     walk: async (id) => {
       const startedAt = Date.now();
       const sourceFetchers = buildFieldPlanWalkFetchers();
-      return walkFieldPlanForIPO(
-        id,
-        {
-          fieldPlanRepository: fieldPlanRepository as never,
-          orchestrator: buildFieldPlanWalkOrchestrator(),
-          sourceFetchers,
-          // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
-          gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
-          ipoRepository: new IPORepository(db, redis) as never,
-          overrides,
-          trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
-          ...buildFieldPlanWalkReopenDeps(),
-          // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
-          ...buildFieldPlanWalkHoldDeps(),
-        },
-        { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() }
-      );
+      const holdDeps = buildFieldPlanWalkHoldDeps();
+      const walkDeps = {
+        fieldPlanRepository: fieldPlanRepository as never,
+        orchestrator: buildFieldPlanWalkOrchestrator(),
+        sourceFetchers,
+        // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
+        gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
+        ipoRepository: new IPORepository(db, redis) as never,
+        overrides,
+        trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
+        ...buildFieldPlanWalkReopenDeps(),
+        // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
+        ...holdDeps,
+      };
+      const budget = { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() };
+      const walked = await walkFieldPlanForIPO(id, walkDeps, budget);
+      // Item 42 (OD-163(b)): LISTED IPOs run the answers-only round HERE, inside this job's 10-a-day
+      // cap and this IPO's own walk budget, and only after its due fields are done (B4(a)).
+      if (walked.stoppedReason === 'NO_DUE_FIELDS' && holdDeps.trackHeldFieldWitnesses) {
+        try {
+          await runAnswersOnlyRound(
+            id,
+            { ...walkDeps, trackHeldFieldWitnesses: holdDeps.trackHeldFieldWitnesses },
+            buildAnswersRoundStore(db as never),
+            budget,
+            { listedAllowed: true }
+          );
+        } catch (error) {
+          logger.warn(
+            { ipoId: id, error: error instanceof Error ? error.message : String(error) },
+            'closed-IPO job: answers-only round threw (non-fatal); no value was changed'
+          );
+        }
+      }
+      return walked;
     },
   });
 
