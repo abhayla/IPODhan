@@ -3000,8 +3000,10 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     status = STATUS_PARTIAL if (emit.failed or meta.get("financial_status") == "PARTIAL") else STATUS_OK
     fields = emit.fields
     if ocr_confidence:
-        from ocr_pages import annotate_fields, CONFIDENCE_FLOOR
+        from ocr_pages import annotate_fields, CONFIDENCE_FLOOR, guard_ambiguous_thousands
         fields = annotate_fields(fields, ocr_confidence, CONFIDENCE_FLOOR)
+        # Item 44: an OCR-only "1.700" is never read as 1.7 (nor guessed as 1,700).
+        fields = guard_ambiguous_thousands(fields, {i: t for i, t in page_texts})
         status = STATUS_OK_OCR if status == STATUS_OK else STATUS_PARTIAL_OCR
 
     # OD-55. Normalised LAST, so coverage outranks confidence: a document that

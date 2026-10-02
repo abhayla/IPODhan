@@ -699,6 +699,47 @@ def annotate_fields(fields, page_confidence, floor=CONFIDENCE_FLOOR):
     return fields
 
 
+# Item 44 / OD-164(f): on an OCR'd page "1,700" is read as "1.700" (NSE's price band ad: the
+# receipts held 1.7 / 1.785 for the true Rs 1,700 / Rs 1,785). A number with ONE '.' followed by
+# EXACTLY three digits is therefore ambiguous on an OCR page: it may be a decimal or a thousands
+# separator, and nothing on the page says which. Never guess the x1000.
+AMBIGUOUS_THOUSANDS_RX = re.compile(r"(?<![\d.,])\d{1,3}\.\d{3}(?![\d.,])")
+OCR_AMBIGUOUS_THOUSANDS_REASON = "ocr_ambiguous_thousands_separator"
+
+
+def guard_ambiguous_thousands(fields, page_text):
+    """MISS every OCR-only numeric value whose own page prints it in the ambiguous
+    "d.ddd" shape. `page_text` maps page index -> that page's text.
+
+    Only `source_text == "OCR"` fields are judged: a TEXT or MIXED value has a
+    text-layer read behind it (OD-97 (a)), which is the "text read in the same
+    document" that settles the reading. The result is MISSED, never REFUSED:
+    MISSED keeps a stored value (OD-158), and the ambiguity says nothing about
+    the stored one."""
+    for name, field in list((fields or {}).items()):
+        if field.get("source_text") != "OCR":
+            continue
+        value = field.get("value")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        pages = field.get("pages") if isinstance(field.get("pages"), list) else [field.get("page")]
+        for page in pages:
+            hit = next((m.group(0) for m in AMBIGUOUS_THOUSANDS_RX.finditer(page_text.get(page) or "")
+                        if abs(float(m.group(0)) - float(value)) < 1e-9), None)
+            if hit is None:
+                continue
+            field.update({
+                "value": None,
+                "check": {"name": "not_extractable", "passed": True,
+                          "detail": "%s: read '%s' off OCR page %s" % (OCR_AMBIGUOUS_THOUSANDS_REASON, hit, page)},
+                "state": "MISSED",
+                "ambiguous_token": hit,
+            })
+            field.pop("refused_value", None)
+            break
+    return fields
+
+
 def main():
     # MINOR-3: `import memory_guard` resolves via the script's own directory
     # on sys.path — true automatically when this file is run directly

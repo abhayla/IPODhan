@@ -1,0 +1,7 @@
+# Real OCR text lines (RapidOCR, ocr_pages.py default backend/dpi) of page 0 of the NSE IPO
+# PRICE_BAND_AD (staging store PRICE_BAND_AD-d3bed466.pdf, page confidence 0.7369), read 2026-10-02.
+# Text only; the PDF is not committed. Used by scripts/test_ocr_ambiguous_amounts.py.
+E-mail: nse_ipo@nse.co.in; Corporate Identity Number: U67120MH1992PLC069769
+THE FLOOR PRICE IS 1,700 TIMES THE FACE VALUE OF THE EQUITY SHARES AND THE CAP PRICE IS 1,785 TIMES THE FACE VALUE OF THE EQUITY SHARES.
+AT THE UPPER END OF THE PRICE BAND IS 42.89 TIMES AND AT THE LOWER END OF THE PRICE BAND IS 40.85 TIMES
+Particulars At Floor Price of R1 ,700 per Equity Share At Cap Price of R1 1,785 per Equity Share

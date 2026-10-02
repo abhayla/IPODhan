@@ -606,6 +606,11 @@ export function parseCompanyHostLinks(html: string, pageUrl: string): CompanyHos
     if (seen.has(url)) return;
 
     const text = ($(a).text() ?? '').replace(/\s+/g, ' ').trim();
+    // F-159 / item 44: an ABRIDGED prospectus is a summary, never the offer document -- the same
+    // rule the SEBI rung (sebi-source.ts) and the zip-member reader apply. Typed by its words it
+    // reads as PROSPECTUS and would close the type on a summary (measured 2026-10-02: Himalayan
+    // Solar's company page links Abridged-Prospectus_Himalayan_19092026.pdf).
+    if (/abridged/i.test(text) || /abridged/i.test(fileNameFromUrl(url))) return;
     // Anchor text first — it is what a human reads; the file name is the fallback.
     const docType = classifyByTitle(text) ?? classifyByTitle(fileNameFromUrl(url));
     if (!docType) return;

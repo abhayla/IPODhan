@@ -1,0 +1,12 @@
+{
+  "class_id": "an exchange 'no link' treated as settled skips the publisher's own rung",
+  "feature": "document discovery rung chain (document-discovery-runner.ts), any document type the exchanges are not the publisher of once the issue has closed (final Prospectus, basis-of-allotment advertisement)",
+  "symptom": "a source that answered 'I have no link' is read as 'the document does not exist yet', so the rungs that actually publish the document (SEBI, the issuer's site) are skipped. Because the type is DUE at that stage, the miss counter then escalates the row to BLOCKED_ALL, so the stored state says 'every source failed' while the chain says 'nobody needed to be asked'. Universal shape: a non-publisher's absence is not evidence of absence; only the publisher's answer settles it, and a state derived from a chain must not contradict the chain.",
+  "first_seen": "2026-10-02 -- ipodhan_staging: 48 of 84 BLOCKED_ALL PROSPECTUS rows (54 of 84 BASIS_OF_ALLOTMENT_AD) carry 'EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> ...'; NSE's Prospectus is SEBI document 104637 (F-125, F-229).",
+  "fix_prs": "item 44 (this branch): exchangeNoLinkDecision -- a post-close publisher type at CLOSED/LISTED escalates; chain line records [due_after_close] or [stage_unknown]; rows concluded under the old rule get one more due cycle (lastChainSettledByExchanges); company rung refuses abridged prospectuses (F-159).",
+  "detection_check": "none yet: a nightly read of document_fetch_state where state IN (BLOCKED_ALL, NOT_FOUND) and doc_type is a post-close publisher type and the last chain contains 'SEBI:skipped:exchanges_settled_it' (the probe's query) should be 0 after one data slot; to be wired next to m_absence_without_evidence in scripts/audit-detection-floor.mjs.",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.3"
+  ]
+}

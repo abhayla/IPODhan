@@ -88,6 +88,7 @@ import {
   applyOutcome,
   toPersistedState,
   dueDocTypesForStage,
+  exchangeNoLinkDecision,
   type AttemptOutcome,
   type CycleOptions,
   type CyclePlan,
@@ -2708,8 +2709,27 @@ export class DocumentDiscoveryRunner {
       // exchange actually covered this IPO. Otherwise a clean `no_link` is not
       // evidence of anything and the later rungs must still be consulted —
       // which is the whole point of having them.
+      //
+      // Item 44 / F-229: and only when the type is one the exchanges can settle
+      // AT THIS STAGE. A final Prospectus (or BoA ad) past the close is not
+      // theirs to settle: the old rule marked it settled, never asked SEBI, and
+      // W-28 then escalated the same row to BLOCKED_ALL -- a chain saying "not
+      // filed yet" under a state saying "every source failed". The decision is
+      // written into the chain line so a reader sees why the rungs ran or not.
+      const noLinkDecision = exchangeNoLinkDecision(docType, ipo.stage);
       const settledByExchanges =
-        isExchangeServedType(docType) && exchangeCoverageComplete;
+        isExchangeServedType(docType) &&
+        exchangeCoverageComplete &&
+        noLinkDecision !== 'due_after_close';
+      if (
+        exchanges === 'no_link' &&
+        isExchangeServedType(docType) &&
+        exchangeCoverageComplete &&
+        noLinkDecision !== 'may_settle'
+      ) {
+        const at = rungs.lastIndexOf('EXCHANGES:no_link');
+        if (at >= 0) rungs[at] = `EXCHANGES:no_link[${noLinkDecision}]`;
+      }
       const needsEscalation =
         exchanges === 'failed' || (exchanges === 'no_link' && !settledByExchanges);
 
@@ -2928,5 +2948,18 @@ export function toStateRow(row: DocumentFetchStateRow): StateRow {
     extractorVersion: row.extractorVersion,
     lastAttemptAt: row.lastAttemptAt,
     attemptedAtStage: row.attemptedAtStage ?? null,
+    lastChainSettledByExchanges: chainSettledByExchanges(row.lastAttempt, row.docType),
   };
+}
+
+/** Item 44: did this row's last chain line skip the later rungs as settled by the exchanges? */
+export function chainSettledByExchanges(
+  lastAttempt: readonly { source?: string; outcome?: string }[] | null | undefined,
+  docType: string
+): boolean {
+  if (!Array.isArray(lastAttempt)) return false;
+  const chain = lastAttempt.find(
+    (a) => a?.source === 'CHAIN' && String(a.outcome ?? '').startsWith(`rungs[${docType}]`)
+  );
+  return Boolean(chain && String(chain.outcome).includes('SEBI:skipped:exchanges_settled_it'));
 }

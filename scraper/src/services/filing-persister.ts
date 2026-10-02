@@ -1363,6 +1363,8 @@ export async function persistFilingExtraction(
     ocrDocumentRead ??= reader.documentRef(options.documentId).then((d) => d ?? own);
     return ocrDocumentRead;
   };
+  /** Item 44 / OD-164(f): identifier columns an OCR read never overwrites against a text read. */
+  const OCR_IDENTIFIER_COLUMNS: ReadonlySet<string> = new Set(['ipos.cin']);
   const dropOcrOutranked = async (
     tableName: string,
     candidate: Record<string, unknown>,
@@ -1374,6 +1376,30 @@ export async function persistFilingExtraction(
       if (mark?.sourceText !== 'OCR') continue;
       const storedNormalized = normalizeReceiptValue(stored?.[col]);
       const incomingNormalized = normalizeReceiptValue(candidate[col]);
+      // Item 44 / OD-164(f): an identifier (the CIN) is the same in every document of the
+      // issue, so ANY text read of it for this IPO outvotes a different OCR read -- whatever
+      // the documents' rank and whether a value is stored yet. One misread digit
+      // (NSE: OCR ...089769 vs text ...069769) is not a newer value.
+      if (OCR_IDENTIFIER_COLUMNS.has(`${tableName}.${col}`) && incomingNormalized !== null) {
+        let textIds: string[];
+        try {
+          textIds = (await deps.ocrPrecedence.textReceipts(ipoId, tableName, col))
+            .map((r) => normalizeReceiptValue(r.value))
+            .filter((v): v is string => v !== null);
+        } catch {
+          delete candidate[col];
+          skippedLowerPriority.push(`${tableName}.${col} (OCR-only identifier; text reads unreadable, not written, OD-164(f))`);
+          continue;
+        }
+        if (textIds.some((v) => v !== incomingNormalized)) {
+          delete candidate[col];
+          skippedLowerPriority.push(
+            `${tableName}.${col} (OCR identifier '${incomingNormalized}' disagrees with the text read ` +
+              `'${textIds.find((v) => v !== incomingNormalized)}', not written, OD-164(f))`
+          );
+          continue;
+        }
+      }
       if (storedNormalized === null || storedNormalized === incomingNormalized) continue;
       let textValues: string[];
       try {
