@@ -463,7 +463,51 @@ _NAMED = {"current_ratio": re.compile(r"current\W*ratio", re.I),
 
 def _ratio_named_anywhere(page_texts, key):
     rx = _NAMED[key]
-    return any(rx.search(" ".join((text or "").split())) for _i, text in page_texts)
+    for _i, text in page_texts:
+        text = text or ""
+        if any(not _prose_mention(text, m) for m in rx.finditer(text)):
+            return True
+    return False
+
+
+# Item 46 round 2 (OD-165, #1179): Vishal Nirmiti's RHP (f18ffdc8) names "current
+# ratio" once, inside a strategy SENTENCE ("healthy balance sheet ratios (e.g.,
+# debt-to-equity, current\nratio) and build financial resilience", p261), and
+# nowhere as a row; the old any-mention rule kept that document a reader miss
+# forever.
+#
+# Review round 1 (MAJOR 1): the decision is made from the ROW SHAPE of the
+# printed lines, never from neighbouring words - a label row ("(a) Current ratio
+# Current assets to current liabilities 1.36") reads like a phrase. A mention is
+# prose only when ALL of these hold, otherwise it stays a possible row and the
+# answer stays a MISS (fail closed, so issuer_ratio_yield keeps flagging it):
+#   - the name is printed in lower case ("current ratio", mid-sentence; a label
+#     cell is capitalised: "Current ratio", "Current Ratio", "CurrentRatio");
+#   - every printed line the name sits on is a prose line: at least
+#     _PROSE_MIN_WORDS words, at least 70% of them lower case, and no figure;
+#   - the line after the name's last line does not start with a figure (a label
+#     whose values wrapped onto the next line).
+_PROSE_MIN_WORDS = 8
+_FIGURE = re.compile(r"(?<![\w.])\(?-?\d[\d,]*(?:\.\d+)?\)?(?![\w])")
+
+
+def _is_prose_line(line):
+    words = re.findall(r"[A-Za-z][A-Za-z'\-]*", line)
+    if len(words) < _PROSE_MIN_WORDS or _FIGURE.search(line):
+        return False
+    return sum(1 for w in words if w[0].islower()) >= 0.7 * len(words)
+
+
+def _prose_mention(text, match):
+    if not match.group(0)[:1].islower():
+        return False
+    first = text.rfind("\n", 0, match.start()) + 1
+    last = text.find("\n", match.end())
+    last = len(text) if last < 0 else last
+    if not all(_is_prose_line(line) for line in text[first:last].split("\n")):
+        return False
+    following = text[last + 1:].lstrip("\n").split("\n", 1)[0]
+    return not re.match(r"\s*\(?-?\d", following)
 
 
 # #1420 / F-219: the reasons for which a value WAS read for the latest period

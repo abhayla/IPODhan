@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHP_20260928180139.zip",
+  "sourceSha256": "644be76e26d43dcaa26ba11303072cf4543bc7a52f30cd37bf1d2d1d552645f6",
+  "capturedAt": "2026-10-03",
+  "ipoId": "vishal-nirmiti-ltd",
+  "company": "Vishal Nirmiti Limited",
+  "source": "RHP (staging documents f18ffdc8; zip member '1. RHP.pdf', 552 pages; sha256 equals the staging E9 input_ref), text layer by pdfplumber page.extract_text() - the same call the extractor makes; the PDF is not committed",
+  "note": "Pages 44, 151 and 477: every page the ratio-note locator matches (prose 'financial ratios'/'accounting ratios'). Page 261: the ONLY page of all 552 that names 'current ratio' (measured 2026-10-03 with pdftotext over the whole document, line breaks included), inside a strategy sentence '(e.g., debt-to-equity, current ratio) and build financial resilience'. Before item 46 round 2 the reader answered ratio_row_not_in_note (issuer_ratio_yield FAIL #1179); the truthful answer is ratio_note_not_in_document."
+}
