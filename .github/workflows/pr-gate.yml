@@ -1565,6 +1565,9 @@ jobs:
       - name: Run wake-log delta test suite (#793 M2, signal-ownership R3)
         run: node --test scripts/tests/wake-delta.test.mjs
 
+      - name: Run per-source field table formatting test suite
+        run: node --test scripts/tests/field-source-table.test.mjs
+
       # #698: assert-repair-held.mjs's self-test moved to the "Lint, Type-check
       # & Unit Tests" job (after its npm ci) — this job never runs npm ci, and
       # scripts/lib/pg-utc.mjs (imported by assert-repair-held.mjs) imports the
