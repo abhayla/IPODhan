@@ -1,0 +1,1403 @@
+{
+  "probe": "od167-recheck",
+  "spec": "OD-167",
+  "generated_at": "2026-10-02T19:05:43.493Z",
+  "picks": {
+    "BSE": [
+      {
+        "cls": "MAINBOARD",
+        "slug": "nityas-gems-and-jewellery-ltd",
+        "key": "8022",
+        "segment": "MAINBOARD",
+        "status": "OPEN"
+      },
+      {
+        "cls": "SME",
+        "slug": "omara-ventures-india-ltd",
+        "key": "8016",
+        "segment": "SME",
+        "status": "OPEN"
+      },
+      {
+        "cls": "CLOSED/LISTED",
+        "slug": "moneyview-ltd",
+        "key": "7995",
+        "segment": "MAINBOARD",
+        "status": "LISTED"
+      }
+    ],
+    "CHITTORGARH": [
+      {
+        "cls": "MAINBOARD",
+        "slug": "vishal-nirmiti-ltd",
+        "key": "2665",
+        "segment": "MAINBOARD",
+        "status": "OPEN"
+      },
+      {
+        "cls": "SME",
+        "slug": "eventions-ltd",
+        "key": "3006",
+        "segment": "SME",
+        "status": "OPEN"
+      },
+      {
+        "cls": "CLOSED/LISTED",
+        "slug": "moneyview-ltd",
+        "key": "2936",
+        "segment": "MAINBOARD",
+        "status": "LISTED"
+      }
+    ],
+    "NSE": [
+      {
+        "cls": "MAINBOARD",
+        "slug": "vishal-nirmiti-ltd",
+        "key": "VNL",
+        "segment": "MAINBOARD",
+        "status": "OPEN"
+      },
+      {
+        "cls": "SME",
+        "slug": "eventions-ltd",
+        "key": "EVENTIONS",
+        "segment": "SME",
+        "status": "OPEN"
+      },
+      {
+        "cls": "CLOSED/LISTED",
+        "slug": "moneyview-ltd",
+        "key": "MONEYVIEW",
+        "segment": "MAINBOARD",
+        "status": "LISTED"
+      },
+      {
+        "cls": "SME (extra, closed)",
+        "slug": "papadmalji-agro-foods-ltd",
+        "key": "PAPADMALJI",
+        "segment": "SME",
+        "status": "CLOSED"
+      },
+      {
+        "cls": "SME (extra, closed)",
+        "slug": "himalayan-solar-ltd",
+        "key": "HIMALAYAN",
+        "segment": "SME",
+        "status": "CLOSED"
+      }
+    ]
+  },
+  "fetch_log": [
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "status": 200,
+      "bytes": 5737,
+      "error": null,
+      "fetched_at": "2026-10-02T19:03:11.984Z"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "status": 200,
+      "bytes": 4032,
+      "error": null,
+      "fetched_at": "2026-10-02T19:03:22.942Z"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "status": 200,
+      "bytes": 5132,
+      "error": null,
+      "fetched_at": "2026-10-02T19:03:33.999Z"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "status": 200,
+      "bytes": 315730,
+      "error": null,
+      "fetched_at": "2026-10-02T19:03:44.764Z"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "status": 200,
+      "bytes": 288362,
+      "error": null,
+      "fetched_at": "2026-10-02T19:03:55.395Z"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "status": 200,
+      "bytes": 373365,
+      "error": null,
+      "fetched_at": "2026-10-02T19:04:06.046Z"
+    },
+    {
+      "source": "NSE",
+      "what": "cookie prime",
+      "status": 200
+    },
+    {
+      "source": "NSE",
+      "ipo": "vishal-nirmiti-ltd",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=VNL",
+      "status": 200,
+      "bytes": 15543,
+      "error": null,
+      "fetched_at": "2026-10-02T19:04:31.956Z"
+    },
+    {
+      "source": "NSE",
+      "ipo": "eventions-ltd",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=EVENTIONS",
+      "status": 200,
+      "bytes": 6137,
+      "error": null,
+      "fetched_at": "2026-10-02T19:04:47.324Z"
+    },
+    {
+      "source": "NSE",
+      "ipo": "moneyview-ltd",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=MONEYVIEW",
+      "status": 200,
+      "bytes": 12695,
+      "error": null,
+      "fetched_at": "2026-10-02T19:05:02.681Z"
+    },
+    {
+      "source": "NSE",
+      "ipo": "papadmalji-agro-foods-ltd",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=PAPADMALJI",
+      "status": 200,
+      "bytes": 5778,
+      "error": null,
+      "fetched_at": "2026-10-02T19:05:17.944Z"
+    },
+    {
+      "source": "NSE",
+      "ipo": "himalayan-solar-ltd",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=HIMALAYAN",
+      "status": 200,
+      "bytes": 5843,
+      "error": null,
+      "fetched_at": "2026-10-02T19:05:32.992Z"
+    }
+  ],
+  "verdicts": [
+    {
+      "pair": "BSE documents.filing_date",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "BSE ipo_details.exchanges",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "BSE ipos.listing_exchanges",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "BSE ipo_details.fresh_issue",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "BSE ipo_details.ofs_issue",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "BSE ipos.segment",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "BSE ipo_details.lot_multiple",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "nityas-gems-and-jewellery-ltd:false",
+        "omara-ventures-india-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipo_details.bid_windows",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipo_details.ipo_market_timings",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipo_details.tick_size",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipo_details.sponsor_banks",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipo_details.upi_cutoff_time",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipos.status",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH financial_statements.revenue",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH ipo_details.lot_multiple",
+      "verdict": "PRINTED on re-check: map instead",
+      "ipos": [
+        "vishal-nirmiti-ltd:true",
+        "eventions-ltd:true",
+        "moneyview-ltd:true"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH financial_data.promoter_holding_pre_issue",
+      "verdict": "PRINTED on re-check: map instead",
+      "ipos": [
+        "vishal-nirmiti-ltd:true",
+        "eventions-ltd:true",
+        "moneyview-ltd:true"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH financial_data.promoter_holding_post_issue",
+      "verdict": "PRINTED on re-check: map instead",
+      "ipos": [
+        "vishal-nirmiti-ltd:true",
+        "eventions-ltd:true",
+        "moneyview-ltd:true"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH promoters.name",
+      "verdict": "PRINTED on re-check: map instead",
+      "ipos": [
+        "vishal-nirmiti-ltd:true",
+        "eventions-ltd:true",
+        "moneyview-ltd:true"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH financial_statements.basis",
+      "verdict": "PRINTED on re-check: map instead",
+      "ipos": [
+        "vishal-nirmiti-ltd:true",
+        "eventions-ltd:true",
+        "moneyview-ltd:true"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH registrars.address",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "CHITTORGARH registrars.short_name",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false"
+      ]
+    },
+    {
+      "pair": "NSE ipo_details.bid_windows",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false",
+        "papadmalji-agro-foods-ltd:false",
+        "himalayan-solar-ltd:false"
+      ]
+    },
+    {
+      "pair": "NSE ipo_details.exchanges",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false",
+        "papadmalji-agro-foods-ltd:false",
+        "himalayan-solar-ltd:false"
+      ]
+    },
+    {
+      "pair": "NSE ipos.listing_exchanges",
+      "verdict": "NOT PRINTED on all re-checked IPOs: remove",
+      "ipos": [
+        "vishal-nirmiti-ltd:false",
+        "eventions-ltd:false",
+        "moneyview-ltd:false",
+        "papadmalji-agro-foods-ltd:false",
+        "himalayan-solar-ltd:false"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "documents.filing_date",
+      "printed": false,
+      "snippet": "no filing-date key; Prospectus_GID is a URL (...8888888/PreAnchor/RHP_20260928200551.zip); 48 keys checked"
+    },
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "no exchange key among 48 keys"
+    },
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "no exchange key among 48 keys"
+    },
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "ipo_details.fresh_issue",
+      "printed": false,
+      "snippet": "only Issue_Size_No_of_shares=14456000; IPONO_1 dynamic columns empty"
+    },
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "ipo_details.ofs_issue",
+      "printed": false,
+      "snippet": "no OFS key; IPONO_1 dynamic columns empty"
+    },
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "ipos.segment",
+      "printed": false,
+      "snippet": "no segment key; Security_Type=Equity"
+    },
+    {
+      "source": "BSE",
+      "ipo": "nityas-gems-and-jewellery-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022",
+      "fetched_at": "2026-10-02T19:03:22.495Z",
+      "pair": "ipo_details.lot_multiple",
+      "printed": false,
+      "snippet": "Market_Lot=200, Minimum_Bid_Quantity=200 (no lot-count key)"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "documents.filing_date",
+      "printed": false,
+      "snippet": "no filing-date key; Prospectus_GID is a URL (...m/downloads/ipo/RHP&GID_280920261532.zip); 48 keys checked"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "no exchange key among 48 keys"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "no exchange key among 48 keys"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "ipo_details.fresh_issue",
+      "printed": false,
+      "snippet": "only Issue_Size_No_of_shares=1350000; IPONO_1 dynamic columns empty"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "ipo_details.ofs_issue",
+      "printed": false,
+      "snippet": "no OFS key; IPONO_1 dynamic columns empty"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "ipos.segment",
+      "printed": false,
+      "snippet": "no segment key; Security_Type=Equity"
+    },
+    {
+      "source": "BSE",
+      "ipo": "omara-ventures-india-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8016",
+      "fetched_at": "2026-10-02T19:03:33.451Z",
+      "pair": "ipo_details.lot_multiple",
+      "printed": false,
+      "snippet": "Market_Lot=400, Minimum_Bid_Quantity=800 (no lot-count key)"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "documents.filing_date",
+      "printed": false,
+      "snippet": "no filing-date key; Prospectus_GID is a URL (...8888888/PreAnchor/RHP_20260922174238.zip); 48 keys checked"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "no exchange key among 48 keys"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "no exchange key among 48 keys"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "ipo_details.fresh_issue",
+      "printed": false,
+      "snippet": "only Issue_Size_No_of_shares=232524175; IPONO_1 dynamic columns empty"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "ipo_details.ofs_issue",
+      "printed": false,
+      "snippet": "no OFS key; IPONO_1 dynamic columns empty"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "ipos.segment",
+      "printed": false,
+      "snippet": "no segment key; Security_Type=Equity"
+    },
+    {
+      "source": "BSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7995",
+      "fetched_at": "2026-10-02T19:03:44.505Z",
+      "pair": "ipo_details.lot_multiple",
+      "printed": false,
+      "snippet": "Market_Lot=441, Minimum_Bid_Quantity=441 (no lot-count key)"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipo_details.ipo_market_timings",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipo_details.tick_size",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipo_details.sponsor_banks",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipo_details.upi_cutoff_time",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipos.status",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "financial_statements.revenue",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "ipo_details.lot_multiple",
+      "printed": true,
+      "snippet": "| Amount | ~ Retail (Min) | 1 | 68 | Rs14,960 | ~ Retail (Max) | 13 | 884 | Rs1,94,480 | ~ S-HNI"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "financial_data.promoter_holding_pre_issue",
+      "printed": true,
+      "snippet": "IPO | Post IPO | ~ Promoter and Promoter Group | 73.42% | 49.4% | ~ Public | 26.58% | 50.60% | ~ Total | 100% | 100% | ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "financial_data.promoter_holding_post_issue",
+      "printed": true,
+      "snippet": "IPO | Post IPO | ~ Promoter and Promoter Group | 73.42% | 49.4% | ~ Public | 26.58% | 50.60% | ~ Total | 100% | 100% | ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "promoters.name",
+      "printed": true,
+      "snippet": "100% | 100% | ~ ~ ~ Company Promoters: Brij B Tapadiya, Ajay Bhagwandas Tapadiya, Pavan Vithaldas Ta"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "financial_statements.basis",
+      "printed": true,
+      "snippet": "+ Read More ~ ~ ~ ~ Company Financials (Restated) ~ Vishal Nirmiti Ltd.'s revenue increased by 6% and profit"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "registrars.address",
+      "printed": false,
+      "snippet": "registrar block: \"~ MUFG Intime India Pvt.Ltd. ~ 022-49186000 ~ vishalnirmiti.ipo@in.mpms.mufg.com ~ Visit Website ~ ~ ~\""
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "registrars.short_name",
+      "printed": false,
+      "snippet": "registrar block: \"~ MUFG Intime India Pvt.Ltd. ~ 022-49186000 ~ vishalnirmiti.ipo@in.mpms.mufg.com ~ Visit Website ~ ~ ~\""
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/vishal-nirmiti-ltd-ipo/2665/",
+      "fetched_at": "2026-10-02T19:03:55.280Z",
+      "pair": "_observation",
+      "printed": null,
+      "snippet": "{\"roe\":\"| Mar 31, 2026 | ~ ROE | 33.67% | ~ ROCE | 28.02% | ~ Debt/Equity | 1.01 | ~ RoNW | 33.87%\",\"maxAllottees\":\"% of Total Issue | Max Allottees | ~ QIB | 80,909 | 1.00% | NA | ~ NII (HNI) | 23,46,364 | 2\",\"isin\":null}"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipo_details.ipo_market_timings",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipo_details.tick_size",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipo_details.sponsor_banks",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipo_details.upi_cutoff_time",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipos.status",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "financial_statements.revenue",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "ipo_details.lot_multiple",
+      "printed": true,
+      "snippet": "ual investors (IND) (Min) | 2 | 2400 | Rs2,83,200 | ~ Individual investors (IND) (Max) | 2 | 2400"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "financial_data.promoter_holding_pre_issue",
+      "printed": true,
+      "snippet": "IPO | Post IPO | ~ Promoter and Promoter Group | 99.96% | 73.46% | ~ Public | 0.04% | 26.54% | ~ Total | 100% | 100% | ~ ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "financial_data.promoter_holding_post_issue",
+      "printed": true,
+      "snippet": "IPO | Post IPO | ~ Promoter and Promoter Group | 99.96% | 73.46% | ~ Public | 0.04% | 26.54% | ~ Total | 100% | 100% | ~ ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "promoters.name",
+      "printed": true,
+      "snippet": "100% | 100% | ~ ~ ~ Company Promoters: Cristoo Arora, Ravi Rajak and Kirat Ahluwalia. ~ ~ ~ ~ ~ ~ Ev"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "financial_statements.basis",
+      "printed": true,
+      "snippet": "+ Read More ~ ~ ~ ~ Company Financials (Restated) ~ Eventions Ltd.'s revenue increased by 14% and profit afte"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "registrars.address",
+      "printed": false,
+      "snippet": "registrar block: \"~ Mudra RTA Ventures Private Limited ~ 9870297591/9870297592 ~ ipo@mudrarta.com ~ Visit Website ~ ~ ~\""
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "registrars.short_name",
+      "printed": false,
+      "snippet": "registrar block: \"~ Mudra RTA Ventures Private Limited ~ 9870297591/9870297592 ~ ipo@mudrarta.com ~ Visit Website ~ ~ ~\""
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.chittorgarh.com/ipo/eventions-ltd-ipo/3006/",
+      "fetched_at": "2026-10-02T19:04:05.914Z",
+      "pair": "_observation",
+      "printed": null,
+      "snippet": "{\"roe\":\"| Mar 31, 2026 | ~ ROE | 55.16% | ~ ROCE | 48.76% | ~ Debt/Equity | 52.07 | ~ RoNW | 55.16%\",\"maxAllottees\":null,\"isin\":null}"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipo_details.ipo_market_timings",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipo_details.tick_size",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipo_details.sponsor_banks",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipo_details.upi_cutoff_time",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipos.status",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "financial_statements.revenue",
+      "printed": false,
+      "snippet": null
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "ipo_details.lot_multiple",
+      "printed": true,
+      "snippet": "| Amount | ~ Retail (Min) | 1 | 441 | Rs14,994 | ~ Retail (Max) | 13 | 5733 | Rs1,94,922 | ~ S-HN"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "financial_data.promoter_holding_pre_issue",
+      "printed": true,
+      "snippet": "IPO | Post IPO | ~ Promoter and Promoter Group | 23.96% | 19.31% | ~ Public | 76.04% | 80.69% | ~ Total | 100% | 100% | ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "financial_data.promoter_holding_post_issue",
+      "printed": true,
+      "snippet": "IPO | Post IPO | ~ Promoter and Promoter Group | 23.96% | 19.31% | ~ Public | 76.04% | 80.69% | ~ Total | 100% | 100% | ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "promoters.name",
+      "printed": true,
+      "snippet": "100% | 100% | ~ ~ ~ Company Promoters: Puneet Agarwal, Sanjay Aggarwal and Sushma Abburi. ~ ~ ~ ~ ~"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "financial_statements.basis",
+      "printed": true,
+      "snippet": "+ Read More ~ ~ ~ ~ Company Financials (Restated Consolidated) ~ Moneyview Ltd.'s revenue increased by 43% and profit afte"
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "registrars.address",
+      "printed": false,
+      "snippet": "registrar block: \"~ MUFG Intime India Pvt.Ltd. ~ 022-49186000 ~ moneyview.ipo@in.mpms.mufg.com ~ Visit Website ~ ~ ~\""
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "registrars.short_name",
+      "printed": false,
+      "snippet": "registrar block: \"~ MUFG Intime India Pvt.Ltd. ~ 022-49186000 ~ moneyview.ipo@in.mpms.mufg.com ~ Visit Website ~ ~ ~\""
+    },
+    {
+      "source": "CHITTORGARH",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.chittorgarh.com/ipo/moneyview-ltd-ipo/2936/",
+      "fetched_at": "2026-10-02T19:04:16.558Z",
+      "pair": "_observation",
+      "printed": null,
+      "snippet": "{\"roe\":\"| Mar 31, 2025 | ~ ROE | 15.98% | 13.63% | ~ RoNW | 9.67% | 12.52% | ~ NAV | 14.67 | 12.98\",\"maxAllottees\":\"% of Total Issue | Max Allottees | ~ QIB | 16,05,41,216 | 50.00% | NA | ~ &minus; Anchor Inv\",\"isin\":\"953 / MONEYVIEW | ~ ISIN | INE0PTN01011 | ~ ~ ~ ~ ~ ~ ~ IPO Timetable ~ IPO Open Thu, Sep 24, 2026\"}"
+    },
+    {
+      "source": "NSE",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=VNL",
+      "fetched_at": "2026-10-02T19:04:42.463Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": "34 labels, none matches: Vishal Nirmiti Limited / (untitled) / Symbol / Issue Period / Cut-off time for UPI Mandate Confirmation / Issue Size / Issue Type / Price Range..."
+    },
+    {
+      "source": "NSE",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=VNL",
+      "fetched_at": "2026-10-02T19:04:42.463Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "34 labels, none matches: Vishal Nirmiti Limited / (untitled) / Symbol / Issue Period / Cut-off time for UPI Mandate Confirmation / Issue Size / Issue Type / Price Range..."
+    },
+    {
+      "source": "NSE",
+      "ipo": "vishal-nirmiti-ltd",
+      "ipo_class": "MAINBOARD",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=VNL",
+      "fetched_at": "2026-10-02T19:04:42.463Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "34 labels, none matches: Vishal Nirmiti Limited / (untitled) / Symbol / Issue Period / Cut-off time for UPI Mandate Confirmation / Issue Size / Issue Type / Price Range..."
+    },
+    {
+      "source": "NSE",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=EVENTIONS",
+      "fetched_at": "2026-10-02T19:04:57.830Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=EVENTIONS",
+      "fetched_at": "2026-10-02T19:04:57.830Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "eventions-ltd",
+      "ipo_class": "SME",
+      "segment": "SME",
+      "status": "OPEN",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=EVENTIONS",
+      "fetched_at": "2026-10-02T19:04:57.830Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=MONEYVIEW",
+      "fetched_at": "2026-10-02T19:05:13.183Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": "54 labels, none matches: Moneyview Limited / (untitled) / Symbol / Issue Period / Cut-off time for UPI Mandate Confirmation / Issue Size / Issue Type / Price Range..."
+    },
+    {
+      "source": "NSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=MONEYVIEW",
+      "fetched_at": "2026-10-02T19:05:13.183Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "54 labels, none matches: Moneyview Limited / (untitled) / Symbol / Issue Period / Cut-off time for UPI Mandate Confirmation / Issue Size / Issue Type / Price Range..."
+    },
+    {
+      "source": "NSE",
+      "ipo": "moneyview-ltd",
+      "ipo_class": "CLOSED/LISTED",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=MONEYVIEW",
+      "fetched_at": "2026-10-02T19:05:13.183Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "54 labels, none matches: Moneyview Limited / (untitled) / Symbol / Issue Period / Cut-off time for UPI Mandate Confirmation / Issue Size / Issue Type / Price Range..."
+    },
+    {
+      "source": "NSE",
+      "ipo": "papadmalji-agro-foods-ltd",
+      "ipo_class": "SME (extra, closed)",
+      "segment": "SME",
+      "status": "CLOSED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=PAPADMALJI",
+      "fetched_at": "2026-10-02T19:05:28.459Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "papadmalji-agro-foods-ltd",
+      "ipo_class": "SME (extra, closed)",
+      "segment": "SME",
+      "status": "CLOSED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=PAPADMALJI",
+      "fetched_at": "2026-10-02T19:05:28.459Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "papadmalji-agro-foods-ltd",
+      "ipo_class": "SME (extra, closed)",
+      "segment": "SME",
+      "status": "CLOSED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=PAPADMALJI",
+      "fetched_at": "2026-10-02T19:05:28.459Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "himalayan-solar-ltd",
+      "ipo_class": "SME (extra, closed)",
+      "segment": "SME",
+      "status": "CLOSED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=HIMALAYAN",
+      "fetched_at": "2026-10-02T19:05:43.492Z",
+      "pair": "ipo_details.bid_windows",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "himalayan-solar-ltd",
+      "ipo_class": "SME (extra, closed)",
+      "segment": "SME",
+      "status": "CLOSED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=HIMALAYAN",
+      "fetched_at": "2026-10-02T19:05:43.492Z",
+      "pair": "ipo_details.exchanges",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    },
+    {
+      "source": "NSE",
+      "ipo": "himalayan-solar-ltd",
+      "ipo_class": "SME (extra, closed)",
+      "segment": "SME",
+      "status": "CLOSED",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=HIMALAYAN",
+      "fetched_at": "2026-10-02T19:05:43.492Z",
+      "pair": "ipos.listing_exchanges",
+      "printed": false,
+      "snippet": "issueInfo and metaInfo EMPTY on this page (nothing printed at all, including Issue Period)",
+      "issueInfoEmpty": true
+    }
+  ]
+}

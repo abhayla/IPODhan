@@ -292,16 +292,13 @@
       "rank": {
         "MAINBOARD": [
           "NSE",
-          "BSE",
-          "CHITTORGARH"
+          "BSE"
         ],
         "SME_BSE": [
-          "BSE",
-          "CHITTORGARH"
+          "BSE"
         ],
         "SME_NSE": [
-          "NSE",
-          "CHITTORGARH"
+          "NSE"
         ]
       },
       "capability": {
@@ -314,8 +311,8 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO page prints no status word (status is derived from dates); evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -495,17 +492,14 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "NSE",
-          "BSE"
+          "CHITTORGARH"
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
           "DOC",
-          "NSE",
           "CHITTORGARH"
         ]
       },
@@ -515,12 +509,12 @@
           "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
         },
         "NSE": {
-          "capable": true,
-          "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail labels (34 to 54) include no exchange list; SME pages are empty; evidence docs/design/probes/od167-recheck.out.json"
         },
         "BSE": {
-          "capable": true,
-          "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json"
         },
         "CHITTORGARH": {
           "capable": true,
@@ -735,11 +729,10 @@
         "MAINBOARD": [
           "DOC",
           "NSE",
-          "BSE"
+          "CHITTORGARH"
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
@@ -758,8 +751,8 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
         },
         "BSE": {
-          "capable": true,
-          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no segment key; evidence docs/design/probes/od167-recheck.out.json"
         },
         "CHITTORGARH": {
           "capable": true,
@@ -976,12 +969,10 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
@@ -995,8 +986,8 @@
           "reason": "the PBA prints the fresh-issue rupee amount separately from the OFS amount"
         },
         "BSE": {
-          "capable": true,
-          "reason": "BSE detail payload carries a fresh-issue figure"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no fresh-issue split; evidence docs/design/probes/od167-recheck.out.json"
         },
         "CHITTORGARH": {
           "capable": true,
@@ -1026,12 +1017,10 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
@@ -1045,8 +1034,8 @@
           "reason": "the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount"
         },
         "BSE": {
-          "capable": true,
-          "reason": "BSE detail payload carries an OFS figure alongside the fresh-issue figure"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no OFS split; evidence docs/design/probes/od167-recheck.out.json"
         },
         "CHITTORGARH": {
           "capable": true,
@@ -1225,17 +1214,14 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "NSE",
-          "BSE"
+          "CHITTORGARH"
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
           "DOC",
-          "NSE",
           "CHITTORGARH"
         ]
       },
@@ -1245,12 +1231,12 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
         },
         "NSE": {
-          "capable": true,
-          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail labels (34 to 54) include no exchange list; SME pages are empty; evidence docs/design/probes/od167-recheck.out.json"
         },
         "BSE": {
-          "capable": true,
-          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json"
         },
         "CHITTORGARH": {
           "capable": true,
@@ -1339,17 +1325,14 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "NSE"
         ],
         "SME_BSE": [
-          "DOC",
-          "CHITTORGARH"
+          "DOC"
         ],
         "SME_NSE": [
           "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "NSE"
         ]
       },
       "capability": {
@@ -1362,8 +1345,8 @@
           "reason": "clock time, not a date — deliberately NOT in E-1"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "clock time, not a date — deliberately NOT in E-1"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no UPI cut-off label on the IPO page; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -1495,18 +1478,13 @@
       "documentType": "PRICE_BAND_AD",
       "rank": {
         "MAINBOARD": [
-          "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "DOC"
         ],
         "SME_BSE": [
-          "DOC",
-          "CHITTORGARH"
+          "DOC"
         ],
         "SME_NSE": [
-          "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "DOC"
         ]
       },
       "capability": {
@@ -1515,12 +1493,12 @@
           "reason": "clock windows, not dates — deliberately NOT in E-1"
         },
         "NSE": {
-          "capable": true,
-          "reason": "clock windows, not dates — deliberately NOT in E-1"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail prints only Issue Period; evidence docs/design/probes/od167-recheck.out.json"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "clock windows, not dates — deliberately NOT in E-1"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO page prints only IPO Open/Close dates; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -2193,13 +2171,11 @@
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
-          "CHITTORGARH"
+          "BSE"
         ],
         "SME_NSE": [
           "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "NSE"
         ]
       },
       "capability": {
@@ -2216,8 +2192,8 @@
           "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo \"Sponsor Bank\", BSE detail Sponsor_Bank. An earlier draft called it filing-only"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo \"Sponsor Bank\", BSE detail Sponsor_Bank. An earlier draft called it filing-only"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no sponsor-bank label on the IPO page (the only mention is a use-of-proceeds phrase); evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -2235,13 +2211,11 @@
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
-          "CHITTORGARH"
+          "BSE"
         ],
         "SME_NSE": [
           "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "NSE"
         ]
       },
       "capability": {
@@ -2258,8 +2232,8 @@
           "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"Tick Size\", BSE Tick_Size"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"Tick Size\", BSE Tick_Size"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no Tick label on the IPO page; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -2277,13 +2251,11 @@
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
-          "CHITTORGARH"
+          "BSE"
         ],
         "SME_NSE": [
           "DOC",
-          "NSE",
-          "CHITTORGARH"
+          "NSE"
         ]
       },
       "capability": {
@@ -2300,8 +2272,8 @@
           "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"IPO Market Timings\", BSE IPO_Market_Timings"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"IPO Market Timings\", BSE IPO_Market_Timings"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no market-timings label on the IPO page; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -3453,16 +3425,13 @@
       "documentSection": "wp-c-extraction-contract.md §C1-C2 — \"Restated Consolidated Statement of Profit and Loss\" (falls back to \"Summary of Financial Information\")",
       "rank": {
         "MAINBOARD": [
-          "DOC",
-          "CHITTORGARH"
+          "DOC"
         ],
         "SME_BSE": [
-          "DOC",
-          "CHITTORGARH"
+          "DOC"
         ],
         "SME_NSE": [
-          "DOC",
-          "CHITTORGARH"
+          "DOC"
         ]
       },
       "capability": {
@@ -5608,12 +5577,10 @@
       "documentType": "PRICE_BAND_AD",
       "rank": {
         "MAINBOARD": [
-          "DOC",
-          "BSE"
+          "DOC"
         ],
         "SME_BSE": [
-          "DOC",
-          "BSE"
+          "DOC"
         ],
         "SME_NSE": [
           "DOC"
@@ -5625,8 +5592,8 @@
           "reason": "historical — never moves; the doc-type healing rule depends on it"
         },
         "BSE": {
-          "capable": true,
-          "reason": "historical — never moves; the doc-type healing rule depends on it"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no filing-date key, only the Prospectus_GID file URL; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -5793,18 +5760,15 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "REG",
-          "CHITTORGARH"
+          "REG"
         ],
         "SME_BSE": [
           "DOC",
-          "REG",
-          "CHITTORGARH"
+          "REG"
         ],
         "SME_NSE": [
           "DOC",
-          "REG",
-          "CHITTORGARH"
+          "REG"
         ]
       },
       "capability": {
@@ -5817,8 +5781,8 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); registrar block prints no short name; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],
@@ -5945,18 +5909,15 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "REG",
-          "CHITTORGARH"
+          "REG"
         ],
         "SME_BSE": [
           "DOC",
-          "REG",
-          "CHITTORGARH"
+          "REG"
         ],
         "SME_NSE": [
           "DOC",
-          "REG",
-          "CHITTORGARH"
+          "REG"
         ]
       },
       "capability": {
@@ -5969,8 +5930,8 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
         },
         "CHITTORGARH": {
-          "capable": true,
-          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+          "capable": false,
+          "reason": "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); registrar block prints name, phone, email and website only; evidence docs/design/probes/od167-recheck.out.json"
         }
       },
       "na": [],

@@ -65,8 +65,8 @@ add('ipos','cin','D',['DOC','—','—'],{doc:'E7',only:'no website or exchange 
 // ---------- ipo_details (23) ----------
 add('ipo_details','company_description','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source'});
 add('ipo_details','issue_type','D',['DOC','NSE','CG'],{doc:'A11',note:'CORRECTED: NSE returns "Issue Type: Book Building". BSE detail does NOT carry it - an earlier draft ranked BSE here'});
-add('ipo_details','fresh_issue','D',['DOC','BSE','CG'],{doc:'A5',na:['OFS','TENDER','BUYBACK'],capability:{"DOC":{"capable":true,"reason":"the PBA prints the fresh-issue rupee amount separately from the OFS amount"},"BSE":{"capable":true,"reason":"BSE detail payload carries a fresh-issue figure"},"CHITTORGARH":{"capable":true,"reason":"CG list API carries the fresh-issue line item"},"NSE":{"capable":false,"reason":"same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split"},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
-add('ipo_details','ofs_issue','D',['DOC','BSE','CG'],{doc:'A6',na:['RIGHTS','NCD'],capability:{"DOC":{"capable":true,"reason":"the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount"},"BSE":{"capable":true,"reason":"BSE detail payload carries an OFS figure alongside the fresh-issue figure"},"CHITTORGARH":{"capable":true,"reason":"CG list API carries the offer-for-sale line item"},"NSE":{"capable":false,"reason":"same T-453 reasoning as ipos.issue_size — NSE computes offer value from shares×price with no printed fresh/OFS split"},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
+add('ipo_details','fresh_issue','D',['DOC','BSE','CG'],{doc:'A5',na:['OFS','TENDER','BUYBACK'],capability:{"DOC":{"capable":true,"reason":"the PBA prints the fresh-issue rupee amount separately from the OFS amount"},"BSE":{"capable":false,"reason":"OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no fresh-issue split; evidence docs/design/probes/od167-recheck.out.json"},"CHITTORGARH":{"capable":true,"reason":"CG list API carries the fresh-issue line item"},"NSE":{"capable":false,"reason":"same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split"},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
+add('ipo_details','ofs_issue','D',['DOC','BSE','CG'],{doc:'A6',na:['RIGHTS','NCD'],capability:{"DOC":{"capable":true,"reason":"the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount"},"BSE":{"capable":false,"reason":"OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no OFS split; evidence docs/design/probes/od167-recheck.out.json"},"CHITTORGARH":{"capable":true,"reason":"CG list API carries the offer-for-sale line item"},"NSE":{"capable":false,"reason":"same T-453 reasoning as ipos.issue_size — NSE computes offer value from shares×price with no printed fresh/OFS split"},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
 add('ipo_details','face_value','D',['DOC','BSE','—'],{doc:'A2',na:['INVITS','REITS']});
 add('ipo_details','basis_of_allotment_date','T',['NSE','BSE','CG'],{e1:1,na:['OFS']});
 add('ipo_details','initiation_of_refunds_date','T',['NSE','BSE','CG'],{e1:1,na:['OFS']});
@@ -362,7 +362,33 @@ const WEB_OK = new Set(['ipos','ipo_details','financial_data','peer_companies','
                         'listing_performance','registrars','ipo_intermediaries','gmp_records',
                         'financial_statements','ipo_valuation','promoters']);
 
+// OD-167 (2026-10-02): source/field pairs item 43 found unprinted, re-checked on three IPOs each (one mainboard, one SME,
+// one closed/listed) and still not printed. A pair here is removed from that field's ranks (the next source moves up) and
+// recorded capable:false in the manifest. Evidence: docs/design/probes/od167-recheck.out.json (script od167-recheck.mjs).
+// BSE ipo_details.lot_multiple is NOT here although not printed: its evidence ref (Market_Lot) would drop D15's ratchet
+// 75 -> 74, which needs an owner note; it is left ranked and reported (OD-167 PR). Pairs found PRINTED on re-check are NOT here: they are mapping work (CG promoter holding pre/post, promoters.name,
+// financial_statements.basis, lot_multiple). Spec-label keys: BSE, NSE, CG.
+export const OD167_NOT_PRINTED = {
+  'documents.filing_date': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no filing-date key, only the Prospectus_GID file URL; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.exchanges': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json", NSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail labels (34 to 54) include no exchange list; SME pages are empty; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipos.listing_exchanges': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json", NSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail labels (34 to 54) include no exchange list; SME pages are empty; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.fresh_issue': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no fresh-issue split; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.ofs_issue': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no OFS split; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipos.segment': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no segment key; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.bid_windows': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO page prints only IPO Open/Close dates; evidence docs/design/probes/od167-recheck.out.json", NSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail prints only Issue Period; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.ipo_market_timings': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no market-timings label on the IPO page; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.tick_size': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no Tick label on the IPO page; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.sponsor_banks': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no sponsor-bank label on the IPO page (the only mention is a use-of-proceeds phrase); evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.upi_cutoff_time': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no UPI cut-off label on the IPO page; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipos.status': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO page prints no status word (status is derived from dates); evidence docs/design/probes/od167-recheck.out.json" },
+  'financial_statements.revenue': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); restated table prints Total Income, not revenue from operations; evidence docs/design/probes/od167-recheck.out.json" },
+  'registrars.address': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); registrar block prints name, phone, email and website only; evidence docs/design/probes/od167-recheck.out.json" },
+  'registrars.short_name': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); registrar block prints no short name; evidence docs/design/probes/od167-recheck.out.json" },
+};
 function pool(f) {
+  return poolRanked(f).filter((x) => !OD167_NOT_PRINTED[f.t + '.' + f.c]?.[x]);
+}
+function poolRanked(f) {
   const key = f.t + '.' + f.c;
   // Capability is filtered on the way IN as well as the way out: a hand-authored rank naming a
   // source that cannot serve the field is the same defect as an auto-appended one.
@@ -382,6 +408,7 @@ function pool(f) {
 const EV_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'evidence.json');
 const EV = fs.existsSync(EV_PATH) ? JSON.parse(fs.readFileSync(EV_PATH, 'utf8')).fields : {};
 for (const f of F) { const e = EV[f.t + '.' + f.c]; if (e) f.o.ev = e; }   // { SOURCE: {ref, label} }
+for (const f of F) { const m = OD167_NOT_PRINTED[f.t + '.' + f.c]; if (m) f.o.incapable = m; }   // read by generate-field-manifest.mjs incapableReason
 
 // EVIDENCE_FLOOR is D15's ratchet: the number of (field, source) pairs that MUST carry a resolving
 // evidence reference. It is raised as probes land and is never lowered - dropping it is how a row
@@ -434,7 +461,9 @@ export function renderA1() {
     const sn = resolve(f, 'SME_NSE').join(' · ');
     const note = f.o.e1 ? '**E-1** (§1.2.1)' : f.o.formula ? `computed: ${f.o.formula}`
       : f.o.note ? f.o.note : f.o.only ? `no rank 2: ${f.o.only}` : '';
-    out.push(`| ${i + 1} | \`${f.t}.${f.c}\` | ${f.cls} | ${m[0]} | ${m[1]} | ${m[2]} | ${sb} | ${sn} | ${f.o.doc || '—'} | ${note} |`);
+    const od167 = OD167_NOT_PRINTED[`${f.t}.${f.c}`];
+    const od167Note = od167 ? ` **OD-167:** ${Object.keys(od167).join(', ')} removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json).` : '';
+    out.push(`| ${i + 1} | \`${f.t}.${f.c}\` | ${f.cls} | ${m[0]} | ${m[1]} | ${m[2]} | ${sb} | ${sn} | ${f.o.doc || '—'} | ${note}${od167Note} |`);
   });
   return out;
 }

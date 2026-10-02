@@ -292,6 +292,7 @@ function capabilityReasonFallback(f, sourceLabel) {
 }
 
 function incapableReason(f, sourceLabel) {
+  if (f.o.incapable && f.o.incapable[sourceLabel]) return f.o.incapable[sourceLabel];   // OD-167 re-check evidence
   if (sourceLabel === 'MC') return 'OD-3 retires Moneycontrol as a scheduled source';
   if (sourceLabel === 'CG' && f.t === 'financial_data' && f.c === 'pe_ratio') {
     return 'observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own';
