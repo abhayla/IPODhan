@@ -40,6 +40,7 @@ import { istDayIso } from './lib/ist-day.mjs';
 import { fetchNseHolidayMaster, judgeMarketHolidaysAgainstNse } from './lib/nse-holiday-calendar.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
+import { classifyNoopWrites, evaluatePullWrite } from './lib/pull-write-noop-checks.mjs';
 import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { runCheckAgainstIds } from './lib/run-check.mjs';
@@ -3365,40 +3366,54 @@ async function checkS_pullAdmin() {
 const PULL_NOOP_RECOMMENDED_CEILING = 0.05;
 
 async function checkS_pullNoop() {
-  let row;
+  const title = 'writes per cycle over fields re-asked per cycle';
+  let reasked, newDocuments, touched;
   try {
-    [row] = await q(
+    [{ reasked, newDocuments }] = await q(
       `SELECT
          (SELECT count(*) FROM ipo_field_plan
            WHERE last_attempt_at > now() - interval '24 hours')::int AS "reasked",
-         (SELECT count(*) FROM field_sources
-           WHERE updated_at > now() - interval '24 hours')::int AS "written",
          (SELECT count(*) FROM documents
            WHERE created_at > now() - interval '24 hours')::int AS "newDocuments"`
     );
+    // Per-row facts, classified in JS (scripts/lib/pull-write-noop-checks.mjs) so the verdict is testable.
+    // hasReceipt: a stored document of this IPO was re-read (receipts created in the window).
+    // answersRound: this IPO's OD-163 answers-only round finished in the window.
+    touched = await q(
+      `SELECT fs.previous_value AS "previousValue", fs.previous_source::text AS "previousSource",
+              fs.source::text AS "source",
+              EXISTS (SELECT 1 FROM document_field_receipts r JOIN documents d ON d.id = r.document_id
+                       WHERE d.ipo_id = fs.ipo_id AND r.created_at > now() - interval '24 hours') AS "hasReceipt",
+              EXISTS (SELECT 1 FROM ipos i WHERE i.id = fs.ipo_id
+                       AND i.answers_round_at > now() - interval '24 hours') AS "answersRound"
+         FROM field_sources fs
+        WHERE fs.updated_at > now() - interval '24 hours'`
+    );
   } catch (e) {
-    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'UNVERIFIABLE',
+    record('pull_noop', title, 'UNVERIFIABLE',
       `ipo_field_plan/field_sources/documents not readable: ${e.message}`);
     return;
   }
-  if (!row || row.reasked === 0) {
+  if (reasked === 0) {
     // No re-asks means no denominator. A 0/0 ratio is not a healthy zero.
-    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'UNVERIFIABLE',
+    record('pull_noop', title, 'UNVERIFIABLE',
       'no field was re-asked in the last 24h — nothing to measure (a walk that did not run is not a quiet walk)');
     return;
   }
-  const ratio = row.written / row.reasked;
-  const detail = `${row.written} write(s) / ${row.reasked} re-ask(s) = ${(ratio * 100).toFixed(1)}%`
-    + `, ${row.newDocuments} new document(s) in the same window`;
-  // A high ratio is only suspicious WITHOUT a matching document arrival: new
-  // documents are exactly when legitimate rewriting happens.
-  if (ratio > PULL_NOOP_RECOMMENDED_CEILING && row.newDocuments === 0) {
-    notify('pull_noop', 'P2', 'cycle', 'write rate high with no new documents', detail);
-    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'FAIL',
+  const c = classifyNoopWrites(touched);
+  const ratio = c.unexplained / reasked;
+  const detail = `${c.unexplained} unexplained real change(s) / ${reasked} re-ask(s) = ${(ratio * 100).toFixed(1)}%`
+    + ` (${c.touched} row(s) touched, ${c.realChanges} real change(s), ${c.exemptedReread} on re-read IPOs,`
+    + ` ${c.exemptedAnswers} on answers-round IPOs), ${newDocuments} new document(s) in the same window`;
+  // A high ratio is only suspicious WITHOUT a document arrival: new documents are exactly when
+  // legitimate rewriting happens.
+  if (ratio > PULL_NOOP_RECOMMENDED_CEILING && newDocuments === 0) {
+    notify('pull_noop', 'P2', 'cycle', 'real changes high with no document or answers-round cause', detail);
+    record('pull_noop', title, 'FAIL',
       `${detail} — above the RECOMMENDED ${(PULL_NOOP_RECOMMENDED_CEILING * 100).toFixed(0)}% ceiling with no document arrival to explain it (threshold is a recommendation per OD-18, not a measured number)`);
     return;
   }
-  record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'PASS', detail);
+  record('pull_noop', title, 'PASS', detail);
 }
 
 
@@ -3537,38 +3552,36 @@ async function checkS_pullWrite() {
   let planRows, writeRows;
   try {
     planRows = await q(
-      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.chosen_source::text AS "chosenSource"
+      `SELECT p.ipo_id AS "ipoId", i.slug, p.table_name AS "tableName", p.row_key AS "rowKey",
+              p.field_name AS "fieldName", p.chosen_source::text AS "chosenSource", p.answers
          FROM ipo_field_plan p
          JOIN ipos i ON i.id = p.ipo_id
         WHERE p.state = 'SUPPLIED'
           AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')`
     );
     writeRows = await q(
-      `SELECT ipo_id AS "ipoId", table_name AS "tableName", field_name AS "fieldName" FROM field_sources`
+      `SELECT ipo_id AS "ipoId", table_name AS "tableName", row_key AS "rowKey", field_name AS "fieldName" FROM field_sources`
     );
   } catch (e) {
     record('pull_write', 'every SUPPLIED plan row has a matching field_sources write', 'UNVERIFIABLE',
       `ipo_field_plan/field_sources not readable: ${e.message}`);
     return;
   }
-  // ipo_field_plan.field_name is snake_case; field_sources.field_name is
-  // camelCase. Comparing them directly in SQL returns zero matches and this
-  // check reports a clean PASS over a comparison that never happened -- the
-  // exact shape a silent empty result takes. The conversion is done here,
-  // where it is visible, rather than buried in a regexp_replace.
-  const toCamel = (c) => c.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
-  const written = new Set(writeRows.map((w) => `${w.tableName}.${w.fieldName}`));
-  const missing = planRows.filter((r) => !written.has(`${r.tableName}.${toCamel(r.fieldName)}`));
+  // Compared PER ipo + row_key + field (field_sources.field_name is camelCase, the plan's is
+  // snake_case; the conversion lives in the lib where it is visible). A SUPPLIED row with no write
+  // of its own passes only when the value is already stored and an answer credited it or equals it.
+  const written = new Set(writeRows.map((w) => `${w.ipoId}|${w.tableName}|${w.rowKey}|${w.fieldName}`));
+  const { missing, credited } = await evaluatePullWrite(planRows, written, q);
 
   for (const r of missing.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
     notify('pull_write', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
-      'plan row says SUPPLIED but no field_sources write exists',
-      `chosenSource=${r.chosenSource || '(none)'} — the loop will never re-ask this field`);
+      'plan row says SUPPLIED but no field_sources write exists and the value is not stored',
+      `chosenSource=${r.chosenSource || '(none)'}, ${r.why} — the loop will never re-ask this field`);
   }
   record('pull_write', 'every SUPPLIED plan row has a matching field_sources write',
     missing.length === 0 ? 'PASS' : 'FAIL',
     missing.length === 0
-      ? `0 of ${planRows.length} SUPPLIED row(s) lack a write`
+      ? `0 of ${planRows.length} SUPPLIED row(s) lack a write (${credited} credited with the value already stored)`
       : `${missing.length} of ${planRows.length} SUPPLIED row(s) with no write: ${missing.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
 }
 
