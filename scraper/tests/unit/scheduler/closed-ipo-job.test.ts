@@ -45,7 +45,7 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
     // The walk population is the `w.walk` lateral; UPCOMING appears ONLY in the answers-only branch,
     // and only for offering_type NOT IN ('IPO', 'OFS') (#1493, OD-169), which never walks (answersOnly = NOT w.walk).
     expect(norm(CLOSED_IPO_CANDIDATES_SQL)).toContain(
-      norm(`SELECT (upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due) AS walk`)
+      norm(`SELECT coalesce((upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due), false) AS walk`)
     );
     expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/'OPEN'/);
     expect(CLOSED_IPO_CANDIDATES_SQL.match(/'UPCOMING'/g)).toHaveLength(1);

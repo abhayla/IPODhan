@@ -190,7 +190,7 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
       ), false) AS due
     ) c
     CROSS JOIN LATERAL (
-      SELECT (upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due) AS walk
+      SELECT coalesce((upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due), false) AS walk
     ) w
    WHERE i.hidden_at IS NULL
      AND (
@@ -225,7 +225,8 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
  * upcoming IPOs in the normal data slots, but the slots' PASS 3 selects `offering_type = 'IPO'` only, so
  * these rows had no path to the round (51 incl. 19 OFS on staging, 2026-10-03). OFS rows are excluded:
  * OD-53 freezes them and the round calls every listed source live. They are never WALKED here: `w.walk` is the walk
- * population (LISTED/CLOSED, closed before today, due) and `answersOnly = NOT w.walk`, so a
+ * population (LISTED/CLOSED, closed before today, due; coalesced so a NULL close_date is "not a walk",
+ * never NULL, which would read as answersOnly=false and get the row walked) and `answersOnly = NOT w.walk`, so a
  * never-walked UPCOMING NCD (due by the LEFT JOIN rule) only runs the round, sorted after every walk
  * pick inside the same cap. CLOSED/UPCOMING `offering_type = 'IPO'` rows stay with the data slots.
  * Gap (follow-up): such a row stamped by the round gets no answers for values stored AFTER the stamp
@@ -258,7 +259,7 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
       ), false) AS due
     ) c
     CROSS JOIN LATERAL (
-      SELECT (upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due) AS walk
+      SELECT coalesce((upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due), false) AS walk
     ) w
    WHERE i.hidden_at IS NULL
      AND (

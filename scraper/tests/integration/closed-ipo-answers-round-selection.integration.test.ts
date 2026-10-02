@@ -33,9 +33,11 @@ const NEVER_WALKED_UPCOMING_NCD = '00000000-0000-4000-8000-000000042107';
 const HIDDEN_CLOSED_TENDER = '00000000-0000-4000-8000-000000042108';
 const UPCOMING_IPO = '00000000-0000-4000-8000-000000042109';
 const DONE_CLOSED_RIGHTS = '00000000-0000-4000-8000-000000042110';
+const NULL_CLOSE_CLOSED_NCD = '00000000-0000-4000-8000-000000042111';
 const ALL = [
   DONE_LISTED, NEVER_WALKED, DUE_REPICK, DONE_CLOSED, STORE_IPO,
   DONE_CLOSED_OFS, NEVER_WALKED_UPCOMING_NCD, HIDDEN_CLOSED_TENDER, UPCOMING_IPO, DONE_CLOSED_RIGHTS,
+  NULL_CLOSE_CLOSED_NCD,
 ];
 const VERSION = 'item42-answers-round-test-version';
 
@@ -51,7 +53,7 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, ALL));
   }
 
-  async function seedIpo(id: string, status: 'LISTED' | 'CLOSED' | 'UPCOMING', closeDate: string, offeringType = 'IPO') {
+  async function seedIpo(id: string, status: 'LISTED' | 'CLOSED' | 'UPCOMING', closeDate: string | null, offeringType = 'IPO') {
     await db.execute(sql`
       INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date, offering_type)
       VALUES (${id}::uuid, ${'Item 42 fixture ' + id.slice(-3)}, ${'item42-answers-round-' + id.slice(-3)}, 'MAINBOARD',
@@ -172,6 +174,14 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
       const capped = await job.selectClosedIpoCandidates(db as never, VERSION, 1, true);
       expect(capped).toHaveLength(1);
       expect(capped[0].answersOnly).toBe(false);
+    });
+
+    it('a never-walked (due) CLOSED NCD with NULL close_date is an answers-only pick, NEVER a walk pick (w.walk is coalesced)', async () => {
+      await seedIpo(NULL_CLOSE_CLOSED_NCD, 'CLOSED', null, 'NCD');
+      const pick = (await wide(true)).find((c) => c.id === NULL_CLOSE_CLOSED_NCD);
+      expect(pick).toBeDefined();
+      expect(pick!.answersOnly).toBe(true);
+      expect((await wide(false)).some((c) => c.id === NULL_CLOSE_CLOSED_NCD)).toBe(false);
     });
 
     it('LISTED behaviour unchanged: the DONE LISTED IPO is still an answers-only pick', async () => {
