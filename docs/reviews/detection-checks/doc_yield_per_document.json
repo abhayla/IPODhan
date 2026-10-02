@@ -1,0 +1,11 @@
+{
+  "id": "doc_yield_per_document",
+  "findingClass": "A COMPLETED offer document that delivered far fewer fields than its document type gives (NSE RHP: 4 DOC-first receipts of the cover and business fields it prints).",
+  "round7Findings": [],
+  "failThreshold": "For every COMPLETED offer document (DRHP, RHP, PROSPECTUS): FAIL when document_field_receipts rows for it fall below the expected count for its type. Reported per document by IPO slug, document id and type with delivered and expected counts - never a bare count (signal-ownership.md R1).",
+  "severity": "P1",
+  "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+  "note": "SPEC ONLY - this check is NOT implemented. It has no record('doc_yield_per_document') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage (scripts/tests/audit-detection-floor.test.mjs case 79). Expected counts per type are set from real documents. Specified by spec 2.5.6 (OD-164), item 37.",
+  "owner": "document-yield plan (OD-164), spec 7.1 item 37",
+  "section": "notCoveredByThisManifest"
+}

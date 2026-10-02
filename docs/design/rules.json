@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-02T00:20:16.173Z",
+  "generated_at": "2026-10-02T08:09:48.531Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 211,
-    "retired": 55
+    "live": 218,
+    "retired": 58
   },
-  "next_id": 267,
+  "next_id": 277,
   "rules": [
     {
       "id": "R-151",
@@ -783,12 +783,12 @@
       "retired": false
     },
     {
-      "id": "R-253",
-      "hash": "b620f7cf3ce7",
+      "id": "R-275",
+      "hash": "22a9d12cc81a",
       "section": "2.4 What the loop does, per field",
       "kind": "prose",
-      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168. Each witness carries its outcome (SUPPLIED, NOT_PRINTED, NOT_AVAILABLE_YET, CHECK_FAILED or FAILED) and, when it is not SUPPLIED, a null value and its cause; only SUPPLIED witnesses count as agreeing or disagreeing answers (OD-60), and a witness stored before this wording has no outcome and is read as SUPPLIED. The witnesses are stored whenever the pass stores a value: the SUPPLIED winner, or a provisional value under NOT_AVAILABLE_YET. A field with no stored value has no field_sources row (a row there means a source supplied the stored value, failure class #684); per OD-137 its per-rank answers of that pass are stored on the plan row instead, in ipo_field_plan.answers, in the same shape as a witness. Measured after the first change: F-196.",
-      "first_seen": "2026-09-28",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168. OD-163 (2026-10-02, F-226): the answers are recorded by every path that writes a stored value, not only the walk; IPOs that already have values without them get one answers-only round (every listed source asked once, answers recorded, no page value changed, never repeated). Each witness carries its outcome (SUPPLIED, NOT_PRINTED, NOT_AVAILABLE_YET, CHECK_FAILED or FAILED) and, when it is not SUPPLIED, a null value and its cause; only SUPPLIED witnesses count as agreeing or disagreeing answers (OD-60), and a witness stored before this wording has no outcome and is read as SUPPLIED. The witnesses are stored whenever the pass stores a value: the SUPPLIED winner, or a provisional value under NOT_AVAILABLE_YET. A field with no stored value has no field_sources row (a row there means a source supplied the stored value, failure class #684); per OD-137 its per-rank answers of that pass are stored on the plan row instead, in ipo_field_plan.answers, in the same shape as a witness. Measured after the first change: F-196.",
+      "first_seen": "2026-10-02",
       "retired": false
     },
     {
@@ -825,6 +825,15 @@
       "kind": "blockquote",
       "text": "A field is not re-asked while chosen_document_id is still the best available document, of the highest-precedence type, for that field.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-268",
+      "hash": "8f759a2894cf",
+      "section": "2.5 When a supplied value is asked for again",
+      "kind": "prose",
+      "text": "OD-161 (2026-10-02, F-225): the DOC fetcher takes a document's answer from that record, never from who owns the stored value. When a lower-ranked website owns the column: an equal value credits the document and writes nothing; a different value replaces the website's only when the document outranks it for the field and the value is read from a text page and passes the field's checks (an OCR-only value never replaces; the difference goes to the admin conflicts list); exchange-first timetable fields and ADMIN values are unchanged. OD-162: ipos.lead_managers read from the document's own cover page is a document answer with a record (OD-91(4) no longer applies to it).",
+      "first_seen": "2026-10-02",
       "retired": false
     },
     {
@@ -1023,6 +1032,33 @@
       "kind": "blockquote",
       "text": "After the final prospectus, no document changes a document-owned field except a corrigendum to the prospectus.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-269",
+      "hash": "5cea0d9e1d80",
+      "section": "2.5.6 Document yield and every-source coverage (OD-164)",
+      "kind": "prose",
+      "text": "Owner approval 2026-10-02 of the plan that follows from F-224, F-225 and F-226. It applies to every IPO: all statuses, MAINBOARD and SME, every offering type, every table the manifest ranks DOC for, and every source Appendix A lists. No page value changes by this section alone; it states what the walk, the reader and the checks must do.",
+      "first_seen": "2026-10-02",
+      "retired": false
+    },
+    {
+      "id": "R-276",
+      "hash": "246a3a77e286",
+      "section": "2.5.6 Document yield and every-source coverage (OD-164)",
+      "kind": "prose",
+      "text": "1. Every table (a). The DOC read path covers each child table; a per-row plan row is mapped to its child row by row_key. Answer states for each row: found with a value; the section stated absent by the document (the stated-absence list, e.g. \"does not have an identifiable promoter\"); row missing; document unreadable. Each table's not-applicable list holds (e.g. risk factors for TENDER and BUYBACK). Adding tables changes the gap key and re-offers rows; they are spent inside the existing per-cycle cap (§2.1 budgets), and the staging proof reads how many drain per day. 2. Cover reader (b). One deterministic reader for the SEBI-mandated cover block of DRHP, RHP and PROSPECTUS (and the price band advert and corrigendum where printed), both layouts: registrar to registrars. and ipos.registrar; book running lead managers to ipo_intermediaries. and, by OD-162, ipos.lead_managers; company website; compliance officer and contact. The company description stays out (§5.6). Answer states per field: printed value; stated not printed; not found; unreadable. 3. Objects of the offer (c). Accepts the real headings (\"Requirement of funds and utilisation of Net Proceeds\", \"Schedule of implementation\", \"Objects of the Offer\"), payload in crore (§1.2 row 27), check F4 (objects plus general corporate purposes about equal net proceeds within 1%, general corporate purposes at most 25%), persisted with provenance. A pure offer for sale keeps the manifest's not-applicable reason. 4. No silent partial read (d). A COMPLETED document that delivered far fewer fields than its type gives is reported by the check doc_yield_per_document, by document identity. The extraction status set is unchanged (F-183). 5. No source ignored (e). For every NO_MAPPING source and field pair a real-page fixture decides: the page prints it, so it is mapped; or it does not, and the owner receives the evidence and a SPEC CHANGE for that pair. A rank or capability change reopens PARTIAL closed-IPO rows (OD-78, OD-82), budgeted. Answer states: value; page states none; page empty; fetch failed; ambiguous match. 6. OCR guards (f). An OCR amount off by a power of ten against a text or exchange value is flagged (the NSE band read 1.7 and 1.785 against 1,700 and 1,785); an OCR identifier never overwrites a text one (the NSE CIN read ...089769 against ...069769). OD-97 marking keeps an OCR value from winning over a text or exchange value. 7. One re-read (g). After items 39, 40 and 46 (the table readers, OD-165: peers, financial statements and ratios, promoters) merge, a single extractor version bump names the changed document types; re-reads stay inside the 3-spawn-per-cycle cap with 1 reserved. First measure how many documents still hold their file after OD-32 purges (unverified; OD-67 noted 46 of 307). 8. Order (h). The five checks below are built first (staging-is-the-release-gate R3). All of it is proven on staging; no production deploy or write (OD-146).",
+      "first_seen": "2026-10-02",
+      "retired": false
+    },
+    {
+      "id": "R-271",
+      "hash": "e04f75628432",
+      "section": "2.5.6 Document yield and every-source coverage (OD-164)",
+      "kind": "table-normative",
+      "text": "listed_source_never_asked — a source and field pair Appendix A lists that is never asked or has no mapping (extends the coverage-gap baseline)",
+      "first_seen": "2026-10-02",
       "retired": false
     },
     {
@@ -1449,6 +1485,15 @@
       "retired": false
     },
     {
+      "id": "R-272",
+      "hash": "7533b0c8054e",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "prose",
+      "text": "F-223 (2026-10-02, open): the same one-day-early shift reaches IPO dates. On staging the real listing_t3 rule over 312 IPOs (2025-2026 listings) passes 296 and fails 16, 12 of them at exactly 4 working days, and the close date of those 12 comes from CHITTORGARH (10) or NSE (2): ICICI Prudential AMC closed 2025-12-16 on three public sources and staging stores 2025-12-15. Weekend open or close dates for offering type IPO: 8. The mechanism is suspected (the IST-through-UTC shift of F-220 in the Chittorgarh date parse), not yet proven. Exchange-first timetable fields stay exchange-first (§1.2.1); a document never outranks an exchange on a date (OD-161(c)).",
+      "first_seen": "2026-10-02",
+      "retired": false
+    },
+    {
       "id": "R-102",
       "hash": "62523426bb3f",
       "section": "5.1 O-1 — when the pull runs, and why",
@@ -1773,6 +1818,24 @@
       "retired": false
     },
     {
+      "id": "R-273",
+      "hash": "1a9a1d4625bf",
+      "section": "7.1 Sequence",
+      "kind": "table-normative",
+      "text": "41 — A document answer is judged by its own record (OD-161) — equal value credits, text replaces a lower-ranked website value, OCR never replaces, exchange-first dates and ADMIN unchanged — 6, 37 — A — medium — walk",
+      "first_seen": "2026-10-02",
+      "retired": false
+    },
+    {
+      "id": "R-274",
+      "hash": "e90f9cdea65a",
+      "section": "7.1 Sequence",
+      "kind": "table-normative",
+      "text": "44 — OCR guards and the NSE PROSPECTUS block (OD-164(f)) — magnitude flag, OCR identifier never overwrites a text one, diagnose the BLOCKED_ALL fetch — 37 — B — small — extraction",
+      "first_seen": "2026-10-02",
+      "retired": false
+    },
+    {
       "id": "R-133",
       "hash": "fa719a285934",
       "section": "7.3 What I am not sure about, plainly",
@@ -1906,6 +1969,33 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-270",
+      "hash": "11f3a2dae877",
+      "section": "2.5.6 Document yield and every-source coverage (OD-164)",
+      "kind": "prose",
+      "text": "1. Every table (a). The DOC read path covers each child table; a per-row plan row is mapped to its child row by row_key. Answer states for each row: found with a value; the section stated absent by the document (the stated-absence list, e.g. \"does not have an identifiable promoter\"); row missing; document unreadable. Each table's not-applicable list holds (e.g. risk factors for TENDER and BUYBACK). Adding tables changes the gap key and re-offers rows; they are spent inside the existing per-cycle cap (§2.1 budgets), and the staging proof reads how many drain per day. 2. Cover reader (b). One deterministic reader for the SEBI-mandated cover block of DRHP, RHP and PROSPECTUS (and the price band advert and corrigendum where printed), both layouts: registrar to registrars. and ipos.registrar; book running lead managers to ipo_intermediaries. and, by OD-162, ipos.lead_managers; company website; compliance officer and contact. The company description stays out (§5.6). Answer states per field: printed value; stated not printed; not found; unreadable. 3. Objects of the offer (c). Accepts the real headings (\"Requirement of funds and utilisation of Net Proceeds\", \"Schedule of implementation\", \"Objects of the Offer\"), payload in crore (§1.2 row 27), check F4 (objects plus general corporate purposes about equal net proceeds within 1%, general corporate purposes at most 25%), persisted with provenance. A pure offer for sale keeps the manifest's not-applicable reason. 4. No silent partial read (d). A COMPLETED document that delivered far fewer fields than its type gives is reported by the check doc_yield_per_document, by document identity. The extraction status set is unchanged (F-183). 5. No source ignored (e). For every NO_MAPPING source and field pair a real-page fixture decides: the page prints it, so it is mapped; or it does not, and the owner receives the evidence and a SPEC CHANGE for that pair. A rank or capability change reopens PARTIAL closed-IPO rows (OD-78, OD-82), budgeted. Answer states: value; page states none; page empty; fetch failed; ambiguous match. 6. OCR guards (f). An OCR amount off by a power of ten against a text or exchange value is flagged (the NSE band read 1.7 and 1.785 against 1,700 and 1,785); an OCR identifier never overwrites a text one (the NSE CIN read ...089769 against ...069769). OD-97 marking keeps an OCR value from winning over a text or exchange value. 7. One re-read (g). After items 39 and 40 merge, a single extractor version bump names the changed document types; re-reads stay inside the 3-spawn-per-cycle cap with 1 reserved. First measure how many documents still hold their file after OD-32 purges (unverified; OD-67 noted 46 of 307). 8. Order (h). The five checks below are built first (staging-is-the-release-gate R3). All of it is proven on staging; no production deploy or write (OD-146).",
+      "first_seen": "2026-10-02",
+      "retired": true
+    },
+    {
+      "id": "R-267",
+      "hash": "303711e0914e",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168. OD-163 (2026-10-02, F-226): the answers are recorded by every path that writes a stored value, not only the walk; IPOs that already have values without them get one answers-only round (every listed source asked once, answers recorded, no page value changed, never repeated). Each witness carries its outcome (SUPPLIED, NOT_PRINTED, NOT_AVAILABLE_YET, CHECK_FAILED or FAILED) and, when it is not SUPPLIED, a null value and its cause; only SUPPLIED witnesses count as agreeing or disagreeing answers (OD-60), and a witness stored before this wording has no outcome and is read as SUPPLIED. The witnesses are stored whenever the pass stores a value: the SUPPLIED winner, or a provisional value under NOT_AVAILABLE_YET. A field with no stored value has no field_sources row (a row there means a source supplied the stored value, failure class #684); per OD-137 its per-rank answers of that pass are stored on the plan row instead, in ipo_field_plan.answers, in the same shape as a witness. Measured after the first change: F-196. Measured for OD-163: F-226. The document-yield plan that completes this loop is §2.5.6 (OD-164).",
+      "first_seen": "2026-10-02",
+      "retired": true
+    },
+    {
+      "id": "R-253",
+      "hash": "b620f7cf3ce7",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168. Each witness carries its outcome (SUPPLIED, NOT_PRINTED, NOT_AVAILABLE_YET, CHECK_FAILED or FAILED) and, when it is not SUPPLIED, a null value and its cause; only SUPPLIED witnesses count as agreeing or disagreeing answers (OD-60), and a witness stored before this wording has no outcome and is read as SUPPLIED. The witnesses are stored whenever the pass stores a value: the SUPPLIED winner, or a provisional value under NOT_AVAILABLE_YET. A field with no stored value has no field_sources row (a row there means a source supplied the stored value, failure class #684); per OD-137 its per-rank answers of that pass are stored on the plan row instead, in ipo_field_plan.answers, in the same shape as a witness. Measured after the first change: F-196.",
+      "first_seen": "2026-09-28",
+      "retired": true
     },
     {
       "id": "R-264",

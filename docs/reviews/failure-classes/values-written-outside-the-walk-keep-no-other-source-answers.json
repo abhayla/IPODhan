@@ -1,0 +1,13 @@
+{
+  "class_id": "a stored value written by a path outside the pull walk records no answers from the other listed sources",
+  "feature": "any writer of a stored value that is not the field walk (today: SYSTEM, FILING_PERSISTER, MIGRATION_SCRIPT, CHITTORGARH_ISSUE_TYPE_FILL) while OD-103 requires the other listed sources' answers to be recorded as witnesses",
+  "symptom": "Collect-all works inside the walk, but most values reach the page through other writers, so the admin edit view and the conflict logic see one source's answer only. Every new write path repeats it unless it records witnesses or routes through the walk.",
+  "first_seen": "2026-10-02 (F-226) -- ipodhan_staging field_sources by writer: SYSTEM 18,396 rows, 516 with witnesses; FILING_PERSISTER 1,091, 8; MIGRATION_SCRIPT 684, 0; CHITTORGARH_ISSUE_TYPE_FILL 234, 0; 20,008 of 20,532 stored values without other-source answers.",
+  "fix_prs": "none yet -- planned: spec 7.1 item 42 (OD-163)",
+  "detection_check": "planned witness_missing_on_stored_value (docs/reviews/detection-checks/witness_missing_on_stored_value.json, notCoveredByThisManifest)",
+  "status": "unguarded -- no implemented check",
+  "spec_ref": [
+    "§2.4",
+    "§9.3"
+  ]
+}

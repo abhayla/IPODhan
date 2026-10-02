@@ -1,0 +1,11 @@
+{
+  "id": "doc_rank1_unanswered_with_offer_doc",
+  "findingClass": "Rank-1 DOC plan rows left unanswered while a COMPLETED offer document exists for the IPO.",
+  "round7Findings": [],
+  "failThreshold": "FAIL per IPO when ipo_field_plan rows with rank-1 DOC are not SUPPLIED and the IPO has a COMPLETED offer document that the field's manifest family accepts. Reported per IPO, table and field with the cause.",
+  "severity": "P1",
+  "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+  "note": "SPEC ONLY - this check is NOT implemented. It has no record('doc_rank1_unanswered_with_offer_doc') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage (scripts/tests/audit-detection-floor.test.mjs case 79). Extends pull_doc_nay_with_offer_doc. Specified by spec 2.5.6 (OD-164), item 37.",
+  "owner": "document-yield plan (OD-164), spec 7.1 item 37",
+  "section": "notCoveredByThisManifest"
+}
