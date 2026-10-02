@@ -3723,3 +3723,21 @@ export async function writeIpoPostponedAtBackfill(
     return written;
   });
 }
+
+/**
+ * OD-163 answers-only round: the one writer of `ipos.answers_round_at`. Stamps the round done ONCE
+ * (`answers_round_at IS NULL` guard) with the DATABASE clock, because the stamp is compared against
+ * DB-stamped field_sources times (F-210). Kept on the shared write path
+ * (config/write-ratchet-baseline.json). Returns true when this call stamped the row.
+ */
+export async function markIpoAnswersRoundDone(
+  db: Pick<NodePgDatabase<typeof schema>, 'update'>,
+  ipoId: string
+): Promise<boolean> {
+  const rows = await db
+    .update(ipos)
+    .set({ answersRoundAt: sql`now()` as unknown as Date })
+    .where(and(eq(ipos.id, ipoId), sql`${ipos.answersRoundAt} IS NULL`))
+    .returning({ id: ipos.id });
+  return rows.length > 0;
+}

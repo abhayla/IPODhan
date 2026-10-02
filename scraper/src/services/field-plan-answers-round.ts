@@ -28,10 +28,11 @@
  * and are not asked again). LISTED IPOs run it only from the 22:00 closed-IPO job (OD-163(b)), so
  * they are inside that job's 10-a-day cap.
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { columnToCamelCase } from '../config/field-name-case.js';
 import * as schema from '@ipodhan/shared/db/schema';
+import { markIpoAnswersRoundDone } from '@ipodhan/shared';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { logger } from '../utils/logger.js';
@@ -218,14 +219,6 @@ export function buildAnswersRoundStore(db: NodePgDatabase<typeof schema>): Answe
         .filter((p) => unanswered.has(`${p.tableName}|${p.rowKey ?? ''}|${columnToCamelCase(p.fieldName)}`))
         .map((p) => ({ tableName: p.tableName, rowKey: p.rowKey ?? '', fieldName: p.fieldName }));
     },
-    async markRoundDone(ipoId) {
-      const rows = await db
-        .update(ipos)
-        // Database clock: this stamp is compared against DB-stamped field_sources times (writtenAfter), F-210.
-        .set({ answersRoundAt: sql`now()` })
-        .where(and(eq(ipos.id, ipoId), isNull(ipos.answersRoundAt)))
-        .returning({ id: ipos.id });
-      return rows.length > 0;
-    },
+    markRoundDone: (ipoId) => markIpoAnswersRoundDone(db, ipoId),
   };
 }

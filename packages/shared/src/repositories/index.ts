@@ -5,7 +5,7 @@
  */
 
 // Repository Classes
-export { IPORepository, writeIpoHiddenState, writeIpoPostponedAtBackfill } from './ipo-repository';
+export { IPORepository, writeIpoHiddenState, writeIpoPostponedAtBackfill, markIpoAnswersRoundDone } from './ipo-repository';
 export { SubscriptionRepository } from './subscription-repository';
 export { GMPRepository } from './gmp-repository';
 export { FinancialDataRepository } from './financial-data-repository';
