@@ -760,6 +760,51 @@ def _ambiguous_hit(name, value, text):
     return None
 
 
+# PR #1472 round 1 (MAJOR-1): a cross-field check reads a SIBLING field's value. When the guard
+# MISSES an ambiguous OCR value, every check that compared another field against it compared
+# against an unknown number, so its refusal says nothing about that other field (floor 1,700
+# refused as "floor 1700.0 not < cap 1.785"). A REFUSED clears a stored value (OD-153,
+# reread-answer-clear.ts) and a MISSED keeps it (OD-158), so such a dependent is demoted to
+# MISSED with reason `depends_on_ambiguous_ocr:<field>`, never left REFUSED.
+#
+# Two ways a check depends on a guarded field: it is the SAME named check (price_band_ordering
+# and cover_price_within_bounds emit floor and cap under one check), or it is a differently named
+# check whose inputs include the guarded field (listed here from extract_filing.py's call sites).
+DEPENDS_ON_AMBIGUOUS_OCR_REASON = "depends_on_ambiguous_ocr"
+CROSS_FIELD_CHECK_INPUTS = {
+    "price_band_ordering": ("price_band_floor", "price_band_cap"),
+    "cover_price_within_bounds": ("price_band_floor", "price_band_cap"),
+    "lot_min_application_value": ("price_band_floor",),
+    "floor_multiple_recomputed": ("price_band_floor",),
+    "cap_multiple_recomputed": ("price_band_cap",),
+    "shares_x_price_equals_amount": ("price_band_floor", "price_band_cap", "fresh_issue_amount"),
+    "fresh_issue_amount_consistent": ("fresh_issue_amount",),
+    "ofs_shares_x_price_equals_amount": ("price_band_floor", "price_band_cap", "ofs_amount",
+                                         "ofs_amount_at_cap"),
+    "total_offer_size_reconciles": ("fresh_issue_amount", "ofs_amount", "total_offer_amount_at_cap"),
+    "market_cap_ordering_and_consistency": ("price_band_floor", "price_band_cap"),
+    "post_offer_shares_x_price_equals_market_cap": ("price_band_floor", "price_band_cap"),
+    "cap_over_waca_equals_printed_multiple": ("price_band_cap",),
+}
+
+
+def _read_value(field):
+    """The number the reader READ: the kept value, or a refusal's refused value."""
+    value = field.get("value")
+    if value is None and field.get("state") == "REFUSED":
+        value = field.get("refused_value")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
+def _read_pages(field):
+    if isinstance(field.get("pages"), list):
+        return field["pages"]
+    page = field.get("page")
+    return [page if page is not None else field.get("refused_page")]
+
+
 def guard_ambiguous_thousands(fields, page_text):
     """MISS every OCR-only rupee price/amount whose own page prints it in the ambiguous
     "d.ddd" shape AND whose decimal reading is implausible for the field (see above).
@@ -769,20 +814,23 @@ def guard_ambiguous_thousands(fields, page_text):
     text-layer read behind it (OD-97 (a)), which is the "text read in the same
     document" that settles the reading. The result is MISSED, never REFUSED:
     MISSED keeps a stored value (OD-158), and the ambiguity says nothing about
-    the stored one."""
+    the stored one. A refused value is judged too (the reader READ it; a sibling's
+    check refused it), and every field whose check depended on a guarded field and
+    refused is demoted to MISSED (`depends_on_ambiguous_ocr:<field>`)."""
+    guarded = []
     for name, field in list((fields or {}).items()):
         if name not in OCR_PRICE_FIELDS and name not in OCR_AMOUNT_FIELDS:
             continue
         if field.get("source_text") != "OCR":
             continue
-        value = field.get("value")
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        value = _read_value(field)
+        if value is None:
             continue
-        pages = field.get("pages") if isinstance(field.get("pages"), list) else [field.get("page")]
-        for page in pages:
+        for page in _read_pages(field):
             hit = _ambiguous_hit(name, float(value), page_text.get(page))
             if hit is None:
                 continue
+            original_check = (field.get("check") or {}).get("name")
             field.update({
                 "value": None,
                 "check": {"name": "not_extractable", "passed": True,
@@ -791,8 +839,42 @@ def guard_ambiguous_thousands(fields, page_text):
                 "ambiguous_token": hit,
             })
             field.pop("refused_value", None)
+            guarded.append((name, original_check))
             break
+    if guarded:
+        demote_dependents_of_ambiguous(fields, guarded)
     return fields
+
+
+def demote_dependents_of_ambiguous(fields, guarded):
+    """Demote every REFUSED field whose check read a guarded (ambiguous) field to MISSED.
+
+    `guarded` is [(field name, the check name it carried before the guard)]. A dependent is a
+    field carrying the same check name as a guarded field, or a check whose inputs
+    (CROSS_FIELD_CHECK_INPUTS) include a guarded field. Only a refusal is demoted: a check that
+    could not be judged is not evidence against the dependent's value."""
+    guarded_names = {name for name, _ in guarded}
+    for name, field in (fields or {}).items():
+        if name in guarded_names or field.get("state") != "REFUSED":
+            continue
+        check = (field.get("check") or {}).get("name")
+        cause = None
+        for g_name, g_check in guarded:
+            if (g_check is not None and check == g_check) or g_name in CROSS_FIELD_CHECK_INPUTS.get(check, ()):
+                cause = g_name
+                break
+        if cause is None:
+            continue
+        field.update({
+            "value": None,
+            "check": {"name": "not_extractable", "passed": True,
+                      "detail": "%s:%s (%s refused against an ambiguous OCR value)"
+                                % (DEPENDS_ON_AMBIGUOUS_OCR_REASON, cause, check)},
+            "state": "MISSED",
+            "depends_on_ambiguous_ocr": cause,
+        })
+        field.pop("refused_value", None)
+        field.pop("refused_page", None)
 
 
 def main():

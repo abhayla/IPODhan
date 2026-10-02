@@ -1,0 +1,322 @@
+{
+  "measured_at": "2026-10-02T16:34:48.526Z",
+  "db": "ipodhan_staging",
+  "newVersion": "extract_filing.py@2026-10-03",
+  "rows": [
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-present",
+      "n": 3
+    },
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-purged",
+      "n": 2
+    },
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 2
+    },
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-purged",
+      "n": 16
+    },
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "live",
+      "file": "likely-present",
+      "n": 11
+    },
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 2
+    },
+    {
+      "type": "DRHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-10-02",
+      "win": "live",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "DRHP",
+      "status": "FAILED",
+      "version": "(none)",
+      "win": "live",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "(none)",
+      "win": "live",
+      "file": "likely-present",
+      "n": 18
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "(none)",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 20
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "(none)",
+      "win": "outside",
+      "file": "likely-purged",
+      "n": 13
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-purged",
+      "n": 2
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-purged",
+      "n": 10
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-26",
+      "win": "live",
+      "file": "likely-present",
+      "n": 7
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "live",
+      "file": "likely-present",
+      "n": 14
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 5
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "status": "FAILED",
+      "version": "(none)",
+      "win": "live",
+      "file": "likely-purged",
+      "n": 1
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "COMPLETED",
+      "version": "(none)",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-purged",
+      "n": 1
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 3
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-purged",
+      "n": 9
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "live",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "FAILED",
+      "version": "(none)",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "PROSPECTUS",
+      "status": "PENDING",
+      "version": "(none)",
+      "win": "outside",
+      "file": "no-sha",
+      "n": 74
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-present",
+      "n": 3
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "live",
+      "file": "likely-purged",
+      "n": 6
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 7
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-03",
+      "win": "outside",
+      "file": "likely-purged",
+      "n": 19
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "live",
+      "file": "likely-present",
+      "n": 30
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-09-27",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 4
+    },
+    {
+      "type": "RHP",
+      "status": "COMPLETED",
+      "version": "extract_filing.py@2026-10-02",
+      "win": "live",
+      "file": "likely-present",
+      "n": 8
+    },
+    {
+      "type": "RHP",
+      "status": "FAILED",
+      "version": "(none)",
+      "win": "live",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "RHP",
+      "status": "FAILED",
+      "version": "(none)",
+      "win": "live",
+      "file": "likely-purged",
+      "n": 1
+    },
+    {
+      "type": "RHP",
+      "status": "PENDING",
+      "version": "(none)",
+      "win": "outside",
+      "file": "likely-present",
+      "n": 1
+    },
+    {
+      "type": "RHP",
+      "status": "PENDING",
+      "version": "(none)",
+      "win": "outside",
+      "file": "likely-purged",
+      "n": 5
+    },
+    {
+      "type": "RHP",
+      "status": "PENDING",
+      "version": "(none)",
+      "win": "outside",
+      "file": "no-sha",
+      "n": 7
+    }
+  ],
+  "eligibleLikelyPresentByType": {
+    "DRHP": {
+      "live": 15,
+      "outside": 4
+    },
+    "PRICE_BAND_AD": {
+      "live": 40,
+      "outside": 25
+    },
+    "PROSPECTUS": {
+      "live": 1,
+      "outside": 4
+    },
+    "RHP": {
+      "live": 41,
+      "outside": 11
+    }
+  },
+  "liveEligibleTotal": 97
+}

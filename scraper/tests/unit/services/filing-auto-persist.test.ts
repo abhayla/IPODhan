@@ -2863,12 +2863,18 @@ describe('#771 r3 — re-read scope and never-read-first order', () => {
   const stateAt = (id: string, type: string, v: string) =>
     ({ id: `s-${id}`, docType: type, documentId: id, extractedAt: null, extractorVersion: v });
 
-  it('a price-band ad read at the previous version is NOT re-opened by this bump', () => {
-    const { pending, skipped } = selectPendingFilings(IPO.id, [completedAt('pba', 'PRICE_BAND_AD')],
+  it('item 45: a price-band ad read at the previous version IS re-opened by the @2026-10-03 bump (item 44 OCR guards)', () => {
+    const { pending } = selectPendingFilings(IPO.id, [completedAt('pba', 'PRICE_BAND_AD')],
       [stateAt('pba', 'PRICE_BAND_AD', OLD)], { fileExists: () => true, storeDir: 'C:/store' });
+    expect(pending.map((d) => d.type)).toEqual(['PRICE_BAND_AD']);
+    expect(REREAD_SINCE_DEFAULT).toBe(OLD);
+  });
+
+  it('item 45: a price-band ad already read at the current version is not re-opened again', () => {
+    const { pending, skipped } = selectPendingFilings(IPO.id, [completedAt('pba', 'PRICE_BAND_AD')],
+      [stateAt('pba', 'PRICE_BAND_AD', EXTRACTOR_VERSION)], { fileExists: () => true, storeDir: 'C:/store' });
     expect(pending).toHaveLength(0);
     expect(skipped[0]).toMatch(/already extracted/);
-    expect(REREAD_SINCE_DEFAULT).toBe(OLD);
   });
 
   it('an RHP, DRHP or PROSPECTUS read at the previous version IS re-opened (the ratio reader changed)', () => {

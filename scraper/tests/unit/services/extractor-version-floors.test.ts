@@ -28,9 +28,9 @@ describe('#1247 extractor version floors are derived from one changelog', () => 
     }
   });
 
-  it('a type no version changed keeps the default floor (no needless re-read of price-band ads)', () => {
+  it('a type no version changed keeps the default floor (no needless re-read of anchors or corrigenda)', () => {
     const changed = new Set(Object.values(changes!).flat());
-    for (const type of ['PRICE_BAND_AD', 'ANCHOR_ALLOCATION_REPORT', 'CORRIGENDUM']) {
+    for (const type of ['ANCHOR_ALLOCATION_REPORT', 'CORRIGENDUM']) {
       expect(changed.has(type)).toBe(false);
       expect(persist.rereadSinceFor(type)).toBe(persist.REREAD_SINCE_DEFAULT);
     }

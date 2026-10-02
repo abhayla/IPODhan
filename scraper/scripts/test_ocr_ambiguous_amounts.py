@@ -103,3 +103,81 @@ def test_a_non_money_field_in_the_ambiguous_shape_is_kept():
     fields = {"subscription_times": {"value": 1.25, "page": 0, "source_text": "OCR", "state": "VALUE"}}
     guard_ambiguous_thousands(fields, {0: "SUBSCRIBED 1.250 TIMES"})
     assert fields["subscription_times"]["value"] == 1.25
+
+
+# PR #1472 round 1 (MAJOR-1): a sibling whose cross-field check refused against an ambiguous OCR
+# value is MISSED (keeps the stored value, OD-158), never REFUSED (clears it, OD-153).
+from ocr_pages import CROSS_FIELD_CHECK_INPUTS, DEPENDS_ON_AMBIGUOUS_OCR_REASON  # noqa: E402
+
+AMBIGUOUS_PAGE = {0: "PRICE BAND: ₹1.785 AND FRESH ISSUE OF ₹1.700 LAKH ALSO OFS ₹1.250 LAKH"}
+AMBIGUOUS_VALUE = {"price_band_floor": 1.785, "price_band_cap": 1.785,
+                   "fresh_issue_amount": 1.7, "ofs_amount": 1.25, "ofs_amount_at_cap": 1.25,
+                   "total_offer_amount_at_cap": 1.7}
+
+
+def _refused(value, check, source="TEXT", page=1):
+    return {"value": None, "page": None, "state": "REFUSED", "refused_value": value,
+            "refused_page": page, "source_text": source,
+            "check": {"name": check, "passed": False, "detail": "check_failed: x"}}
+
+
+def test_floor_1700_with_ocr_cap_1_785_is_missed_not_refused_end_to_end():
+    out = _run("PRICE BAND: ₹1,700 TO ₹1.785 PER EQUITY SHARE OF FACE VALUE OF ₹1 EACH")
+    cap, floor = out["fields"]["price_band_cap"], out["fields"]["price_band_floor"]
+    assert cap["state"] == "MISSED" and cap["ambiguous_token"] == "1.785", cap
+    assert floor["state"] == "MISSED", floor
+    assert floor["check"]["detail"].startswith(DEPENDS_ON_AMBIGUOUS_OCR_REASON + ":price_band_cap")
+    assert "refused_value" not in floor and floor["value"] is None
+
+
+def test_text_floor_1700_with_ocr_cap_1_785_is_missed():
+    fields = {"price_band_floor": _refused(1700.0, "price_band_ordering", "TEXT", 1),
+              "price_band_cap": _refused(1.785, "price_band_ordering", "OCR", 0)}
+    guard_ambiguous_thousands(fields, {0: "TO ₹1.785 PER", 1: "PRICE BAND: ₹1,700"})
+    assert fields["price_band_cap"]["state"] == "MISSED"
+    assert fields["price_band_floor"]["state"] == "MISSED"
+    assert fields["price_band_floor"]["depends_on_ambiguous_ocr"] == "price_band_cap"
+
+
+def test_every_cross_field_check_demotes_its_refused_dependent():
+    for check, inputs in CROSS_FIELD_CHECK_INPUTS.items():
+        for source_field in inputs:
+            ambiguous = {"value": AMBIGUOUS_VALUE[source_field], "page": 0, "source_text": "OCR",
+                         "state": "VALUE", "check": {"name": "some_own_check", "passed": True}}
+            fields = {source_field: ambiguous, "dependent_x": _refused(5.0, check)}
+            guard_ambiguous_thousands(fields, AMBIGUOUS_PAGE)
+            assert fields[source_field]["state"] == "MISSED", (check, source_field, fields[source_field])
+            dep = fields["dependent_x"]
+            assert dep["state"] == "MISSED", (check, source_field, dep)
+            assert dep["depends_on_ambiguous_ocr"] == source_field
+
+
+def test_an_unrelated_refusal_and_an_unambiguous_band_are_left_alone():
+    fields = {"price_band_cap": {"value": 1.785, "page": 0, "source_text": "OCR", "state": "VALUE",
+                                 "check": {"name": "price_band_ordering", "passed": True}},
+              "face_value": _refused(0.0, "face_value_positive"),
+              "cin": _refused("X", "cin_shape")}
+    guard_ambiguous_thousands(fields, AMBIGUOUS_PAGE)
+    assert fields["face_value"]["state"] == "REFUSED" and fields["cin"]["state"] == "REFUSED"
+    # Glass Wall Systems' 72-82 band (staging, PRICE_BAND_AD): not the "d.ddd" shape, never guarded.
+    band = {"price_band_floor": _refused(82.0, "price_band_ordering", "OCR", 0),
+            "price_band_cap": _refused(72.0, "price_band_ordering", "OCR", 0)}
+    guard_ambiguous_thousands(band, {0: "PRICE BAND: ₹82 TO ₹72"})
+    assert band["price_band_floor"]["state"] == "REFUSED" and band["price_band_cap"]["state"] == "REFUSED"
+
+
+# PR #1472 round 3: the SAME-check-name branch of demote_dependents_of_ambiguous, on a check name
+# that is in NO input list (the cross-field list cannot have found it): the guarded field's own
+# check, shared with a sibling, makes the sibling's refusal a MISSED.
+def test_same_check_name_demotes_a_sibling_on_a_check_in_no_list():
+    shared = "a_shared_check_in_no_list"
+    assert shared not in CROSS_FIELD_CHECK_INPUTS
+    fields = {"price_band_cap": {"value": 1.785, "page": 0, "source_text": "OCR", "state": "VALUE",
+                                 "check": {"name": shared, "passed": True}},
+              "pe_at_cap": _refused(41.2, shared),
+              "face_value": _refused(0.0, "face_value_positive")}
+    guard_ambiguous_thousands(fields, AMBIGUOUS_PAGE)
+    assert fields["price_band_cap"]["state"] == "MISSED"
+    assert fields["pe_at_cap"]["state"] == "MISSED", fields["pe_at_cap"]
+    assert fields["pe_at_cap"]["depends_on_ambiguous_ocr"] == "price_band_cap"
+    assert fields["face_value"]["state"] == "REFUSED"

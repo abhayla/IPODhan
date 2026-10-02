@@ -11,6 +11,7 @@
  *   MISSED / LOW_CONFIDENCE_OCR                     kept                               nothing
  *   field absent, or no answer state (OD-160)       kept                               nothing
  *   any state this module does not know             kept (fail closed)                 nothing
+ *   ANY field of the document ambiguous-OCR marked  every clear of that read kept      nothing
  *   V admin-held, row hidden or scraper-locked      kept                               nothing
  *   V's lineage records no extractor version        never cleared                      nothing
  *
@@ -135,6 +136,43 @@ export function compareExtractorVersions(a: string | null | undefined, b: string
   return ka === kb ? 0 : ka < kb ? -1 : 1;
 }
 
+/**
+ * PR #1472 round 3 (B8, structure over detector): the markers the OCR guard (ocr_pages.py
+ * guard_ambiguous_thousands / demote_dependents_of_ambiguous) leaves on an envelope field whose
+ * printed number could be read two ways ("1.785" = Rs 1.785 or Rs 1,785), and on a field it demoted
+ * because its check read that number.
+ */
+export const AMBIGUOUS_OCR_REASONS = ['ocr_ambiguous_thousands_separator', 'depends_on_ambiguous_ocr'] as const;
+/** The reason logged and returned for every clear this rule turned into a keep. */
+export const DOCUMENT_HAS_AMBIGUOUS_OCR = 'document_has_ambiguous_ocr';
+const AMBIGUOUS_OCR_KEYS = new Set(['ambiguous_token', 'depends_on_ambiguous_ocr']);
+
+function carriesAmbiguousOcrMarker(node: unknown, seen: Set<object>): boolean {
+  if (typeof node === 'string') return AMBIGUOUS_OCR_REASONS.some((r) => node.includes(r));
+  if (node === null || typeof node !== 'object') return false;
+  if (seen.has(node)) return false;
+  seen.add(node);
+  if (Array.isArray(node)) return node.some((v) => carriesAmbiguousOcrMarker(v, seen));
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (AMBIGUOUS_OCR_KEYS.has(k) && v !== null && v !== undefined && v !== false && v !== '') return true;
+    if (carriesAmbiguousOcrMarker(v, seen)) return true;
+  }
+  return false;
+}
+
+/**
+ * Every envelope field (any field, clearable or not, at any depth of its record) that carries an
+ * ambiguous-OCR marker: the reason text anywhere in it, or the guard's own `ambiguous_token` /
+ * `depends_on_ambiguous_ocr` key. Sorted, for a stable log line.
+ */
+export function findAmbiguousOcrFields(fields: Record<string, unknown> | null | undefined): string[] {
+  const out: string[] = [];
+  for (const [name, field] of Object.entries(fields ?? {})) {
+    if (carriesAmbiguousOcrMarker(field, new Set())) out.push(name);
+  }
+  return out.sort();
+}
+
 export interface RereadClearInput {
   ipoId: string;
   docType: string;
@@ -154,6 +192,11 @@ export interface RereadClearResult {
   notOlderRead: string[];
   /** OD-160: the persister held back a cleanly read value; the stored value is kept. */
   keptHoldBack: Array<{ field: string; cause: string }>;
+  /**
+   * PR #1472 round 3: clears that were due but were KEPT because this document's envelope carries an
+   * ambiguous OCR value (`reason` = document_has_ambiguous_ocr, `ambiguousFields` = the marked fields).
+   */
+  keptAmbiguousOcr: Array<{ field: string; reason: typeof DOCUMENT_HAS_AMBIGUOUS_OCR; ambiguousFields: string[] }>;
   reopenedPlanRowIds: string[];
 }
 
@@ -173,7 +216,7 @@ function serialiseRefused(v: unknown): string | null {
  * lock + hold re-check, clear, reason row, plan reopen. Returns what happened per field.
  */
 export async function clearRereadAnswers(db: RereadExecutor, input: RereadClearInput): Promise<RereadClearResult> {
-  const result: RereadClearResult = { cleared: [], held: [], notOlderRead: [], keptHoldBack: [], reopenedPlanRowIds: [] };
+  const result: RereadClearResult = { cleared: [], held: [], notOlderRead: [], keptHoldBack: [], keptAmbiguousOcr: [], reopenedPlanRowIds: [] };
   const due: Array<{ f: RereadClearableField; d: Extract<RereadDecision, { action: 'CLEAR' }> }> = [];
   for (const f of REREAD_CLEARABLE_FIELDS) {
     const holdBackCause = input.heldBack?.get(f.extractorField);
@@ -185,6 +228,24 @@ export async function clearRereadAnswers(db: RereadExecutor, input: RereadClearI
     due.push({ f, d });
   }
   if (due.length === 0) return result;
+
+  // PR #1472 round 3 (B8): the ONE choke point every re-read clear passes through. A document whose
+  // envelope holds an ambiguous OCR number ("1.785": Rs 1.785 or Rs 1,785) cannot be trusted to refuse
+  // or state-absent anything: any cross-field check may have compared against that unknown number,
+  // and the check that did is not knowable from here (a hand-kept list of check inputs missed two in
+  // two rounds). So nothing from this document clears a stored value: every due clear is a keep
+  // (OD-153/OD-158/OD-160 a miss keeps; OD-97 an OCR value never wins over a text one; fail closed).
+  const ambiguousFields = findAmbiguousOcrFields(input.fields as Record<string, unknown>);
+  if (ambiguousFields.length > 0) {
+    for (const { f } of due) {
+      result.keptAmbiguousOcr.push({ field: `${f.tableName}.${f.column}`, reason: DOCUMENT_HAS_AMBIGUOUS_OCR, ambiguousFields });
+    }
+    logger.info(
+      { ipoId: input.ipoId, docType: input.docType, documentId: input.documentId, reason: DOCUMENT_HAS_AMBIGUOUS_OCR, ambiguousFields, keptFields: result.keptAmbiguousOcr.map((k) => k.field) },
+      '[reread-answer-clear] #1420 re-read clears kept: the document has an ambiguous OCR value'
+    );
+    return result;
+  }
 
   await db.transaction(async (tx) => {
     for (const { f, d } of due) {

@@ -31,6 +31,7 @@ import logger from '../../../src/utils/logger.js';
 // ---------------------------------------------------------------------------
 
 const dbExecuteMock = vi.fn();
+const storedFileStateMock = vi.fn((..._a: unknown[]) => ({ kind: 'present' }));
 const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 // Item 5 slice s4: hoisted so tests can assert the field-plan pass called
 // (or did not call) the repository, independent of the vi.mock factory.
@@ -131,14 +132,21 @@ vi.mock('../../../src/scheduler/stage-reconciler.js', () => ({
   deriveLifecycleStage: (...args: unknown[]) => deriveLifecycleStageMock(...args),
 }));
 
-vi.mock('../../../src/services/document-store.js', () => ({
+vi.mock('../../../src/services/document-store.js', async () => {
+  // PR #1472 r1: the re-read order ranks by the purge's REAL projected date (no stub).
+  const actual = await vi.importActual<typeof import('../../../src/services/document-store.js')>('../../../src/services/document-store.js');
+  return {
+  projectPurgeDueAt: actual.projectPurgeDueAt,
+  decideIpoPurge: vi.fn(),
+  storedFileState: (...args: unknown[]) => storedFileStateMock(...args),
   hasStoredFile: () => true,
   getStoreDir: () => '.',
   decidePurge: vi.fn(),
   purgeIpoDocuments: vi.fn(),
   getRetentionDays: () => 7,
   getMaxRetentionDays: () => 30,
-}));
+  };
+});
 
 const FEATURE_FLAGS: {
   ENABLE_FILING_AUTO_PERSIST: boolean;
@@ -186,6 +194,10 @@ const processPendingFilingsMock = vi.fn(
 const buildAutoPersistDepsMock = vi.fn().mockImplementation(() => ({}));
 
 vi.mock('../../../src/services/filing-auto-persist.js', () => ({
+  // Item 45: the re-read selection reads these three (document-cycle.ts selectRereadCandidates).
+  EXTRACTABLE_DOC_TYPES: ['PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'],
+  rereadSinceFor: () => 'extract_filing.py@2026-10-03',
+  versionAtLeast: (recorded: string | null, floor: string) => recorded === floor,
   processPendingFilings: (...args: unknown[]) => processPendingFilingsMock(...args),
   buildAutoPersistDeps: (...args: unknown[]) => buildAutoPersistDepsMock(...args),
   DEFAULT_MAX_SPAWNS_PER_CYCLE: 3,
@@ -1875,5 +1887,102 @@ describe('#1247 item 1 — one reserved spawn slot for re-reads per document cyc
     expect(sets.length).toBeGreaterThan(1); // pre-pass + fresh + top-up all ran
     expect(sets.every((s) => s !== undefined)).toBe(true);
     expect(sets.every((s) => s === sets[0])).toBe(true);
+  });
+});
+
+// PR #1472 round 1 (MAJOR-3): the item 45 re-read ORDER inside runDocumentCycle itself, with the
+// real selectRereadCandidates / orderForRereads / planRereadPasses and the real projected purge date
+// (document-store's projectPurgeDueAt). The db answers the two re-read queries by their own text.
+describe('PR #1472 r1 — item 45 re-read order inside runDocumentCycle', () => {
+  type Pending = { fresh: number; rereads: number };
+  const queryText = (q: unknown): string => {
+    try {
+      return JSON.stringify(q);
+    } catch {
+      return String(q);
+    }
+  };
+  const rereadRow = (id: string) => ({
+    id, companyName: id, slug: id, segment: 'MAINBOARD', closeDate: null,
+    documentId: `doc-${id}`, type: 'RHP', sha256: `${id}`.padEnd(64, '0'), recordedVersion: null,
+  });
+  const purgeRow = (id: string, latestExtractedAt: string) => ({
+    id, close_date: null, status: 'OPEN', unread_count: 0, textless_count: 0,
+    latest_extracted_at: latestExtractedAt, document_count: 1, unextracted_count: 0, purge_eligible: true,
+  });
+  function wire(cycleIds: string[], rereadIds: string[], purge: Record<string, string>) {
+    dbExecuteMock.mockImplementation(async (q: unknown) => {
+      const text = queryText(q);
+      if (text.includes('recordedVersion')) return { rows: rereadIds.map(rereadRow) };
+      if (text.includes('d3.sha256')) return { rows: Object.entries(purge).map(([id, at]) => purgeRow(id, at)) };
+      return { rows: cycleIds.map((id) => candidateRow(id)) };
+    });
+  }
+  function phaseAwareMock(docs: Record<string, Pending>, calls: Array<{ id: string; phase?: string }>) {
+    const spawnedBy: Record<string, Pending> = {};
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number; phase?: string } } | undefined) => {
+        const b = deps!.spawnBudget!;
+        const d = docs[ipo.id] ?? { fresh: 0, rereads: 0 };
+        spawnedBy[ipo.id] ??= { fresh: 0, rereads: 0 };
+        calls.push({ id: ipo.id, phase: b.phase });
+        let spawned = 0;
+        const take = (kind: 'fresh' | 'rereads') => {
+          while (d[kind] > 0 && b.remaining > 0) {
+            d[kind] -= 1;
+            b.remaining -= 1;
+            spawnedBy[ipo.id][kind] += 1;
+            spawned += 1;
+          }
+        };
+        if (b.phase !== 'rereads') take('fresh');
+        if (b.phase !== 'fresh') take('rereads');
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned,
+          skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+          anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? d.rereads : 0,
+        };
+      }
+    );
+    return spawnedBy;
+  }
+
+  it('never-read live documents keep their slots; the reservation goes to the soonest-purged re-read; out-of-window never joins the fresh pass', async () => {
+    // ipo-1 is live (in the cycle) with 2 never-read docs + 1 re-read, files kept until 09-22;
+    // out-1 is outside the window, its files purge NOW (last read 2026-09-01, no close date).
+    wire(['ipo-1'], ['ipo-1', 'out-1'], { 'ipo-1': '2026-09-15T00:00:00Z', 'out-1': '2026-09-01T00:00:00Z' });
+    const calls: Array<{ id: string; phase?: string }> = [];
+    const spawnedBy = phaseAwareMock({ 'ipo-1': { fresh: 2, rereads: 1 }, 'out-1': { fresh: 0, rereads: 2 } }, calls);
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(calls[0]).toEqual({ id: 'out-1', phase: 'rereads' }); // reservation follows the re-read order
+    expect(spawnedBy['out-1'].rereads).toBe(1);
+    expect(spawnedBy['ipo-1'].fresh).toBe(2); // the fresh pass still gets every remaining slot
+    expect(calls.filter((c) => c.phase === 'fresh').map((c) => c.id)).toEqual(['ipo-1']);
+  });
+
+  it('the top-up visits deferred re-reads soonest-purged first', async () => {
+    // Both in the cycle, no never-read docs; ipo-2's files purge now, ipo-1's on 09-22.
+    wire(['ipo-1', 'ipo-2'], ['ipo-1', 'ipo-2'], { 'ipo-1': '2026-09-15T00:00:00Z', 'ipo-2': '2026-09-01T00:00:00Z' });
+    const calls: Array<{ id: string; phase?: string }> = [];
+    const spawnedBy = phaseAwareMock({ 'ipo-1': { fresh: 0, rereads: 5 }, 'ipo-2': { fresh: 0, rereads: 5 } }, calls);
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(spawnedBy['ipo-2'].rereads).toBe(3);
+    expect(spawnedBy['ipo-1']?.rereads ?? 0).toBe(0);
+  });
+
+  it('the top-up keeps out-of-window IPOs: a light day spends the rest of the budget on them', async () => {
+    wire(['ipo-1'], ['out-1'], { 'ipo-1': '2026-09-15T00:00:00Z', 'out-1': '2026-09-01T00:00:00Z' });
+    const calls: Array<{ id: string; phase?: string }> = [];
+    const spawnedBy = phaseAwareMock({ 'ipo-1': { fresh: 0, rereads: 0 }, 'out-1': { fresh: 0, rereads: 5 } }, calls);
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(spawnedBy['out-1'].rereads).toBe(3);
+    expect(calls.some((c) => c.id === 'out-1' && c.phase === 'fresh')).toBe(false);
   });
 });
