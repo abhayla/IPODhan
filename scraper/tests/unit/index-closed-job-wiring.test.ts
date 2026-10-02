@@ -115,6 +115,26 @@ vi.mock('../../src/scheduler/closed-ipo-snapshot.js', () => ({
 }));
 const walkFieldPlanForIPOMock = vi.fn();
 vi.mock('../../src/services/field-plan-walk.js', () => ({ walkFieldPlanForIPO: walkFieldPlanForIPOMock }));
+// Item 42 (#1468 round 1 MAJOR-2): the answers-only round and the walk deps it is built from.
+const runAnswersOnlyRoundMock = vi.fn().mockResolvedValue({ roundStamped: true, stoppedAtDeadline: false, asked: 3, recorded: 3 });
+const answersRoundStoreStub = { readIpo: vi.fn(), listUnanswered: vi.fn(), markRoundDone: vi.fn() };
+const trackHeldFieldWitnessesStub = vi.fn();
+vi.mock('../../src/services/field-plan-answers-round.js', () => ({
+  runAnswersOnlyRound: runAnswersOnlyRoundMock,
+  buildAnswersRoundStore: vi.fn(() => answersRoundStoreStub),
+}));
+vi.mock('../../src/services/field-plan-walk-deps.js', () => ({
+  buildFieldPlanWalkOrchestrator: vi.fn(() => ({})),
+  buildFieldPlanWalkFetchers: vi.fn(() => ({})),
+  buildFieldPlanGapKeySource: vi.fn(() => ({})),
+  buildFieldPlanWalkWitnessVerdictWriter: vi.fn(() => vi.fn()),
+  buildFieldPlanWalkReopenDeps: vi.fn(() => ({})),
+  buildFieldPlanWalkHoldDeps: vi.fn(() => ({ trackHeldFieldWitnesses: trackHeldFieldWitnessesStub })),
+}));
+vi.mock('../../src/config/field-source-overrides-reader.js', () => ({ createFieldSourceOverridesReader: vi.fn(() => ({})) }));
+vi.mock('@ipodhan/shared/repositories/field-source-overrides-repository', () => ({
+  FieldSourceOverridesRepository: vi.fn().mockImplementation(() => ({})),
+}));
 vi.mock('../../src/scheduler/catch-up-cadence.js', () => ({
   shouldRunOnCatchUpCadence: shouldRunOnCatchUpCadenceMock,
   isCatchUpCadenceDue: isCatchUpCadenceDueMock,
@@ -144,6 +164,8 @@ vi.mock('@ipodhan/shared', () => ({
   },
   getRedisClient: () => ({ get: redisGetMock, set: redisSetMock }),
   ScraperLogRepository: vi.fn().mockImplementation(() => ({})),
+  IPORepository: vi.fn().mockImplementation(() => ({})),
+  IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
@@ -238,6 +260,34 @@ describe('item 7 S3 - the closed-IPO job runs as its own --job=closed wake under
 
     const deps = runClosedIpoJobMock.mock.calls[0][0];
     await expect(deps.isCycleLockHeld()).resolves.toBe(false);
+  });
+
+  it('item 42 (OD-163(b)): verdict writer ON -> the job gets runAnswersRound; it runs ONLY the round, LISTED allowed, on a 60 s per-IPO deadline', async () => {
+    process.env.ENABLE_VERDICT_WRITER = 'true';
+    lockAcquireMock.mockResolvedValue({ acquired: true, token: 'closed-tok' });
+    await runWith(['--source=all', '--job=closed'], THURSDAY_2200_IST);
+
+    const deps = runClosedIpoJobMock.mock.calls[0][0];
+    expect(typeof deps.runAnswersRound).toBe('function');
+    const r = await deps.runAnswersRound('ipo-listed-done');
+    expect(r).toMatchObject({ roundStamped: true, asked: 3 });
+    expect(runAnswersOnlyRoundMock).toHaveBeenCalledTimes(1);
+    const [id, roundDeps, store, budget, options] = runAnswersOnlyRoundMock.mock.calls[0];
+    expect(id).toBe('ipo-listed-done');
+    expect(roundDeps.trackHeldFieldWitnesses).toBe(trackHeldFieldWitnessesStub);
+    expect(store).toBe(answersRoundStoreStub);
+    expect(options).toEqual({ listedAllowed: true });
+    expect(budget.deadlineMs - THURSDAY_2200_IST.getTime()).toBe(60_000);
+    // ONLY the round: no walk for an answers-only pick.
+    expect(walkFieldPlanForIPOMock).not.toHaveBeenCalled();
+  });
+
+  it('item 42: verdict writer OFF -> no runAnswersRound, so the job selects no answers-only pick (a round that can only skip takes no slot)', async () => {
+    process.env.ENABLE_VERDICT_WRITER = 'false';
+    lockAcquireMock.mockResolvedValue({ acquired: true, token: 'closed-tok' });
+    await runWith(['--source=all', '--job=closed'], THURSDAY_2200_IST);
+
+    expect(runClosedIpoJobMock.mock.calls[0][0].runAnswersRound).toBeUndefined();
   });
 
   it('ENABLE_CLOSED_IPO_JOB=false: the wake never takes the lock, logs "disabled", and never calls runClosedIpoJob (round 1, Tier A finding 4 — a disabled closed wake must never make a data wake skip)', async () => {

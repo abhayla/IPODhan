@@ -30,7 +30,7 @@ function setup(opts: { status?: string; roundAt?: Date | null; candidates?: Answ
     // Mirrors the real store: a value with recorded answers is never listed again.
     listUnanswered: vi.fn(async () =>
       candidates.filter((c) => {
-        const r = rows.get(`${c.tableName}|${c.rowKey}|issueSize`);
+        const r = rows.get(`${c.tableName}|${c.rowKey}|${c.fieldName.replace(/_([a-z])/g, (_m, x: string) => x.toUpperCase())}`);
         return !!r && !(Array.isArray(r.witnesses) && r.witnesses.length > 0);
       })
     ),
@@ -177,6 +177,36 @@ describe('item 42: answers-only round (OD-163)', () => {
     const r = await runAnswersOnlyRound(IPO_ID, s.deps, s.store, { deadlineMs: 0, now: () => 1 }, { listedAllowed: false });
     expect(r).toMatchObject({ stoppedAtDeadline: true, asked: 0, roundStamped: false });
     expect(s.nse).not.toHaveBeenCalled();
+  });
+
+  it('deadline hits MID-loop: answers asked so far are recorded, the IPO is NOT stamped, the next run continues', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const s = setup({
+      candidates: [
+        { tableName: 'ipos', rowKey: '', fieldName: 'issue_size' },
+        { tableName: 'ipos', rowKey: '', fieldName: 'lot_size' },
+      ],
+    });
+    s.rows.set('ipos||lotSize', { source: 'SYSTEM', value: 100, witnesses: null, verdict: null });
+    // now(): the pre-loop check and the first value's check are inside the deadline; the second is past it.
+    let calls = 0;
+    const clock = { deadlineMs: 50, now: () => (++calls <= 2 ? 0 : 100) };
+
+    const first = await runAnswersOnlyRound(IPO_ID, s.deps, s.store, clock, { listedAllowed: false });
+
+    expect(first).toMatchObject({ mode: 'ROUND', asked: 1, recorded: 1, stoppedAtDeadline: true, roundStamped: false });
+    expect(s.store.markRoundDone).not.toHaveBeenCalled();
+    expect(s.ipoState.answersRoundAt).toBeNull();
+    expect((s.rows.get('ipos||issueSize')!.witnesses as any[]).length).toBe(4);
+    expect(s.rows.get('ipos||lotSize')!.witnesses).toBeNull();
+
+    // Next run: only the value not yet asked is listed and asked; then the round is stamped.
+    const second = await runAnswersOnlyRound(IPO_ID, s.deps, s.store, openBudget(), { listedAllowed: false });
+    expect(second).toMatchObject({ mode: 'ROUND', asked: 1, recorded: 1, stoppedAtDeadline: false, roundStamped: true });
+    expect((s.rows.get('ipos||lotSize')!.witnesses as any[]).length).toBe(4);
+    expect(s.store.stamps).toBe(1);
+    // issue_size was asked once in total: NSE answered it in run 1 and lot_size in run 2.
+    expect(s.nse.mock.calls.map((c) => c[3])).toEqual(['issue_size', 'lot_size']);
   });
 
   it('flag off: asks nothing and stamps nothing', async () => {

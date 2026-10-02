@@ -103,6 +103,7 @@ export function evaluateWitnessMissing(rows, manifest) {
     listed.set(key, new Set(Object.values(entry.rank ?? {}).flat().filter(Boolean)));
   }
   const offenders = [];
+  const allFailed = [];
   let unresolved = 0;
   let inScope = 0;
   for (const r of rows) {
@@ -114,6 +115,9 @@ export function evaluateWitnessMissing(rows, manifest) {
     inScope++;
     const w = typeof r.witnesses === 'string' ? safeParse(r.witnesses) : r.witnesses;
     if (!Array.isArray(w) || w.length === 0) offenders.push(r);
+    // #1468 round 1 MINOR-2: a set whose every answer FAILED records that sources were asked, not
+    // that any source witnessed the value. Never counted as covered: named separately, by identity.
+    else if (w.every((x) => x?.outcome === 'FAILED')) allFailed.push(r);
   }
   const tally = (keyFn) => {
     const m = new Map();
@@ -123,14 +127,18 @@ export function evaluateWitnessMissing(rows, manifest) {
   const byStatus = tally((o) => o.status);
   const byWriter = tally((o) => `${o.updatedBy ?? 'null'}/${o.source}`);
   const byIpo = tally((o) => o.slug);
+  const allFailedIds = allFailed.map((o) => `${o.slug} ${o.tableName}.${o.fieldName}`);
   return {
-    status: verdict(offenders, unresolved), unresolved, offenders, byStatus, byWriter, byIpo,
+    // All-FAILED sets are not coverage: with no missing witness they still keep the check off PASS.
+    status: verdict(offenders, unresolved + allFailed.length), unresolved, offenders, allFailed, byStatus, byWriter, byIpo,
     labels: [
       `by status ${byStatus.map(([k, n]) => `${k}=${n}`).join(' ')}`,
       `by writer ${byWriter.slice(0, 5).map(([k, n]) => `${k}=${n}`).join(' ')}`,
       `top IPOs ${byIpo.slice(0, 5).map(([k, n]) => `${k}=${n}`).join(' ')}`,
+      `all answers FAILED (asked, not witnessed) ${allFailed.length}: ${allFailedIds.slice(0, 10).join('; ')}`,
     ],
     detail: `${offenders.length} of ${inScope} stored value(s) with other listed sources have no recorded witness on ${byIpo.length} IPO(s)`
+      + `; ${allFailed.length} more have only FAILED answers (not counted as witnessed)`
       + (unresolved ? `; ${unresolved} row(s) on a field the manifest does not list (unresolvable)` : ''),
   };
 }

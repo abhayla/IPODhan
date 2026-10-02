@@ -742,6 +742,9 @@ async function runClosedIpoWake(): Promise<number> {
         resourceIpo: resourceClosedIpoLive,
         resourcedAtVersion: currentClosedIpoResourcingVersion(),
         snapshotFieldSources: (ipoIds) => writeFieldSourcesSnapshot(db as never, ipoIds, { now }),
+        // Item 42 (OD-163(b)): answers-only picks only while the verdict writer can record answers;
+        // with it off the round would only skip, and a pick that can never stamp must not take a slot.
+        ...(FEATURE_FLAGS.ENABLE_VERDICT_WRITER ? { runAnswersRound: runClosedIpoAnswersRoundLive } : {}),
         now,
       });
 
@@ -756,6 +759,7 @@ async function runClosedIpoWake(): Promise<number> {
           done: summary.outcomes.DONE,
           partial: summary.outcomes.PARTIAL,
           failed: summary.outcomes.FAILED,
+          answersRoundOnly: summary.answersRoundOnly,
           snapshot: summary.snapshot ? `${summary.snapshot.path} (${summary.snapshot.rows} rows)` : 'none',
         },
         'closed-IPO job: run complete'
@@ -2502,6 +2506,56 @@ const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
  * three the document cycle uses for a live IPO. Not a stub: a stubbed writer
  * here would hide exactly the contract bugs this wiring can have (2026-09-16).
  */
+/** OD-163(b): the 22:00 closed-IPO job is the one place a LISTED IPO runs the answers-only round. */
+const CLOSED_IPO_ANSWERS_ROUND_OPTIONS = { listedAllowed: true } as const;
+
+/**
+ * The walk deps the closed-IPO job uses for one IPO -- the SAME fetchers, repository, writers and
+ * hold deps the document cycle gives a live IPO. One builder for the walk and the answers-only pick,
+ * so the two can never ask with different fetchers.
+ */
+function buildClosedIpoWalkDeps() {
+  const redis = getRedisClient();
+  const fieldPlanRepository = new IpoFieldPlanRepository(db, redis);
+  const overrides = createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db }));
+  const sourceFetchers = buildFieldPlanWalkFetchers();
+  const holdDeps = buildFieldPlanWalkHoldDeps();
+  const walkDeps = {
+    fieldPlanRepository: fieldPlanRepository as never,
+    orchestrator: buildFieldPlanWalkOrchestrator(),
+    sourceFetchers,
+    // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
+    gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
+    ipoRepository: new IPORepository(db, redis) as never,
+    overrides,
+    trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
+    ...buildFieldPlanWalkReopenDeps(),
+    // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
+    ...holdDeps,
+  };
+  return { walkDeps, holdDeps };
+}
+
+/**
+ * Item 42 (OD-163(b), #1468 MAJOR-1): an `answersOnly` pick of the closed-IPO job -- a LISTED IPO
+ * no re-pick rule makes due, whose answers-only round never completed. ONLY the round runs, under
+ * the same per-IPO budget as a walk; no walk, no plan, no resourcing row.
+ */
+async function runClosedIpoAnswersRoundLive(ipoId: string) {
+  const { walkDeps, holdDeps } = buildClosedIpoWalkDeps();
+  if (!holdDeps.trackHeldFieldWitnesses) {
+    return { roundStamped: false, stoppedAtDeadline: false, asked: 0, recorded: 0, skipReason: 'no held-witness writer' };
+  }
+  const budget = { deadlineMs: Date.now() + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() };
+  return runAnswersOnlyRound(
+    ipoId,
+    { ...walkDeps, trackHeldFieldWitnesses: holdDeps.trackHeldFieldWitnesses },
+    buildAnswersRoundStore(db as never),
+    budget,
+    CLOSED_IPO_ANSWERS_ROUND_OPTIONS
+  );
+}
+
 async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceResult> {
   const redis = getRedisClient();
   const fieldPlanRepository = new IpoFieldPlanRepository(db, redis);
@@ -2537,21 +2591,7 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
     readPlanSettlement: (id) => readPlanSettlement(db as never, id),
     walk: async (id) => {
       const startedAt = Date.now();
-      const sourceFetchers = buildFieldPlanWalkFetchers();
-      const holdDeps = buildFieldPlanWalkHoldDeps();
-      const walkDeps = {
-        fieldPlanRepository: fieldPlanRepository as never,
-        orchestrator: buildFieldPlanWalkOrchestrator(),
-        sourceFetchers,
-        // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
-        gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
-        ipoRepository: new IPORepository(db, redis) as never,
-        overrides,
-        trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
-        ...buildFieldPlanWalkReopenDeps(),
-        // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
-        ...holdDeps,
-      };
+      const { walkDeps, holdDeps } = buildClosedIpoWalkDeps();
       const budget = { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() };
       const walked = await walkFieldPlanForIPO(id, walkDeps, budget);
       // Item 42 (OD-163(b)): LISTED IPOs run the answers-only round HERE, inside this job's 10-a-day
@@ -2563,7 +2603,7 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
             { ...walkDeps, trackHeldFieldWitnesses: holdDeps.trackHeldFieldWitnesses },
             buildAnswersRoundStore(db as never),
             budget,
-            { listedAllowed: true }
+            CLOSED_IPO_ANSWERS_ROUND_OPTIONS
           );
         } catch (error) {
           logger.warn(

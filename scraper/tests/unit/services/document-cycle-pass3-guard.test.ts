@@ -173,10 +173,12 @@ const FEATURE_FLAGS: {
   ENABLE_FILING_AUTO_PERSIST: boolean;
   ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean;
   ENABLE_FIELD_PLAN_WALK: boolean;
+  ENABLE_VERDICT_WRITER: boolean;
 } = {
   ENABLE_FILING_AUTO_PERSIST: false,
   ENABLE_UPCOMING_DISCOVERY_RESERVATION: false,
   ENABLE_FIELD_PLAN_WALK: true,
+  ENABLE_VERDICT_WRITER: false,
 };
 vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS }));
 
@@ -231,12 +233,19 @@ const buildFieldPlanWalkWitnessVerdictWriterMock = vi.fn().mockImplementation(()
 const buildFieldPlanGapKeySourceMock = vi.fn().mockImplementation(() => ({
   forIpo: vi.fn().mockResolvedValue({ byField: {} }),
 }));
+// Item 42 (#1468 round 1 MAJOR-2): the document cycle's answers-only round trigger site.
+let holdDepsValue: Record<string, unknown> = {};
+const runAnswersOnlyRoundMock = vi.fn().mockResolvedValue({ asked: 0, recorded: 0, stoppedAtDeadline: false, roundStamped: false });
+vi.mock('../../../src/services/field-plan-answers-round.js', () => ({
+  runAnswersOnlyRound: (...args: unknown[]) => runAnswersOnlyRoundMock(...args),
+  buildAnswersRoundStore: () => ({ tag: 'answers-round-store' }),
+}));
 vi.mock('../../../src/services/field-plan-walk-deps.js', () => ({
   buildFieldPlanWalkFetchers: (...args: unknown[]) => buildFieldPlanWalkFetchersMock(...args),
   buildFieldPlanWalkOrchestrator: (...args: unknown[]) => buildFieldPlanWalkOrchestratorMock(...args),
   buildFieldPlanWalkWitnessVerdictWriter: (...args: unknown[]) => buildFieldPlanWalkWitnessVerdictWriterMock(...args),
   buildFieldPlanWalkReopenDeps: () => ({}),
-  buildFieldPlanWalkHoldDeps: () => ({}),
+  buildFieldPlanWalkHoldDeps: () => holdDepsValue,
   buildFieldPlanGapKeySource: (...args: unknown[]) => buildFieldPlanGapKeySourceMock(...args),
   fieldPlanWalkHasFetchers: (fetchers?: Record<string, unknown>) =>
     Object.keys(fetchers ?? buildFieldPlanWalkFetchersMock()).length > 0,
@@ -266,6 +275,8 @@ beforeEach(() => {
   hasFetchers = false;
   FEATURE_FLAGS.ENABLE_FIELD_PLAN_WALK = true;
   FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = false;
+  FEATURE_FLAGS.ENABLE_VERDICT_WRITER = false;
+  holdDepsValue = {};
   claimNextDueFieldMock.mockResolvedValue(null);
   dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2')] });
 });
@@ -550,5 +561,39 @@ describe('#727: PASS 3 summary carries the droppedWrites/exhaustedFields identit
     expect(payload).toBeDefined();
     expect(Array.isArray(payload!.droppedWrites)).toBe(true);
     expect((payload!.droppedWrites as unknown[]).length).toBe(50);
+  });
+});
+
+describe('item 42 (OD-163): the document cycle runs the answers-only round AFTER the walk, in the PASS 3 deadline, never LISTED', () => {
+  it('asks the round for every candidate with listedAllowed=false and the PASS 3 deadline', async () => {
+    hasFetchers = true;
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const trackHeldFieldWitnesses = vi.fn();
+    holdDepsValue = { trackHeldFieldWitnesses };
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2', 'CLOSED')] });
+    const before = Date.now();
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    expect(runAnswersOnlyRoundMock.mock.calls.map((c) => c[0])).toEqual(['ipo-1', 'ipo-2']);
+    for (const [, deps, store, budget, options] of runAnswersOnlyRoundMock.mock.calls) {
+      // LISTED only in the 22:00 job: the cycle never allows it (the round itself skips LISTED).
+      expect(options).toEqual({ listedAllowed: false });
+      expect(deps.trackHeldFieldWitnesses).toBe(trackHeldFieldWitnesses);
+      expect(store).toEqual({ tag: 'answers-round-store' });
+      // The SAME PASS 3 deadline, inside this wake's budget (B4(a)): never a fresh budget of its own.
+      expect(budget.deadlineMs).toBeGreaterThan(before);
+      expect(budget.deadlineMs).toBeLessThanOrEqual(Date.now() + 30 * 60 * 1000);
+      expect(typeof budget.now).toBe('function');
+    }
+    // After the walk: the claim (the walk's first touch) happened before the round.
+    expect(claimNextDueFieldMock.mock.invocationCallOrder[0]).toBeLessThan(runAnswersOnlyRoundMock.mock.invocationCallOrder[0]);
+  });
+
+  it('does not run the round while the verdict writer is off', async () => {
+    hasFetchers = true;
+    holdDepsValue = { trackHeldFieldWitnesses: vi.fn() };
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+    expect(runAnswersOnlyRoundMock).not.toHaveBeenCalled();
   });
 });

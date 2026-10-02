@@ -72,7 +72,7 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
   it('(g) never-walked first (OD-78), then newest closed first -- close_date DESC, per spec §6.1 rules 2-3', () => {
     // `false` sorts before `true`: rows with no closed_ipo_resourcing row lead,
     // so a re-pickable PARTIAL/FAILED never takes a slot a never-walked IPO wants.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+\(r\.ipo_id IS NOT NULL\),\s+i\.close_date DESC,\s+i\.id/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+\(r\.ipo_id IS NOT NULL\),\s+\(NOT c\.due\),\s+i\.close_date DESC,\s+i\.id/);
     // #873's pending-document ranking is gone: OD-76's walk never reads a
     // document, so that count ranked IPOs by work this job cannot do.
     expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/extraction_status = 'PENDING'/);
@@ -86,7 +86,8 @@ describe('closedIpoCandidatesQuery — OD-81 FIELDS_PENDING events', () => {
   it('the executed query IS the readable constant (only the placeholders differ), and binds version + cap', () => {
     const q = renderedSelection();
     expect(norm(q.sql)).toBe(norm(CLOSED_IPO_CANDIDATES_SQL));
-    expect(q.params).toEqual(['v-now', 10]);
+    // answersRound defaults to false: no answers-only pick unless the caller can run the round.
+    expect(q.params).toEqual(['v-now', false, 10]);
   });
 
   it('event (1) stage change (#932): the FORWARD step recorded CLOSED -> LISTED now', () => {
@@ -132,6 +133,84 @@ describe('closedIpoCandidatesQuery — OD-81 FIELDS_PENDING events', () => {
     const t = norm(renderedSelection().sql);
     expect(t).toContain(norm(`OR ( r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING' AND (`));
     expect(t).not.toMatch(/now\(\)|interval/i);
+  });
+});
+
+// Item 42 (OD-163(b), #1468 round 1 MAJOR-1): LISTED IPOs whose answers-only round never completed.
+describe('closedIpoCandidatesQuery — OD-163(b) answers-only picks', () => {
+  it('selects a LISTED IPO with answers_round_at NULL even when no re-pick rule makes it due, only when answersRound is bound true', () => {
+    const t = norm(CLOSED_IPO_CANDIDATES_SQL);
+    expect(t).toContain(norm(`c.due OR ($2 AND upper(i.status::text) = 'LISTED' AND i.answers_round_at IS NULL)`));
+    expect(new PgDialect().sqlToQuery(closedIpoCandidatesQuery('v', 10, true)).params).toEqual(['v', true, 10]);
+  });
+
+  it('is the LOWEST priority: never-walked first, then due re-picks, then answers-only -- inside the same LIMIT', () => {
+    const t = norm(CLOSED_IPO_CANDIDATES_SQL);
+    expect(t).toMatch(/ORDER BY \(r\.ipo_id IS NOT NULL\), \(NOT c\.due\), i\.close_date DESC, i\.id LIMIT \$3$/);
+    expect(t).toContain('NOT c.due AS "answersOnly"');
+  });
+
+  it('a NULL re-pick test is "not due", never unknown (coalesce), so an answers-only row is labelled answersOnly=true', () => {
+    expect(norm(CLOSED_IPO_CANDIDATES_SQL)).toMatch(/SELECT coalesce\(\( r\.ipo_id IS NULL OR .* \), false\) AS due/);
+  });
+});
+
+describe('runClosedIpoJob — OD-163(b) answers-only picks', () => {
+  const rows = [
+    { id: 'ipo-due', closeDate: '2026-09-01', status: 'LISTED', answersOnly: false },
+    { id: 'ipo-answers', closeDate: '2026-08-01', status: 'LISTED', answersOnly: true },
+  ];
+
+  it('runs ONLY the answers round for an answersOnly pick: no walk, no closed_ipo_resourcing write', async () => {
+    const stub = makeStubDb(rows as never);
+    const resourceIpo = vi.fn(async () => okResult);
+    const runAnswersRound = vi.fn(async () => ({ roundStamped: false, stoppedAtDeadline: true, asked: 4, recorded: 4 }));
+    const summary = await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo,
+      runAnswersRound,
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
+    });
+    expect(resourceIpo.mock.calls.map((c) => c[0])).toEqual(['ipo-due']);
+    expect(runAnswersRound.mock.calls.map((c) => c[0])).toEqual(['ipo-answers']);
+    expect(stub.values.mock.calls.map((c) => c[0].ipoId)).toEqual(['ipo-due']);
+    expect(summary).toMatchObject({ attempted: 1, answersRoundOnly: 1 });
+    // The selection was asked to include answers-only picks.
+    const q = new PgDialect().sqlToQuery(stub.execute.mock.calls[0][0]);
+    expect(q.params).toEqual(['v1', true, 10]);
+  });
+
+  it('without runAnswersRound the selection binds answersRound=false (no pick that cannot run)', async () => {
+    const stub = makeStubDb([]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => okResult,
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
+    });
+    expect(new PgDialect().sqlToQuery(stub.execute.mock.calls[0][0]).params).toEqual(['v1', false, 10]);
+  });
+
+  it('a throwing answers round is non-fatal: the next pick still runs and nothing is written for it', async () => {
+    const stub = makeStubDb([rows[1], { ...rows[1], id: 'ipo-answers-2' }] as never);
+    const runAnswersRound = vi.fn(async (id: string) => {
+      if (id === 'ipo-answers') throw new Error('db down');
+      return { roundStamped: true, stoppedAtDeadline: false, asked: 1, recorded: 1 };
+    });
+    const summary = await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: vi.fn(),
+      runAnswersRound,
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
+    });
+    expect(runAnswersRound).toHaveBeenCalledTimes(2);
+    expect(stub.insert).not.toHaveBeenCalled();
+    expect(summary.answersRoundOnly).toBe(2);
   });
 });
 
