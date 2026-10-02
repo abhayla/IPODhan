@@ -92,22 +92,22 @@
   {
     "file": "scraper/src/scripts/comprehensive-verification.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/comprehensive-verification.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/comprehensive-verification.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/comprehensive-verification.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/force-nse-scrape.ts",
@@ -127,17 +127,17 @@
   {
     "file": "scraper/src/scripts/show-database-data.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/show-database-data.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/show-database-data.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/test-bse-data.ts",
@@ -197,12 +197,12 @@
   {
     "file": "scraper/src/scripts/verify-nse-bse-data.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/verify-nse-bse-data.ts",
     "code": "TS2339",
-    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 55 more ...; updatedAt: Date; }'."
+    "message": "Property 'category' does not exist on type '{ symbol: string; priceRangeMin: number; priceRangeMax: number; lotSize: number; faceValue: number; openDate: string; closeDate: string; allotmentDate: string; listingDate: string; companyDescription: string; ... 56 more ...; updatedAt: Date; }'."
   },
   {
     "file": "scraper/src/scripts/verify-subscription-scraper.ts",
