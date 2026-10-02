@@ -121,3 +121,13 @@ def test_a_price_band_ad_is_not_asked_for_ratios():
     envelope = run([(1, "PRICE BAND: Rs 100 to Rs 105 per equity share")],
                    "PRICE_BAND_AD", "pba.txt")
     assert field(envelope, "current_ratio") is None
+
+
+def test_a_single_year_statement_header_is_not_a_statement_period(monkeypatch):
+    """Item 46 review round 1 (CLASS run): Pooja Logistics' RHP (3a0a6ed7)
+    wraps its header cells so only 2024 parsed; the ratio was read for
+    31/03/2024 on an FY2026 document. One year is not a statement period."""
+    envelope = run(_with_statement(monkeypatch, [2024]), "RHP", "prasol.txt")
+    got = field(envelope, "current_ratio")
+    assert got["value"] is None, got
+    assert got["check"]["detail"] == "ratio_statement_period_unknown", got

@@ -2860,7 +2860,13 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # too when both the ratio header and the P&L statement state one. Anything
     # unreadable writes nothing and names why (spec row 82: a fiscal year is
     # "read from the statement header, never assumed").
-    latest_period = (max(fiscal_years), 3, 31) if fiscal_years else None
+    # Item 46 review round 1 (CLASS run): Pooja Logistics' RHP (3a0a6ed7) wraps its
+    # KPI header cells so only "2024" parsed as a year; the ratio was then read FOR
+    # 31/03/2024 as if that were the latest statement period of an FY2026 document.
+    # A single-year header is not a statement period (restated statements carry
+    # at least two fiscal years, check_min_two_fiscal_years): the period is unknown
+    # and the ratio is a named miss, never a stale year's value.
+    latest_period = (max(fiscal_years), 3, 31) if len(fiscal_years) >= 2 else None
     pnl_page = pnl.get("pnlPage")
     stored_basis = financial_ratios.statement_basis(
         next((t for i, t in page_texts if i == pnl_page), "")) if pnl_page is not None else None
