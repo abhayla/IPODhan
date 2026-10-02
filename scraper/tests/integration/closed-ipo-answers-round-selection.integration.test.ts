@@ -135,7 +135,7 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
     beforeEach(async () => {
       await seedIpo(STORE_IPO, 'OPEN' as never, '2099-01-01');
       for (const fieldName of ['issue_size', 'lot_size', 'face_value', 'min_investment']) {
-        await db.insert(schema.ipoFieldPlan).values({ ipoId: STORE_IPO, tableName: 'ipos', rowKey: '', fieldName });
+        await db.insert(schema.ipoFieldPlan).values({ ipoId: STORE_IPO, tableName: 'ipos', rowKey: '', fieldName, manifestVersion: 1 });
       }
       const row = (fieldName: string, witnesses: unknown, updatedAt: Date) => ({
         ipoId: STORE_IPO,

@@ -28,7 +28,7 @@
  * and are not asked again). LISTED IPOs run it only from the 22:00 closed-IPO job (OD-163(b)), so
  * they are inside that job's 10-a-day cap.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { columnToCamelCase } from '../config/field-name-case.js';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -221,8 +221,8 @@ export function buildAnswersRoundStore(db: NodePgDatabase<typeof schema>): Answe
     async markRoundDone(ipoId) {
       const rows = await db
         .update(ipos)
-        // A Date object through the query builder (ist-timezone rule: drizzle calls toISOString itself).
-        .set({ answersRoundAt: new Date() })
+        // Database clock: this stamp is compared against DB-stamped field_sources times (writtenAfter), F-210.
+        .set({ answersRoundAt: sql`now()` })
         .where(and(eq(ipos.id, ipoId), isNull(ipos.answersRoundAt)))
         .returning({ id: ipos.id });
       return rows.length > 0;
