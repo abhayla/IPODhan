@@ -810,6 +810,8 @@ becomes the source of truth and `financial_data` becomes a derived view of its t
 | 76–78 | `ebitda_fy2022/23/24` | 2 / 120 / 148 | crore (keep) | C1 | `≤ total_income` | CG |
 | 79–81 | `total_income_fy2022/23/24` | 3 / 126 / 153 | crore (keep) | C1 | `≥ revenue` | CG |
 
+Item 43 round 2 (OD-164(e), 2026-10-03): the field walk's Chittorgarh fetcher reads rows 59-62, 65-81 from the IPO's detail page, fail-closed: money in crore converted once from the table's own unit line (a missing or unknown unit is refused), fiscal years by the printed period label, snapshots from the latest printed period, `market_cap` from the Post IPO cell (row 72), `roe` from the ROE row or, when none is printed, RoNW (OD-167). Not mapped: `revenue_fy*` (F-230) and `eps` (CG prints only pre/post-IPO EPS). These answers are recorded but not yet written: the walk's writer refuses an IPO-level `financial_data` row (F-231, open for owner decision). F-232: the older CG backfill stored the Pre IPO market cap.
+
 ### 1.5 `financial_statements` — the per-year financial rows (11 live fields)
 
 All class **D**. **Six of the eleven have Chittorgarh at rank 2 and Moneycontrol at rank 3** — CG's
