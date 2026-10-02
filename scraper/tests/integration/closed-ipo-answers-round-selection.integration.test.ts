@@ -1,7 +1,6 @@
 // implements: OD-163(b) the one answers-only round, LISTED IPOs inside the 22:00 closed-IPO job (item 42, #1468)
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { inArray, sql, eq } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias -- a worktree's
 // node_modules junction can resolve the alias back to the PRIMARY checkout.
@@ -32,7 +31,6 @@ const ALL = [DONE_LISTED, NEVER_WALKED, DUE_REPICK, DONE_CLOSED, STORE_IPO];
 const VERSION = 'item42-answers-round-test-version';
 
 describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store (${RUN_LABEL})`, () => {
-  let pool: Pool | null = null;
   let db: ReturnType<typeof drizzle>;
   let job: typeof import('../../src/scheduler/closed-ipo-job.js');
   let round: typeof import('../../src/services/field-plan-answers-round.js');
@@ -63,12 +61,8 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
 
   beforeAll(async () => {
     if (!DATABASE_URL) return;
-    pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
-    const { rows } = await pool.query('select current_database()');
-    if (rows[0].current_database !== 'ipodhan_test') {
-      throw new Error(`Refusing to run: connected to '${rows[0].current_database}', not 'ipodhan_test'.`);
-    }
-    db = drizzle(pool, { schema });
+    // The shared helper refuses anything but ipodhan_test, before connecting and on the live session (#1364, #640).
+    db = await getTestDb();
     job = await import('../../src/scheduler/closed-ipo-job.js');
     round = await import('../../src/services/field-plan-answers-round.js');
   });
@@ -88,7 +82,7 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
   afterAll(async () => {
     if (!DATABASE_URL) return;
     await clean();
-    await pool?.end();
+    await cleanupTestDb();
   });
 
   it('selects a LISTED IPO with a DONE row and answers_round_at NULL, labelled answersOnly, only when answersRound is on', async () => {
