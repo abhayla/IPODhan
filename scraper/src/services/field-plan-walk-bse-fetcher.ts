@@ -35,6 +35,7 @@ import {
   fetchBSEBoard,
   fetchBSEDetail,
   mapBSEToScrapedIPO,
+  parseBSEDate,
   type BSEListRow,
 } from '../scrapers/bse-api-scraper.js';
 // `plan.fieldName` is the manifest's snake_case key; `mapBSEToScrapedIPO`'s
@@ -43,7 +44,25 @@ import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { logger } from '../utils/logger.js';
 
 /** `${tableName}.${fieldName}` -> true when BSE's mapped ScrapedIPO actually carries it. */
-export const BSE_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
+// Item 43 (OD-164(e), F-226): each pair below was decided on BSE's real JSON fetched 2026-10-02
+// (`IPO_HomePageDetail/w` board + `GetMkt_ISSUE_BBS_IPO/w` detail for IPO_NO 8022/8015; fixtures
+// under tests/fixtures/bse/ with provenance meta). Values come from `mapBSEToScrapedIPO` — the SAME
+// mapping the BSE orchestrator writes — EXCEPT open/close dates, which that mapper defaults to today
+// when unparsable; here they are read straight off the board row (`Start_Dt` / `End_Dt`) so an
+// unprinted date stays absent, never today.
+export const BSE_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
+  'ipos.issueSize',
+  'ipos.companyName', // board Scrip_name
+  'ipos.openDate', // board Start_Dt
+  'ipos.closeDate', // board End_Dt
+  'ipos.priceRangeMin', // detail Price_Band "70.00-75.00"
+  'ipos.priceRangeMax',
+  'ipos.lotSize', // detail Market_Lot
+  'ipos.faceValue', // detail Face_Value
+  'ipos.registrar', // detail Registrar (name part)
+  'ipos.leadManagers', // detail Book_Running_Lead_Manager + Co_Book_Running_Lead_Manager
+  'ipos.symbol', // detail Symbol
+]);
 
 export interface BseFetcherDeps {
   ipoRepository: IPORepository;
@@ -203,15 +222,29 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
 
-    const scraped = mapBSEToScrapedIPO(row, detail);
-    if (camelFieldName === 'issueSize') {
-      if (scraped.issueSize === undefined || scraped.issueSize === null) {
-        return { outcome: 'NOT_AVAILABLE_YET' };
+    let value: unknown;
+    if (camelFieldName === 'openDate') value = parseBSEDate(row.Start_Dt);
+    else if (camelFieldName === 'closeDate') value = parseBSEDate(row.End_Dt);
+    else if (camelFieldName === 'faceValue') {
+      // The shared mapper rounds (Rs 2.50 -> 3); keep the printed decimal value.
+      const printed = parseFloat(String(detail.Face_Value || ''));
+      value = Number.isFinite(printed) && printed > 0 ? printed : undefined;
+      if (typeof value === 'number' && ![1, 2, 5, 10].includes(value)) {
+        // ipos.face_value is an integer column and spec row 18 allows {1,2,5,10}: refuse, never round (OD-62).
+        return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: face value ${value} not in {1,2,5,10}` };
       }
-      return { outcome: 'SUPPLIED', value: scraped.issueSize };
+    } else value = (mapBSEToScrapedIPO(row, detail) as unknown as Record<string, unknown>)[camelFieldName];
+    if (
+      value === undefined ||
+      value === null ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0)
+    ) {
+      return { outcome: 'NOT_AVAILABLE_YET' };
     }
+    if (BSE_SERVEABLE_FIELDS.has(key)) return { outcome: 'SUPPLIED', value };
 
-    // Unreachable today (BSE_SERVEABLE_FIELDS names only issueSize, and the
+    // Unreachable today (every BSE_SERVEABLE_FIELDS key is answered above, and the
     // gate above already answers CHECK_FAILED transient for anything else) —
     // kept as a defensive fallback with the SAME review-round-2 reasoning:
     // a field this fetcher's mapping branch does not handle is a coverage

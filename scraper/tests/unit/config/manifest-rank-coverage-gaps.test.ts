@@ -55,9 +55,11 @@ describe('manifest rank coverage gaps (#884, shrink-only baseline)', () => {
   });
 
   it('detects each gap kind (mutation: a synthetic manifest must produce all four)', () => {
+    // ipos.company_website: Chittorgarh still has no mapping for it (PR #1466 mapped ipos.isin, the
+    // field this case used before). If Chittorgarh ever maps it, pick another still-unmapped pair.
     const synthetic = {
       fields: {
-        'ipos.isin': {
+        'ipos.company_website': {
           documentType: null,
           rank: { MAINBOARD: ['DOC', 'CHITTORGARH', 'INVESTORGAIN_GMP'] },
           capability: { DOC: { capable: true }, CHITTORGARH: { capable: true } },
@@ -76,9 +78,9 @@ describe('manifest rank coverage gaps (#884, shrink-only baseline)', () => {
     };
     expect(currentGaps(synthetic as never, ['DOC', 'CHITTORGARH', 'BSE', 'NSE'])).toEqual([
       'financial_statements.revenue DOC NO_COLUMN_READ',
-      'ipos.isin CHITTORGARH NO_MAPPING',
-      'ipos.isin DOC NO_DOCTYPE',
-      'ipos.isin INVESTORGAIN_GMP NO_FETCHER',
+      'ipos.company_website CHITTORGARH NO_MAPPING',
+      'ipos.company_website DOC NO_DOCTYPE',
+      'ipos.company_website INVESTORGAIN_GMP NO_FETCHER',
     ]);
   });
 });

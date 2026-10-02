@@ -116,7 +116,7 @@ describe('CHITTORGARH fetcher — SUPPLIED', () => {
 
 describe('CHITTORGARH fetcher — no match', () => {
   it('answers NOT_AVAILABLE_YET when no list row matches this IPO by name', async () => {
-    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [], errors: [] });
+    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [{ companyName: 'Some Other Company Ltd' }], errors: [] });
     const state = new ChittorgarhFieldFetcherState();
     const fetcher = buildChittorgarhFetcher(
       { ipoRepository: makeIpoRepository('Unmatched Company Ltd'), isChittorgarhCapable: () => true },
@@ -149,6 +149,36 @@ describe('CHITTORGARH fetcher — ambiguous name match refuses to guess', () => 
     );
     const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
     expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+  });
+});
+
+describe('CHITTORGARH fetcher — list parse errors', () => {
+  const run = async (list: any) => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue(list);
+    const fetcher = buildChittorgarhFetcher(
+      { ipoRepository: makeIpoRepository('Found Company Ltd'), isChittorgarhCapable: () => true },
+      new ChittorgarhFieldFetcherState()
+    );
+    return fetcher(IPO_ID, 'ipos', '', 'issue_size');
+  };
+  it('answers from the list when the IPO is found even though another row had a parse error', async () => {
+    const a: any = await run({ ipos: [{ companyName: 'Found Company Ltd', issueSize: 55 }], errors: ['Record parsing error: x'] });
+    expect(a).toEqual({ outcome: 'SUPPLIED', value: 55 });
+  });
+  it('answers CHECK_FAILED transient when the IPO is not found and a row failed to parse (it may be that row)', async () => {
+    const a: any = await run({ ipos: [{ companyName: 'Other Ltd' }], errors: ['Record parsing error: x'] });
+    expect(a.outcome).toBe('CHECK_FAILED');
+    expect(a.transient).toBe(true);
+  });
+  it('answers CHECK_FAILED transient when errors and no rows (fetch failed)', async () => {
+    const a: any = await run({ ipos: [], errors: ['ETIMEDOUT'] });
+    expect(a.outcome).toBe('CHECK_FAILED');
+    expect(a.transient).toBe(true);
+  });
+  it('answers CHECK_FAILED transient on an empty list with no errors', async () => {
+    const a: any = await run({ ipos: [], errors: [] });
+    expect(a.outcome).toBe('CHECK_FAILED');
+    expect(a.transient).toBe(true);
   });
 });
 

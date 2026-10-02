@@ -21,6 +21,13 @@ import type { IPORepository } from '@ipodhan/shared';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { scrapeChittorgarhIPOs } from '../scrapers/chittorgarh-scraper.js';
 import { extractSectorFromDetailHtml, fetchChittorgarhDetailHtml } from '../scrapers/chittorgarh-detail-sector.js';
+import {
+  extractAllotmentDateFromDetailHtml,
+  extractFaceValueDecimalFromDetailHtml,
+  extractIsinFromDetailHtml,
+  extractLotSizeFromDetailHtml,
+  extractRegistrarFromDetailHtml,
+} from '../scrapers/chittorgarh-detail-fields.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
 // `plan.fieldName` is the manifest's snake_case key; `ChittorgarhIPO`'s
 // fields are camelCase.
@@ -33,11 +40,51 @@ import { logger } from '../utils/logger.js';
 // ipos.listingDate (#1228, spec field 7 rank 3 / SME rank 2): the list row's own
 // listing-date column (chittorgarh-scraper.ts `listingDate`), the same value the
 // CHITTORGARH orchestrator writes.
-export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
+// Item 43 (OD-164(e), F-226): each pair below was decided on a real page fetched 2026-10-02
+// (report 82 rows + detail pages, fixtures under tests/fixtures/chittorgarh/ with provenance meta).
+// LIST-row fields: report 82 prints "Opening Date", "Closing Date", "Issue Price (Rs.)" (the band),
+// "Issue Category" (Mainboard / SME) and "Listing at" ("BSE, NSE" / "BSE SME" / "NSE SME"), the SAME
+// row `scrapeChittorgarhIPOs()` already maps.
+const CHITTORGARH_LIST_FIELDS: ReadonlySet<string> = new Set([
   'ipos.issueSize',
-  'ipos.sector',
   'ipos.listingDate',
+  'ipos.openDate',
+  'ipos.closeDate',
+  'ipos.priceRangeMin',
+  'ipos.priceRangeMax',
+  'ipos.segment',
+  'ipos.listingExchanges',
 ]);
+
+// DETAIL-page fields: the IPO's own CG page (one GET per IPO per cycle, memoised), read through the
+// SAME extractors the CG detail backfills use (chittorgarh-detail-fields.ts), never a new parser.
+// ipos.sector keeps its own sector-list mapping below.
+const CHITTORGARH_DETAIL_EXTRACTORS: ReadonlyMap<string, (html: string) => string | number | null> = new Map<
+  string,
+  (html: string) => string | number | null
+>([
+  ['ipos.isin', extractIsinFromDetailHtml],
+  ['ipos.allotmentDate', extractAllotmentDateFromDetailHtml],
+  ['ipos.faceValue', extractFaceValueDecimalFromDetailHtml],
+  ['ipos.lotSize', extractLotSizeFromDetailHtml],
+  ['ipos.registrar', extractRegistrarFromDetailHtml],
+]);
+
+export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
+  ...CHITTORGARH_LIST_FIELDS,
+  'ipos.sector',
+  ...CHITTORGARH_DETAIL_EXTRACTORS.keys(),
+]);
+
+/** CG "Listing at" -> the stored `ipos.listing_exchanges` array; an unread board stays absent. */
+function listingExchangesFromRow(row: ChittorgarhIPO): ('NSE' | 'BSE')[] | null {
+  if (row.listingExchange === 'BOTH') return ['NSE', 'BSE'];
+  if (row.listingExchange === 'NSE') return ['NSE'];
+  if (row.listingExchange === 'BSE') return ['BSE'];
+  return null;
+}
+
+const ALLOWED_FACE_VALUES: readonly number[] = [1, 2, 5, 10];
 
 export interface ChittorgarhFetcherDeps {
   ipoRepository: IPORepository;
@@ -48,7 +95,7 @@ export interface ChittorgarhFetcherDeps {
 
 /** Per-cycle memo — one instance per document-cycle wake, shared across every IPO's walk. */
 export class ChittorgarhFieldFetcherState {
-  private list: Promise<ChittorgarhIPO[]> | null = null;
+  private list: Promise<{ ipos: ChittorgarhIPO[]; errors: string[] }> | null = null;
   private detailPages = new Map<string, Promise<string>>();
 
   getDetailHtml(url: string, fetchDetailHtml: (url: string) => Promise<string>): Promise<string> {
@@ -60,18 +107,22 @@ export class ChittorgarhFieldFetcherState {
     return page;
   }
 
-  private getList(): Promise<ChittorgarhIPO[]> {
+  private getList(): Promise<{ ipos: ChittorgarhIPO[]; errors: string[] }> {
     if (!this.list) {
-      this.list = scrapeChittorgarhIPOs().then((r) => r.ipos);
+      this.list = scrapeChittorgarhIPOs().then((r) => ({ ipos: r.ipos, errors: r.errors }));
     }
     return this.list;
   }
 
   /**
-   * Three outcomes, never a guess (review round 1, M1). Unlike BSE, the
-   * Chittorgarh list shape carries NO symbol/isin at all, so an ambiguous
-   * name match here has no fallback confirmation to try — any 2+ match is
-   * always `ambiguous`, never resolvable to `found`.
+   * Four outcomes, never a guess (review round 1, M1). The mapped list shape
+   * (`ChittorgarhIPO`) carries no symbol/isin (report 82 has `~nse_symbol` and
+   * `~isin` columns, but they are empty while an IPO is open, so nothing here
+   * reads them), so an ambiguous name match has no fallback confirmation to
+   * try — any 2+ match is always `ambiguous`, never resolvable to `found`.
+   * `source_failed` (fix round 1): `scrapeChittorgarhIPOs` swallows a fetch
+   * error and returns `ipos: []` with `errors` set; an errored or empty list
+   * says nothing about this IPO, so it must never read as "not published yet".
    */
   async resolveIPO(
     deps: ChittorgarhFetcherDeps,
@@ -80,13 +131,18 @@ export class ChittorgarhFieldFetcherState {
     | { status: 'found'; row: ChittorgarhIPO }
     | { status: 'not_found' }
     | { status: 'ambiguous'; cause: string }
+    | { status: 'source_failed'; cause: string }
   > {
     const ipo = await deps.ipoRepository.findById(ipoId);
     if (!ipo) return { status: 'not_found' };
     const companyName = (ipo as unknown as { companyName?: string | null }).companyName;
     if (!companyName) return { status: 'not_found' };
 
-    const list = await this.getList();
+    const { ipos: list, errors } = await this.getList();
+    if (list.length === 0) {
+      const cause = errors.length > 0 ? errors.join('; ') : 'empty list';
+      return { status: 'source_failed', cause: `Chittorgarh list fetch failed: ${cause}` };
+    }
     const target = normalizeCompanyNameForMatching(companyName);
     const matches = list.filter((row) => normalizeCompanyNameForMatching(row.companyName) === target);
 
@@ -96,6 +152,13 @@ export class ChittorgarhFieldFetcherState {
       return {
         status: 'ambiguous',
         cause: `ambiguous name match: ${matches.length} rows (${names})`,
+      };
+    }
+    // Not found while some rows failed to parse: it may be the unparsed row.
+    if (errors.length > 0) {
+      return {
+        status: 'source_failed',
+        cause: `Chittorgarh list had parse errors and the IPO is not among the parsed rows: ${errors.join('; ')}`,
       };
     }
     return { status: 'not_found' };
@@ -140,6 +203,9 @@ export function buildChittorgarhFetcher(
     } catch (error) {
       return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
     }
+    if (resolved.status === 'source_failed') {
+      return { outcome: 'CHECK_FAILED', reason: resolved.cause, transient: true };
+    }
     if (resolved.status === 'not_found') {
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
@@ -154,16 +220,36 @@ export function buildChittorgarhFetcher(
     }
     const row = resolved.row;
 
-    if (camelFieldName === 'issueSize') {
-      if (row.issueSize === undefined || row.issueSize === null) {
-        return { outcome: 'NOT_AVAILABLE_YET' };
-      }
-      return { outcome: 'SUPPLIED', value: row.issueSize };
+    if (CHITTORGARH_LIST_FIELDS.has(key)) {
+      const value =
+        camelFieldName === 'listingExchanges'
+          ? listingExchangesFromRow(row)
+          : (row as unknown as Record<string, unknown>)[camelFieldName];
+      // Absent stays absent: an empty column is "not printed yet" (re-asked), never a value.
+      if (value === undefined || value === null || value === '') return { outcome: 'NOT_AVAILABLE_YET' };
+      return { outcome: 'SUPPLIED', value };
     }
 
-    if (camelFieldName === 'listingDate') {
-      if (!row.listingDate) return { outcome: 'NOT_AVAILABLE_YET' };
-      return { outcome: 'SUPPLIED', value: row.listingDate };
+    const detailExtractor = CHITTORGARH_DETAIL_EXTRACTORS.get(key);
+    if (detailExtractor) {
+      if (!row.verifierUrl) return { outcome: 'NOT_AVAILABLE_YET' };
+      let html: string;
+      try {
+        html = await state.getDetailHtml(row.verifierUrl, deps.fetchDetailHtml ?? fetchChittorgarhDetailHtml);
+      } catch (error) {
+        return {
+          outcome: 'CHECK_FAILED',
+          reason: error instanceof Error ? error.message : String(error),
+          transient: true,
+        };
+      }
+      const value = detailExtractor(html);
+      if (value === null || value === '') return { outcome: 'NOT_AVAILABLE_YET' };
+      if (key === 'ipos.faceValue' && !ALLOWED_FACE_VALUES.includes(value as number)) {
+        // ipos.face_value is an integer column and spec row 18 allows {1,2,5,10}: refuse, never round (OD-62).
+        return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: face value ${value} not in {1,2,5,10}` };
+      }
+      return { outcome: 'SUPPLIED', value };
     }
 
     if (camelFieldName === 'sector') {
@@ -185,8 +271,7 @@ export function buildChittorgarhFetcher(
       return { outcome: 'SUPPLIED', value: sector };
     }
 
-    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize, sector and listingDate,
-    // and the gate above already answers CHECK_FAILED transient for
+    // Unreachable today (every CHITTORGARH_SERVEABLE_FIELDS key has a branch above, and the gate above already answers CHECK_FAILED transient for
     // anything else) — kept as a defensive fallback with the SAME
     // review-round-2 reasoning: a field this fetcher's mapping branch does
     // not handle is a coverage gap, never a manifest no.
