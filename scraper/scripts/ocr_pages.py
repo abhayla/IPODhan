@@ -701,15 +701,69 @@ def annotate_fields(fields, page_confidence, floor=CONFIDENCE_FLOOR):
 
 # Item 44 / OD-164(f): on an OCR'd page "1,700" is read as "1.700" (NSE's price band ad: the
 # receipts held 1.7 / 1.785 for the true Rs 1,700 / Rs 1,785). A number with ONE '.' followed by
-# EXACTLY three digits is therefore ambiguous on an OCR page: it may be a decimal or a thousands
-# separator, and nothing on the page says which. Never guess the x1000.
-AMBIGUOUS_THOUSANDS_RX = re.compile(r"(?<![\d.,])\d{1,3}\.\d{3}(?![\d.,])")
+# EXACTLY three digits may be a decimal or a thousands separator, and nothing on the page says
+# which. Never guess the x1000.
+#
+# PR #1464 fix round 1 (MINOR 1): the shape alone is not enough -- a real "101.250" band and a
+# "1.250 crore" leg print the same shape and are right as written. The guard therefore judges
+# ONLY the rupee price/amount fields, where the separator confusion is real, and only a token
+# whose DECIMAL reading is implausible for that field:
+#   - a per-share price (price band floor/cap) below Rs 10. The existing cover check accepts
+#     1-100000 rupees, which cannot tell 1.7 from 1,700; no Indian IPO/FPO price band in the
+#     data is below Rs 10, while a 1-3 digit integer part at or above 10 ("101.250") is a
+#     plausible price and is kept.
+#   - a money leg (the cover headline amounts) below Rs 1 crore -- the smallest issue size any
+#     segment allows (extract_filing._SEGMENT_ISSUE_CRORE, SME floor). A leg's value is emitted
+#     in the DOCUMENT's unit, so the token is judged by its OWN printed unit word ("1.700 lakh")
+#     and matched to the field by the printed token, never by the converted value.
+AMBIGUOUS_THOUSANDS_RX = re.compile(
+    r"(?<![\d.,])(\d{1,3}\.\d{3})(?![\d.,])\s*(lakhs?|lacs?|crores?|crs?\.?|millions?|mn\.?)?",
+    re.I)
 OCR_AMBIGUOUS_THOUSANDS_REASON = "ocr_ambiguous_thousands_separator"
+OCR_PRICE_FIELDS = ("price_band_floor", "price_band_cap")
+OCR_AMOUNT_FIELDS = ("fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
+                     "total_offer_amount_at_cap")
+OCR_PRICE_PLAUSIBLE_MIN_RUPEES = 10.0
+OCR_AMOUNT_PLAUSIBLE_MIN_CRORE = 1.0
+_UNIT_RUPEES = {"lakh": 1e5, "lac": 1e5, "crore": 1e7, "cr": 1e7, "million": 1e6, "mn": 1e6}
+# The units a leg may be emitted in (rupees, lakhs, millions, crores).
+_DOC_UNIT_RUPEES = (1.0, 1e5, 1e6, 1e7)
+
+
+def _unit_rupees(word):
+    if not word:
+        return None
+    w = word.lower().rstrip(".")
+    for key in ("lakh", "lac", "crore", "million", "cr", "mn"):
+        if w.startswith(key):
+            return _UNIT_RUPEES[key]
+    return None
+
+
+def _close(a, b):
+    return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+
+
+def _ambiguous_hit(name, value, text):
+    """The printed token that makes this field's OCR value ambiguous, or None."""
+    for m in AMBIGUOUS_THOUSANDS_RX.finditer(text or ""):
+        token, unit = m.group(1), _unit_rupees(m.group(2))
+        number = float(token)
+        if name in OCR_PRICE_FIELDS:
+            if _close(number, value) and number < OCR_PRICE_PLAUSIBLE_MIN_RUPEES:
+                return token
+        elif name in OCR_AMOUNT_FIELDS and unit is not None:
+            if not any(_close(number * unit / doc, value) for doc in _DOC_UNIT_RUPEES):
+                continue
+            if number * unit / 1e7 < OCR_AMOUNT_PLAUSIBLE_MIN_CRORE:
+                return token
+    return None
 
 
 def guard_ambiguous_thousands(fields, page_text):
-    """MISS every OCR-only numeric value whose own page prints it in the ambiguous
-    "d.ddd" shape. `page_text` maps page index -> that page's text.
+    """MISS every OCR-only rupee price/amount whose own page prints it in the ambiguous
+    "d.ddd" shape AND whose decimal reading is implausible for the field (see above).
+    `page_text` maps page index -> that page's text.
 
     Only `source_text == "OCR"` fields are judged: a TEXT or MIXED value has a
     text-layer read behind it (OD-97 (a)), which is the "text read in the same
@@ -717,6 +771,8 @@ def guard_ambiguous_thousands(fields, page_text):
     MISSED keeps a stored value (OD-158), and the ambiguity says nothing about
     the stored one."""
     for name, field in list((fields or {}).items()):
+        if name not in OCR_PRICE_FIELDS and name not in OCR_AMOUNT_FIELDS:
+            continue
         if field.get("source_text") != "OCR":
             continue
         value = field.get("value")
@@ -724,8 +780,7 @@ def guard_ambiguous_thousands(fields, page_text):
             continue
         pages = field.get("pages") if isinstance(field.get("pages"), list) else [field.get("page")]
         for page in pages:
-            hit = next((m.group(0) for m in AMBIGUOUS_THOUSANDS_RX.finditer(page_text.get(page) or "")
-                        if abs(float(m.group(0)) - float(value)) < 1e-9), None)
+            hit = _ambiguous_hit(name, float(value), page_text.get(page))
             if hit is None:
                 continue
             field.update({

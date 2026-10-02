@@ -71,3 +71,35 @@ def test_a_value_not_printed_in_the_ambiguous_shape_is_kept():
     fields = {"x": {"value": 1.7, "page": 0, "source_text": "OCR", "state": "VALUE"}}
     guard_ambiguous_thousands(fields, {0: "price 1.70 only"})
     assert fields["x"]["value"] == 1.7
+
+
+# PR #1464 fix round 1 (MINOR 1): the guard covers ONLY the rupee price/amount fields, and only a
+# token whose decimal reading is implausible for that field. A real "101.250" band is kept.
+def test_a_three_digit_band_is_kept():
+    out = _run("PRICE BAND: ₹101.250 TO ₹106.500 PER EQUITY SHARE OF FACE VALUE OF ₹1 EACH")
+    assert out["fields"]["price_band_floor"]["value"] == 101.25, out["fields"]["price_band_floor"]
+    assert out["fields"]["price_band_cap"]["value"] == 106.5
+    assert out["fields"]["price_band_floor"]["state"] != "MISSED"
+
+
+def test_a_three_decimal_crore_amount_is_kept():
+    fields = {"fresh_issue_amount": {"value": 1.25, "page": 0, "source_text": "OCR", "state": "VALUE"}}
+    guard_ambiguous_thousands(fields, {0: "FRESH ISSUE OF UP TO ₹1.250 CRORE"})
+    assert fields["fresh_issue_amount"]["value"] == 1.25
+
+
+def test_a_unit_scaled_implausible_amount_is_missed_by_its_printed_token():
+    # Printed "1.700 lakh" (Rs 1.7 lakh, below any issue's floor of Rs 1 crore), emitted in the
+    # document's unit (crores -> 0.017): the printed token is compared, not the converted value.
+    for value in (1.7, 0.017, 170000.0):
+        fields = {"fresh_issue_amount": {"value": value, "page": 0, "source_text": "OCR", "state": "VALUE"}}
+        guard_ambiguous_thousands(fields, {0: "FRESH ISSUE AGGREGATING UP TO ₹1.700 LAKH"})
+        f = fields["fresh_issue_amount"]
+        assert f["value"] is None and f["state"] == "MISSED", (value, f)
+        assert f["ambiguous_token"] == "1.700"
+
+
+def test_a_non_money_field_in_the_ambiguous_shape_is_kept():
+    fields = {"subscription_times": {"value": 1.25, "page": 0, "source_text": "OCR", "state": "VALUE"}}
+    guard_ambiguous_thousands(fields, {0: "SUBSCRIBED 1.250 TIMES"})
+    assert fields["subscription_times"]["value"] == 1.25

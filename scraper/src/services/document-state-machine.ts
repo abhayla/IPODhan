@@ -90,6 +90,13 @@ export interface StateRow {
    * a post-close publisher type concluded under the old rule one escalated try.
    */
   lastChainSettledByExchanges?: boolean;
+  /**
+   * PR #1464 fix round 1 (MINOR 2): the row's LAST chain already escalated a post-close no_link
+   * past the exchanges (SEBI was asked). With `attemptedAtStage` it makes that escalation count
+   * once per stage (OD-65): a CLOSED row is not re-escalated -- and SEBI's 12 MB file not
+   * re-downloaded -- every data slot while it stays open. Absent reads as false.
+   */
+  lastChainEscalatedAfterClose?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +144,9 @@ export const POST_CLOSE_PUBLISHER_TYPES: readonly DocumentType[] = STAGE_DOCUMEN
  * What an exchange `no_link` may conclude for this type at this stage (item 44).
  *
  * - `may_settle`: the exchanges may settle it (unchanged rule, B-1).
+ *   FOLLOW-UP (PR #1464 MINOR 3, tracked in item 44): this includes RHP and PRICE_BAND_AD on a
+ *   CLOSED/LISTED IPO, whose chains still record `exchanges_settled_it` -- only the post-close
+ *   publisher types escalate here.
  * - `due_after_close`: a post-close publisher type on an IPO at CLOSED/LISTED —
  *   the exchanges cannot settle it; the SEBI and company rungs must be asked.
  * - `stage_unknown`: the stage is not one the machine knows. Fail closed: no
@@ -511,6 +521,17 @@ export function planIpoCycle(params: {
     const reopenForPublisherRung =
       row.lastChainSettledByExchanges === true &&
       exchangeNoLinkDecision(docType, params.stage) === 'due_after_close';
+    // PR #1464 fix round 1 (MINOR 2, OD-65 once per stage): at CLOSED, a post-close publisher
+    // type whose chain already asked SEBI in THIS stage is not attempted again until the stage
+    // changes (CLOSED -> LISTED is due again). LISTED already holds this through `listedRowDue`.
+    if (
+      params.stage === 'CLOSED' &&
+      row.lastChainEscalatedAfterClose === true &&
+      row.attemptedAtStage === 'CLOSED' &&
+      exchangeNoLinkDecision(docType, params.stage) === 'due_after_close'
+    ) {
+      continue;
+    }
     if (
       params.stage === 'LISTED' &&
       !reopenForPublisherRung &&

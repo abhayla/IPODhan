@@ -1082,7 +1082,7 @@ async function enrichRotatingCandidates(
  */
 export const CANDIDATE_IPOS_SQL = `
     SELECT i.id, i.company_name, i.slug, i.symbol, i.segment, i.status, i.price_range_min,
-           i.price_range_max, i.open_date, i.listing_date, i.bse_ipo_no,
+           i.price_range_max, i.open_date, i.listing_date, i.close_date, i.cin, i.bse_ipo_no,
            i.company_website, i.verifier_url, i.lead_managers, i.listing_exchanges,
            i.offering_type,
            -- Item 24 (#795): the second pre-open signal. A HELD RHP only —
@@ -1208,6 +1208,9 @@ export async function loadCandidateIpos(deps: {
       // itself never reads these two fields.
       openDate: (r.open_date as Date | string | null) ?? null,
       listingDate: (r.listing_date as Date | string | null) ?? null,
+      // PR #1464 fix round 1: the identity binding of SEBI/company-rung documents reads these.
+      closeDate: (r.close_date as Date | string | null) ?? null,
+      cin: (r.cin as string | null) ?? null,
     }));
 
   // W-124: LISTED-only enrichment (rotation timestamp + already-complete),

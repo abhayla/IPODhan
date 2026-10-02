@@ -48,6 +48,8 @@ export interface DiscoveredDocument {
   title: string;
   /** The BSE field or NSE row title the link came from — kept for the attempt log. */
   sourceField?: string;
+  /** PR #1464 fix round 1: the source's own filing date (SEBI's listing row), for the identity binding. */
+  filingDate?: Date | null;
 }
 
 export interface SEBIDrhpListingRow {

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   DocumentDiscoveryRunner,
   chainSettledByExchanges,
+  chainEscalatedAfterClose,
   type DiscoveryIpo,
   type HttpFetcher,
   type HttpResponse,
@@ -122,7 +123,32 @@ function rungsFor(attempts: { source: string; outcome: string }[], docType: stri
   );
 }
 
-const ACME = { id: 'ipo-acme', companyName: 'Acme Industries Limited', symbol: 'ACME', segment: 'MAINBOARD', bseIpoNo: 7903 };
+// PR #1464 fix round 1: the IPO carries its own CIN and dates, which bind a SEBI/company document to it.
+const ACME_CIN = 'U12345MH2001PLC123456';
+const ACME = {
+  id: 'ipo-acme',
+  companyName: 'Acme Industries Limited',
+  symbol: 'ACME',
+  segment: 'MAINBOARD',
+  bseIpoNo: 7903,
+  cin: ACME_CIN,
+  openDate: '2026-09-17',
+  closeDate: '2026-09-21',
+  listingDate: '2026-09-24',
+};
+
+/** SEBI's Final Prospectus listing with one Acme row, dated as given, and its PDF. */
+const sebiProspectus = (date: string) => ({
+  'smid=12': html(
+    `<table id="sample_1"><tr><td>${date}</td>` +
+      '<td><a href="https://www.sebi.gov.in/filings/public-issues/sep-2026/acme-prospectus_104637.html" ' +
+      'title="Acme Industries Limited - Prospectus">Acme Industries Limited - Prospectus</a></td></tr></table>'
+  ),
+  'acme-prospectus_104637.html': html(
+    '<a href="https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/104637.pdf">Prospectus</a>'
+  ),
+  'attachdocs/sep-2026/104637.pdf': pdf(realisticPdf('P')),
+});
 
 describe('exchangeNoLinkDecision', () => {
   it('post-close publisher types escalate once the IPO is CLOSED or LISTED, never before', () => {
@@ -154,7 +180,7 @@ describe('Item 44: CLOSED IPO, both exchanges cover it cleanly, no Prospectus li
         ),
         'attachdocs/sep-2026/104637.pdf': pdf(realisticPdf('P')),
       },
-      'Acme Industries Limited'
+      `Acme Industries Limited CIN ${ACME_CIN}`
     );
     const closed: DiscoveryIpo = { ...ACME, stage: 'CLOSED' };
 
@@ -168,6 +194,42 @@ describe('Item 44: CLOSED IPO, both exchanges cover it cleanly, no Prospectus li
     const chain = rungsFor(result.attempts as never, 'PROSPECTUS');
     expect(chain.startsWith('rungs[PROSPECTUS]: EXCHANGES:no_link[due_after_close] -> SEBI:')).toBe(true);
     expect(chain).not.toContain('exchanges_settled_it');
+  }, 60_000);
+
+  it('refuses a same-name SEBI Prospectus whose cover CIN is another company (not stored)', async () => {
+    const { runner, documents } = makeRunner(
+      { ...CLEAN_EXCHANGES, ...sebiProspectus('Sep 22, 2026') },
+      'Acme Industries Limited CIN U99999DL1990PLC000001'
+    );
+    const result = await runner.runIpo({ ...ACME, stage: 'CLOSED' }, allBut('PROSPECTUS') as never);
+    expect(result.found).toEqual([]);
+    expect(documents.rows.filter((d) => d.type === 'PROSPECTUS')).toEqual([]);
+    expect(rungsFor(result.attempts as never, 'PROSPECTUS')).toContain('SEBI:refused:identity_cin_mismatch');
+  }, 60_000);
+
+  it('refuses a same-name SEBI Prospectus filed years before the IPO (not stored)', async () => {
+    const { runner, documents } = makeRunner(
+      { ...CLEAN_EXCHANGES, ...sebiProspectus('Mar 10, 2021') },
+      'Acme Industries Limited prospectus'
+    );
+    const result = await runner.runIpo({ ...ACME, stage: 'CLOSED' }, allBut('PROSPECTUS') as never);
+    expect(result.found).toEqual([]);
+    expect(documents.rows.filter((d) => d.type === 'PROSPECTUS')).toEqual([]);
+    expect(rungsFor(result.attempts as never, 'PROSPECTUS')).toContain('SEBI:refused:identity_date_outside_window');
+  }, 60_000);
+
+  it('fails closed when the IPO has neither a CIN nor dates to bind the document', async () => {
+    const { runner, documents } = makeRunner(
+      { ...CLEAN_EXCHANGES, ...sebiProspectus('Sep 22, 2026') },
+      'Acme Industries Limited prospectus'
+    );
+    const bare: DiscoveryIpo = {
+      ...ACME, cin: null, openDate: null, closeDate: null, listingDate: null, stage: 'CLOSED',
+    };
+    const result = await runner.runIpo(bare, allBut('PROSPECTUS') as never);
+    expect(result.found).toEqual([]);
+    expect(documents.rows.filter((d) => d.type === 'PROSPECTUS')).toEqual([]);
+    expect(rungsFor(result.attempts as never, 'PROSPECTUS')).toContain('SEBI:refused:identity_unverified');
   }, 60_000);
 
   it('when SEBI has nothing either, the miss is one the chain concluded (no settled skip)', async () => {
@@ -232,6 +294,57 @@ describe('Item 44: rows concluded under the old rule get exactly one more try', 
 
   it('once a chain has asked SEBI it is not due again (OD-56 holds)', () => {
     expect(plan(blocked(false)).due).toEqual([]);
+  });
+});
+
+describe('PR #1464 fix round 1 (MINOR 2, OD-65): the post-close escalation counts once per stage', () => {
+  const escalatedChain = [
+    {
+      source: 'CHAIN',
+      outcome:
+        'rungs[PROSPECTUS]: EXCHANGES:no_link[due_after_close] -> SEBI:refused:identity_unverified -> ' +
+        'COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url',
+    },
+  ];
+  const row = (attemptedAtStage: string): StateRow => ({
+    docType: 'PROSPECTUS',
+    state: 'BLOCKED_ALL',
+    attempts: 1,
+    nextRetryAt: new Date('2026-10-02T05:00:00Z'),
+    blockedSinceAt: new Date('2026-10-01T00:00:00Z'),
+    filingDate: null,
+    extractorVersion: null,
+    lastAttemptAt: new Date('2026-10-01T08:30:00Z'),
+    attemptedAtStage,
+    lastChainEscalatedAfterClose: true,
+  });
+  const plan = (stage: 'CLOSED' | 'LISTED', r: StateRow) =>
+    planIpoCycle({
+      stage,
+      rows: [...(allBut('PROSPECTUS') as StateRow[]), r],
+      options: { now: new Date('2026-10-02T09:00:00Z') },
+    });
+
+  it('reads the escalated chain off last_attempt', () => {
+    expect(chainEscalatedAfterClose(escalatedChain, 'PROSPECTUS')).toBe(true);
+    expect(
+      chainEscalatedAfterClose(
+        [{ source: 'CHAIN', outcome: 'rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it' }],
+        'PROSPECTUS'
+      )
+    ).toBe(false);
+  });
+
+  it('a CLOSED row that already asked SEBI at CLOSED is not due again in the same stage', () => {
+    expect(plan('CLOSED', row('CLOSED')).due).toEqual([]);
+  });
+
+  it('the stage change makes it due again (attempted at CLOSED, IPO now LISTED)', () => {
+    expect(plan('LISTED', row('CLOSED')).due).toEqual(['PROSPECTUS']);
+  });
+
+  it('a row escalated at an EARLIER stage is still due at CLOSED', () => {
+    expect(plan('CLOSED', { ...row('OPEN') }).due).toEqual(['PROSPECTUS']);
   });
 });
 

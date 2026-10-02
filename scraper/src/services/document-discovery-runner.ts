@@ -54,6 +54,7 @@ import {
 } from './document-download-verifier.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { storeDocument, getStoreDir } from './document-store.js';
+import { verifyDocumentIdentity } from './document-identity-binding.js';
 import { extractCoverText as extractCoverTextFromPdf } from './pdf-cover-text.js';
 import {
   parseSebiListing,
@@ -631,6 +632,14 @@ export interface DiscoveryIpo {
    * runner itself never reads it.
    */
   listingDate?: Date | string | null;
+  /**
+   * PR #1464 fix round 1: `ipos.close_date` and `ipos.cin`, read by the identity binding
+   * (document-identity-binding.ts) together with `openDate`/`listingDate` above, which the runner
+   * therefore DOES read now: a SEBI/company-rung document must carry this CIN or a filing date
+   * inside the window around these dates before it is stored.
+   */
+  closeDate?: Date | string | null;
+  cin?: string | null;
   /**
    * W-124: carried ONLY to drive `orderAndCapCandidates`' LISTED-tier
    * rotation — the per-IPO "last touched" timestamp, so a LISTED row
@@ -1508,6 +1517,28 @@ export class DocumentDiscoveryRunner {
       (verdict.memberTypeMismatch as DocumentType | undefined) ?? docType;
     const retyped = storedType !== docType;
 
+    // PR #1464 fix round 1: a SEBI/company-rung document was matched by company NAME only. Before
+    // it is stored (and outranks the RHP, OD-30), its cover CIN and filing date must bind it to
+    // THIS IPO (OD-34 as amended by OD-89). Refused or unverifiable -> not stored, reason logged.
+    const identity = verifyDocumentIdentity({
+      source: candidate.source,
+      docType: storedType,
+      ipo,
+      coverText: cover.usable ? (cover.text ?? '') : '',
+      filingDate: candidate.filingDate ?? null,
+    });
+    if (identity.verdict === 'refused') {
+      attempts.push({
+        source: candidate.source,
+        http: 200,
+        ms: 0,
+        outcome: `${identity.reason} (${identity.detail})`,
+        url: candidate.url,
+        sha256: verdict.sha256,
+      });
+      return null;
+    }
+
     const stored = await storeDocument({
       ipoId: ipo.id,
       docType: storedType,
@@ -1912,13 +1943,14 @@ export class DocumentDiscoveryRunner {
     triedUrls.add(pdfUrl);
 
     const stored = await this.tryStoreCandidate(
-      { type: docType, url: pdfUrl, source: 'SEBI', title: row.title },
+      { type: docType, url: pdfUrl, source: 'SEBI', title: row.title, filingDate: row.filedOn ?? null },
       ipo,
       docType,
       attempts,
       seenBySha
     );
-    rungs.push(stored ? 'SEBI:found' : 'SEBI:failed:rejected');
+    const refusal = stored ? null : identityRefusalFor(attempts, pdfUrl);
+    rungs.push(stored ? 'SEBI:found' : refusal ? `SEBI:refused:${refusal}` : 'SEBI:failed:rejected');
     // A listed filing whose download or verification failed is a failure, not
     // an absence — it exists, we could not get it.
     return stored
@@ -2030,6 +2062,8 @@ export class DocumentDiscoveryRunner {
           rungs.push('COMPANY:found');
           return { kind: 'found', documentId: stored.documentId, bytes: stored.bytes };
         }
+        const refusal = identityRefusalFor(attempts, link.url);
+        if (refusal) rungs.push(`COMPANY:refused:${refusal}`);
         // The page linked this filing and the download failed: it exists.
         anyPageFailed = true;
       }
@@ -2949,7 +2983,32 @@ export function toStateRow(row: DocumentFetchStateRow): StateRow {
     lastAttemptAt: row.lastAttemptAt,
     attemptedAtStage: row.attemptedAtStage ?? null,
     lastChainSettledByExchanges: chainSettledByExchanges(row.lastAttempt, row.docType),
+    lastChainEscalatedAfterClose: chainEscalatedAfterClose(row.lastAttempt, row.docType),
   };
+}
+
+/** PR #1464 fix round 1: the identity refusal recorded for this URL in this run, if any. */
+export function identityRefusalFor(attempts: readonly FetchAttempt[], url: string): string | null {
+  const hit = [...attempts]
+    .reverse()
+    .find((a) => a.url === url && /^identity_[a-z_]+ \(/.test(String(a.outcome ?? '')));
+  return hit ? String(hit.outcome).split(' ')[0] : null;
+}
+
+/**
+ * PR #1464 fix round 1 (MINOR 2, OD-65 once per stage): did this row's last chain already escalate
+ * a post-close no_link past the exchanges? Read with `attemptedAtStage` by `planIpoCycle`.
+ */
+export function chainEscalatedAfterClose(
+  lastAttempt: readonly { source?: string; outcome?: string }[] | null | undefined,
+  docType: string
+): boolean {
+  if (!Array.isArray(lastAttempt)) return false;
+  const chain = lastAttempt.find(
+    (a) => a?.source === 'CHAIN' && String(a.outcome ?? '').startsWith(`rungs[${docType}]`)
+  );
+  const text = String(chain?.outcome ?? '');
+  return text.includes('EXCHANGES:no_link[due_after_close]') && /SEBI:(?!skipped)/.test(text);
 }
 
 /** Item 44: did this row's last chain line skip the later rungs as settled by the exchanges? */
