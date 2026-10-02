@@ -91,12 +91,16 @@ describe('BSE fetcher -- item 43 mappings on the live 2026-10-02 board + detail 
     });
   });
 
-  it('a decimal face value keeps its decimals (Rs 2.50 is 2.5, not 3)', async () => {
+  it.each([
+    ['2.50', { outcome: 'CHECK_FAILED', reason: 'FAILED_VALIDATION: face value 2.5 not in {1,2,5,10}' }],
+    ['5.00', { outcome: 'SUPPLIED', value: 5 }],
+    ['10.00', { outcome: 'SUPPLIED', value: 10 }],
+  ])('face value %s: refused when not in {1,2,5,10} (never rounded, never stored as a decimal)', async (printed, expected) => {
     fetchBSEDetailMock.mockImplementation(async () => ({
       ...asArray<any>(readJson('bse/bse-detail-8022-2026-10-02.json'))[0],
-      Face_Value: '2.50',
+      Face_Value: printed,
     }));
-    expect(await ask('face_value')).toEqual({ outcome: 'SUPPLIED', value: 2.5 });
+    expect(await ask('face_value')).toEqual(expected);
   });
 
   it('a pair BSE does not print (listing_exchanges) stays a NO_MAPPING gap, not a guessed value', async () => {
@@ -162,12 +166,13 @@ describe('CHITTORGARH fetcher -- item 43 mappings on live 2026-10-02 report 82 +
     });
   });
 
-  it('detail page: a decimal face value keeps its decimals (Rs 2.50 is 2.5, not 3)', async () => {
-    const html = '<a href="#">Face Value</a><span>₹ 2.50 per share</span>';
-    expect(await ask('Runwal Enterprises Limited', 'face_value', vi.fn().mockResolvedValue(html))).toEqual({
-      outcome: 'SUPPLIED',
-      value: 2.5,
-    });
+  it.each([
+    ['2.50', { outcome: 'CHECK_FAILED', reason: 'FAILED_VALIDATION: face value 2.5 not in {1,2,5,10}' }],
+    ['5.00', { outcome: 'SUPPLIED', value: 5 }],
+    ['10.00', { outcome: 'SUPPLIED', value: 10 }],
+  ])('detail page: face value %s is refused when not in {1,2,5,10}, never rounded', async (printed, expected) => {
+    const html = `<a href="#">Face Value</a><span>₹ ${printed} per share</span>`;
+    expect(await ask('Runwal Enterprises Limited', 'face_value', vi.fn().mockResolvedValue(html))).toEqual(expected);
   });
 
   it('detail page fetch failure -> CHECK_FAILED transient with the cause', async () => {

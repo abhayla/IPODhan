@@ -229,6 +229,10 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
       // The shared mapper rounds (Rs 2.50 -> 3); keep the printed decimal value.
       const printed = parseFloat(String(detail.Face_Value || ''));
       value = Number.isFinite(printed) && printed > 0 ? printed : undefined;
+      if (typeof value === 'number' && ![1, 2, 5, 10].includes(value)) {
+        // ipos.face_value is an integer column and spec row 18 allows {1,2,5,10}: refuse, never round (OD-62).
+        return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: face value ${value} not in {1,2,5,10}` };
+      }
     } else value = (mapBSEToScrapedIPO(row, detail) as unknown as Record<string, unknown>)[camelFieldName];
     if (
       value === undefined ||

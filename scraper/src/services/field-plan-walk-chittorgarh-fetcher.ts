@@ -84,6 +84,8 @@ function listingExchangesFromRow(row: ChittorgarhIPO): ('NSE' | 'BSE')[] | null 
   return null;
 }
 
+const ALLOWED_FACE_VALUES: readonly number[] = [1, 2, 5, 10];
+
 export interface ChittorgarhFetcherDeps {
   ipoRepository: IPORepository;
   isChittorgarhCapable: (tableName: string, fieldName: string) => boolean;
@@ -137,7 +139,7 @@ export class ChittorgarhFieldFetcherState {
     if (!companyName) return { status: 'not_found' };
 
     const { ipos: list, errors } = await this.getList();
-    if (errors.length > 0 || list.length === 0) {
+    if (list.length === 0) {
       const cause = errors.length > 0 ? errors.join('; ') : 'empty list';
       return { status: 'source_failed', cause: `Chittorgarh list fetch failed: ${cause}` };
     }
@@ -150,6 +152,13 @@ export class ChittorgarhFieldFetcherState {
       return {
         status: 'ambiguous',
         cause: `ambiguous name match: ${matches.length} rows (${names})`,
+      };
+    }
+    // Not found while some rows failed to parse: it may be the unparsed row.
+    if (errors.length > 0) {
+      return {
+        status: 'source_failed',
+        cause: `Chittorgarh list had parse errors and the IPO is not among the parsed rows: ${errors.join('; ')}`,
       };
     }
     return { status: 'not_found' };
@@ -236,6 +245,10 @@ export function buildChittorgarhFetcher(
       }
       const value = detailExtractor(html);
       if (value === null || value === '') return { outcome: 'NOT_AVAILABLE_YET' };
+      if (key === 'ipos.faceValue' && !ALLOWED_FACE_VALUES.includes(value as number)) {
+        // ipos.face_value is an integer column and spec row 18 allows {1,2,5,10}: refuse, never round (OD-62).
+        return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: face value ${value} not in {1,2,5,10}` };
+      }
       return { outcome: 'SUPPLIED', value };
     }
 
