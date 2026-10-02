@@ -382,3 +382,32 @@ def test_a_glued_inventory_turnover_keeps_the_miss_open():
     pg = pages("nse-rhp-no-current-ratio-printed.txt") + [extra]
     from financial_ratios import _ratio_named_anywhere
     assert _ratio_named_anywhere(pg, "inventory_turnover")
+
+
+# ------------------------------------------------ item 46 round 2: prose-only mention
+
+
+def test_a_prose_only_current_ratio_mention_is_no_note_on_the_real_vishal_rhp():
+    """Vishal Nirmiti RHP (f18ffdc8): p261 names "current ratio" only inside a
+    strategy sentence; no page prints a Current Ratio row. Before round 2 this
+    stayed ratio_row_not_in_note forever (issuer_ratio_yield FAIL #1179)."""
+    pg = pages("vishal-nirmiti-rhp-current-ratio-prose-only.txt")
+    assert "current\nratio) and build financial resilience" in dict(pg)[261]
+    read = read_ratio(pg, "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_note_not_in_document", read
+    assert read["current_ratio_line_pages"] == []
+
+
+@pytest.mark.parametrize("printed", [
+    "Consolidated\nCurrent ratio 1.36 1.28\n",
+    "the following ratios\nCurrent ratio (in times)\nDebt-equity ratio\n",
+    "Particulars Current Ratio and Quick Ratio\n",
+    "our current ratio 1.36 for Fiscal 2026 and\n",
+    "as on March 31, 2026 our current ratio was 1.36 and\n",
+])
+def test_a_row_shaped_mention_still_keeps_the_miss_open(printed):
+    # Fail closed: a label cell, a label with figures, or a sentence quoting a
+    # figure is never prose; only "<lowercase word> current ratio <function word>".
+    pg = pages("vishal-nirmiti-rhp-current-ratio-prose-only.txt") + [(500, printed)]
+    read = read_ratio(pg, "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_row_not_in_note", (printed, read)

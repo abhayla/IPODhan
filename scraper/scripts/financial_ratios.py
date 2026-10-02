@@ -463,7 +463,36 @@ _NAMED = {"current_ratio": re.compile(r"current\W*ratio", re.I),
 
 def _ratio_named_anywhere(page_texts, key):
     rx = _NAMED[key]
-    return any(rx.search(" ".join((text or "").split())) for _i, text in page_texts)
+    for _i, text in page_texts:
+        flat = " ".join((text or "").split())
+        if any(not _prose_mention(flat, m) for m in rx.finditer(flat)):
+            return True
+    return False
+
+
+# Item 46 round 2 (OD-165, #1179): Vishal Nirmiti's RHP (f18ffdc8) names "current
+# ratio" once, inside a strategy SENTENCE ("healthy balance sheet ratios (e.g.,
+# debt-to-equity, current ratio) and build financial resilience", p261), and
+# nowhere as a row; the old any-mention rule kept that document a reader miss
+# forever. A mention is prose only when a lowercase word sits right before the
+# name AND a sentence function word follows within three words; a label cell
+# ("Current Ratio 1.36", "Current ratio (in times)", a label column with its
+# figures elsewhere) never has both, so it still keeps the miss open.
+_FUNCTION_WORDS = frozenset(["and", "or", "the", "to", "of", "in", "with", "which", "is",
+                             "are", "was", "were", "for", "by", "as", "that", "while"])
+
+
+def _prose_mention(flat, match):
+    before = re.findall(r"[A-Za-z][A-Za-z.\-]*", flat[max(0, match.start() - 40):match.start()])
+    # A unit annotation right after a label ("Current ratio (in times)") is not
+    # sentence text: parenthesised groups are dropped before the words are read.
+    tail = re.sub(r"\([^()]*\)", " ", flat[match.end():match.end() + 80])
+    after = re.findall(r"[A-Za-z]+|\d", tail)[:3]
+    if not before or not before[-1][0].islower():
+        return False
+    if any(tok.isdigit() for tok in after):
+        return False
+    return any(tok in _FUNCTION_WORDS for tok in after)
 
 
 # #1420 / F-219: the reasons for which a value WAS read for the latest period
