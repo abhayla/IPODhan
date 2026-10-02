@@ -77,6 +77,19 @@ describe.skipIf(!RUN)('#1420 re-read answer clear (ipodhan_test)', () => {
     expect((await plan('current_ratio')).state).toBe('PENDING');
   });
 
+  it('PR #1472 round 3: an ambiguous OCR cap in the same envelope keeps a P/E refused by a check in no list (document_has_ambiguous_ocr)', async () => {
+    await stored('financial_data', 'peRatio', 'pe_ratio');
+    const r = await clearRereadAnswers(db, input({
+      price_band_cap: { value: null, state: 'MISSED', ambiguous_token: '1.785', check: { name: 'not_extractable', passed: true, detail: "ocr_ambiguous_thousands_separator: read '1.785' off OCR page 0" } } as RereadEnvelopeField,
+      pe_at_cap: { value: null, state: 'REFUSED', refused_value: 41.2, check: { name: 'pe_equals_price_over_diluted_eps', passed: false, detail: 'P/E at cap 41.2 != 1.785 / 43.3' } },
+    }));
+    expect(r.cleared).toEqual([]);
+    expect(r.keptAmbiguousOcr).toEqual([{ field: 'financial_data.peRatio', reason: 'document_has_ambiguous_ocr', ambiguousFields: ['price_band_cap'] }]);
+    expect(Number((await fd()).pe_ratio)).toBe(31.5);
+    expect(await failures()).toEqual([]);
+    expect((await plan('pe_ratio')).state).toBe('SUPPLIED');
+  });
+
   it('READER REFUSES (ipos, through the ipos clear door) with a LIST refused_value', async () => {
     await stored('ipos', 'priceRangeMax', 'price_range_max');
     const r = await clearRereadAnswers(db, input({ price_band_cap: { value: null, state: 'REFUSED', refused_value: [118, 120], check: { passed: false, detail: 'two caps printed' } } }));

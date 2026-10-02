@@ -164,3 +164,20 @@ def test_an_unrelated_refusal_and_an_unambiguous_band_are_left_alone():
             "price_band_cap": _refused(72.0, "price_band_ordering", "OCR", 0)}
     guard_ambiguous_thousands(band, {0: "PRICE BAND: ₹82 TO ₹72"})
     assert band["price_band_floor"]["state"] == "REFUSED" and band["price_band_cap"]["state"] == "REFUSED"
+
+
+# PR #1472 round 3: the SAME-check-name branch of demote_dependents_of_ambiguous, on a check name
+# that is in NO input list (the cross-field list cannot have found it): the guarded field's own
+# check, shared with a sibling, makes the sibling's refusal a MISSED.
+def test_same_check_name_demotes_a_sibling_on_a_check_in_no_list():
+    shared = "a_shared_check_in_no_list"
+    assert shared not in CROSS_FIELD_CHECK_INPUTS
+    fields = {"price_band_cap": {"value": 1.785, "page": 0, "source_text": "OCR", "state": "VALUE",
+                                 "check": {"name": shared, "passed": True}},
+              "pe_at_cap": _refused(41.2, shared),
+              "face_value": _refused(0.0, "face_value_positive")}
+    guard_ambiguous_thousands(fields, AMBIGUOUS_PAGE)
+    assert fields["price_band_cap"]["state"] == "MISSED"
+    assert fields["pe_at_cap"]["state"] == "MISSED", fields["pe_at_cap"]
+    assert fields["pe_at_cap"]["depends_on_ambiguous_ocr"] == "price_band_cap"
+    assert fields["face_value"]["state"] == "REFUSED"
