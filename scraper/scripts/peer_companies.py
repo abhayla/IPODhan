@@ -25,7 +25,7 @@ import re
 
 from peer_table_rows import parse_peer_table
 from peer_text_rows import parse_peer_text_rows
-from peer_table_section import contains_kpi_comparison_table, find_peer_table_section
+from peer_table_section import find_peer_table_section, kpi_comparison_section_body
 
 # The document's own cross-reference: every prospectus measured prints, on the
 # same page, which company has the highest and which the lowest P/E "of the peer
@@ -50,7 +50,9 @@ NO_LISTED_PEERS = "peer_comparison_issuer_states_no_listed_peers"
 
 _NO_PEERS_STATEMENT = re.compile(
     r"(?:there\s+(?:are|is)\s+no|do(?:es)?\s+not\s+have\s+any|no)\s+"
-    r"(?:comparable\s+|other\s+)?listed\s+(?:industry\s+)?(?:peers?|compan(?:y|ies)|entit(?:y|ies))",
+    # Item 46 round 3: "has no directly comparable listed peers" (Robokidz RHP p97).
+    r"(?:directly\s+)?(?:comparable\s+|other\s+)?listed\s+(?:industry\s+)?"
+    r"(?:peers?|compan(?:y|ies)|entit(?:y|ies))",
     re.I,
 )
 
@@ -179,9 +181,22 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
         # Distinguish "no such table" from "the lookalike was there". A document
         # that prints only the KPI comparison is a different finding from one
         # that prints neither, and the second is the one worth chasing.
+        kpi_found = False
         for _index, text in page_texts:
-            if contains_kpi_comparison_table((text or "").split("\n")):
-                return None, ONLY_KPI_TABLE
+            body = kpi_comparison_section_body((text or "").split("\n"))
+            if body is None:
+                continue
+            kpi_found = True
+            # Item 46 round 3 (OD-158): with no peer section anywhere, the
+            # document's only peer statement may sit under the KPI heading (S. K.
+            # Offset RHP p119, "There are presently no listed Companies in India
+            # that are engaged in a business that is directly comparable ...").
+            # That sentence is the issuer STATING no listed peer; without it the
+            # answer stays a miss (ONLY_KPI_TABLE / NOT_IN_DOCUMENT).
+            if _NO_PEERS_STATEMENT.search(" ".join(" ".join(body).split())):
+                return None, NO_LISTED_PEERS
+        if kpi_found:
+            return None, ONLY_KPI_TABLE
         return None, NOT_IN_DOCUMENT
 
     by_index = dict(page_texts)

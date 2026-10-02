@@ -33,8 +33,15 @@ import re
 # NSE RHP p138, "6. Comparison of Accounting Ratios with listed industry peer"
 # (BSE Limited). The plural-only pattern reported that document as having only
 # the KPI table.
+# Item 46 round 3 (OD-165): two more real wordings name the same section on SME
+# RHPs - "6. Comparison of Accounting Ratios with Industry Peers" (Robokidz RHP
+# p97, no "listed") and "6. Comparison with Peer Group Companies:" (Vivekanand
+# Cotspin RHP p113, where the whole peer table sits). Both read as "no section" /
+# "only the KPI table", a MISS on a document that prints the section. The KPI
+# heading is still refused first (_KPI_HEADING).
 _PEER_HEADING = re.compile(
-    r"comparison(?:\s+\S+){0,4}?\s+with\s+(?:the\s+)?listed\s+industry\s+peers?\b",
+    r"comparison(?:\s+\S+){0,4}?\s+with\s+(?:the\s+|our\s+)?"
+    r"(?:(?:listed\s+)?industry\s+peers?|(?:listed\s+)?peer\s+group(?:\s+compan(?:y|ies))?)\b",
     re.I,
 )
 
@@ -52,8 +59,11 @@ _SECTION_MARKER = re.compile(r"^\s*(\d{1,2}|[IVXLC]{1,5}|[a-z])[.)]\s+", re.I)
 # German Green's "Comparison of Key Performance Indicators with listed industry
 # peers" (RHP p184). The second also satisfies _PEER_HEADING, so without this
 # alternative it was taken for the peer table (#545).
+# "indic\w*" because a real SME RHP misspells it: Papadmalji p132 "7. Comparison of
+# key performance indictors with Peer Group Companies" (a KPI table, never peers).
 _KPI_HEADING = re.compile(
-    r"comparison\s+of\s+(?:kpis?\b|key\s+performance\s+indicators?)", re.I
+    # "of our key performance indicators" is S. K. Offset RHP p119.
+    r"comparison\s+of\s+(?:our\s+|the\s+)?(?:kpis?\b|key\s+performance\s+indic\w*)", re.I
 )
 
 _NOTES_TERMINATOR = re.compile(r"^notes?\s*:", re.I)
@@ -116,6 +126,28 @@ def find_peer_table_section(lines):
         return index, body
 
     return None, []
+
+
+def kpi_comparison_section_body(lines):
+    """The lines of the KPI comparison section (heading excluded), or None.
+
+    Item 46 round 3: S. K. Offset's RHP prints no accounting-ratio peer section;
+    its only peer statement sits under the KPI heading (p119): "There are
+    presently no listed Companies in India that are engaged in a business that is
+    directly comparable ...". The caller reads a stated absence from this body
+    only when the document has no peer section at all.
+    """
+    for index, raw in enumerate(lines):
+        after = _after_marker(raw)
+        if not (_STARTS_WITH_COMPARISON.match(after) and _KPI_HEADING.search(after)):
+            continue
+        body = []
+        for j in range(index + 1, len(lines)):
+            if _ends_peer_section(lines[j]):
+                break
+            body.append(lines[j])
+        return body
+    return None
 
 
 def contains_kpi_comparison_table(lines):

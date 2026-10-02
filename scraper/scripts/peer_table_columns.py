@@ -353,7 +353,42 @@ def map_columns(headers, data_rows=None):
                     claimed.add(candidate)
                     break
 
+    if data_rows:
+        mapping = _relocate_uniform_left_shift(mapping, headers, data_rows)
     return mapping
+
+
+def _relocate_uniform_left_shift(mapping, headers, data_rows):
+    """Every value column printed one cell LEFT of its header: shift them all.
+
+    Item 46 round 3 (OD-165): Vivekanand Cotspin's RHP p113 rebuilds its header
+    one column right of every value ("Revenue from operations" at 7, the
+    figures at 6; the same for Basic EPS, Diluted EPS, P/E, NAV), so every
+    mapped column was empty in every row and no peer row parsed.
+
+    Fail closed: the shift is applied only when EVERY mapped value column is
+    empty in every body row AND each one's left neighbour is unlabelled, not
+    already mapped, and holds data. One column that does not fit leaves the
+    whole mapping unchanged - a partial shift would put one field's numbers
+    under another field. The name column is not moved; `_row_name` already
+    falls back to the first text cell left of the first value.
+    """
+    values = {f: i for f, i in mapping.items() if f != NAME and i is not None}
+    if not values:
+        return mapping
+    claimed = set(mapping.values())
+    for index in values.values():
+        left = index - 1
+        if _column_has_data(data_rows, index):
+            return mapping
+        if left < 0 or left in claimed or (headers[left] or "").strip():
+            return mapping
+        if not _column_has_data(data_rows, left):
+            return mapping
+    shifted = dict(mapping)
+    for field, index in values.items():
+        shifted[field] = index - 1
+    return shifted
 
 
 def is_divider_row(row):
