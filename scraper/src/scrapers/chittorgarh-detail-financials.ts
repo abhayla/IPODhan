@@ -17,8 +17,10 @@
  * period date. F-230: "Total Income" is never read as revenue; no revenue row is mapped here.
  */
 import { FINANCIAL_FIELD_BOUNDS } from './chittorgarh-detail-fields.js';
+import { isinCheckDigitValid } from './isin-check-digit.js';
 
-export type DetailRead = { value: number | string } | { absent: true } | { refused: string };
+/** `note`: a provenance remark recorded with the answer (e.g. OD-167 "RoNW used for ROE"). */
+export type DetailRead = { value: number | string; note?: string } | { absent: true } | { refused: string };
 
 const ABSENT: DetailRead = { absent: true };
 
@@ -106,7 +108,8 @@ const UNIT_TO_CRORE: ReadonlyArray<[RegExp, number, string]> = [
 function financialUnit(html: string, tableIdx: number, tableEnd: number): { factor: number; unit: string } | { refused: string } {
   // The unit line sits in the table's last row or immediately after it.
   const tail = cellText(html.slice(tableIdx, tableEnd + 400));
-  const units = [...tail.matchAll(/Amount in\s*(?:₹|Rs\.?|INR)?\s*([A-Za-z]+)/gi)].map((m) => m[1]);
+  // Word boundaries: "Amount Invested" (the anchor block) is not a unit line.
+  const units = [...tail.matchAll(/\bAmount in\s+(?:₹|Rs\.?|INR)?\s*([A-Za-z]+)\b/gi)].map((m) => m[1]);
   const distinct = [...new Set(units.map((u) => u.toLowerCase()))];
   if (distinct.length === 0) return { refused: 'financial table unit line not found' };
   if (distinct.length > 1) return { refused: `financial table states two units: ${distinct.join(', ')}` };
@@ -230,19 +233,41 @@ function readKpiTable(html: string, out: Map<string, DetailRead>): void {
   const keys = ['roe', 'ronw', 'debtToEquity'];
   const rows = readSingleTable(html, /^KPI \| /i, keys, out);
   if (!rows) return;
-  const read = (key: string, label: RegExp, bound: Bound): DetailRead => {
+  const refuseAll = (reason: string) => {
+    for (const k of keys) out.set(k, { refused: reason });
+  };
+  // The KPI table prints one column per period (e.g. "Feb 28, 2026" stub | "Mar 31, 2025"). The value is read
+  // from the latest FULL fiscal year-end (31 March) column by its printed label, never by position.
+  const periods = rows[0].slice(1).map(parsePeriod);
+  if (periods.length === 0 || periods.some((p) => p === null)) {
+    return refuseAll(`KPI header has an unreadable period: ${JSON.stringify(rows[0].slice(1))}`);
+  }
+  const fyCols = (periods as Array<{ y: number; m: number; d: number }>)
+    .map((p, i) => ({ fy: fiscalYearOf(p), i }))
+    .filter((c): c is { fy: number; i: number } => c.fy !== null);
+  if (fyCols.length === 0) return refuseAll(`KPI header has no 31 March fiscal year-end column: ${JSON.stringify(rows[0].slice(1))}`);
+  const latest = Math.max(...fyCols.map((c) => c.fy));
+  const cols = fyCols.filter((c) => c.fy === latest);
+  if (cols.length > 1) return refuseAll(`KPI header has two columns for FY${latest}`);
+  const col = cols[0].i + 1;
+  const headerSaysPercent = /%/.test(rows[0][col] ?? '');
+  const read = (key: string, label: RegExp, bound: Bound, percent: boolean): DetailRead => {
     const row = oneRow(rows.slice(1), label);
     if (row === 'ambiguous') return { refused: `two "${label.source}" rows` };
     if (row === 'none') return ABSENT;
-    const n = parseNumber(row[1]);
-    return n === null ? ABSENT : bounded(n, bound, key);
+    const raw = row[col] ?? '';
+    const n = parseNumber(raw);
+    if (n === null) return ABSENT;
+    if (percent && !/%/.test(raw) && !headerSaysPercent) return { refused: `${key} "${raw}" is not printed as a percentage` };
+    return bounded(n, bound, key);
   };
-  const ronw = read('ronw', /^ronw$/i, FINANCIAL_FIELD_BOUNDS.ronw);
-  const roe = read('roe', /^roe$/i, FINANCIAL_FIELD_BOUNDS.roe);
-  // OD-167: "Chittorgarh RoNW for ROE" -- when the page prints no ROE row, its RoNW answers roe.
-  out.set('roe', 'absent' in roe ? ronw : roe);
+  const ronw = read('ronw', /^ronw$/i, FINANCIAL_FIELD_BOUNDS.ronw, true);
+  const roe = read('roe', /^roe$/i, FINANCIAL_FIELD_BOUNDS.roe, true);
+  // OD-167: "Chittorgarh RoNW for ROE" -- when the page prints no ROE row, its RoNW answers roe, and the
+  // answer says so (recorded as the answer's cause, so the admin sees the substitution).
+  out.set('roe', 'absent' in roe && 'value' in ronw ? { value: ronw.value, note: `RoNW used for ROE (OD-167), FY${latest}` } : 'absent' in roe ? ronw : roe);
   out.set('ronw', ronw);
-  out.set('debtToEquity', read('debtToEquity', /^debt\s*\/\s*equity$/i, FINANCIAL_FIELD_BOUNDS.debtToEquity));
+  out.set('debtToEquity', read('debtToEquity', /^debt\s*\/\s*equity$/i, FINANCIAL_FIELD_BOUNDS.debtToEquity, false));
 }
 
 /** Column index of a header label in a "<metric> | Pre IPO | Post IPO" table, read from the header. */
@@ -269,21 +294,23 @@ function readValuationTable(html: string, out: Map<string, DetailRead>): void {
       if (n !== null) out.set(key, bounded(n, FINANCIAL_FIELD_BOUNDS.eps, key));
     }
   }
-  // Spec Appendix A row 72: market_cap = post-issue shares x cap, so the POST IPO column.
+  // Spec Appendix A row 72: market_cap = post-issue shares x cap, so the POST IPO column. The cell's own unit
+  // ("Cr", "Crore", "Lakh") is converted to crore once; a number with no readable unit is refused.
   const mcap = oneRow(rows.slice(1), /^market cap/i);
   if (mcap === 'ambiguous') out.set('marketCap', { refused: 'two Market Cap rows' });
   else if (mcap !== 'none') {
-    const raw = mcap[post] ?? '';
-    const n = parseNumber(raw);
-    if (n !== null) {
-      out.set(
-        'marketCap',
-        /\bcr\b\.?/i.test(raw)
-          ? bounded(n, FINANCIAL_FIELD_BOUNDS.marketCap, 'marketCap')
-          : { refused: `market cap "${raw}" carries no crore unit` }
-      );
-    }
+    const raw = (mcap[post] ?? '').trim();
+    if (raw !== '' && !/^[-–—]$/.test(raw)) out.set('marketCap', marketCapCrore(raw));
   }
+}
+
+function marketCapCrore(raw: string): DetailRead {
+  const m = raw.match(/^(?:₹|Rs\.?)?\s*([\d,]+(?:\.\d+)?)\s*(cr\.?|crores?|lakhs?|lacs?)?\s*\.?$/i);
+  if (!m) return { refused: `market cap "${raw}" is unreadable` };
+  if (!m[2]) return { refused: `market cap "${raw}" carries no crore or lakh unit` };
+  const n = Number(m[1].replace(/,/g, ''));
+  const factor = /^(lakh|lac)/i.test(m[2]) ? 0.01 : 1;
+  return bounded(toCrore(n, factor), FINANCIAL_FIELD_BOUNDS.marketCap, 'marketCap');
 }
 
 function readShareholdingTable(html: string, out: Map<string, DetailRead>): void {
@@ -353,4 +380,16 @@ export function readChittorgarhTimetableDate(html: string, title: string): Detai
 export function readChittorgarhAnchorBidDate(html: string): DetailRead {
   if (!html) return ABSENT;
   return onlyDate([...html.matchAll(/<tr><td>Bid Date<\/td><td class="text-end">([^<]*)<\/td><\/tr>/gi)].map((m) => m[1]));
+}
+
+/** The detail page's ISIN cell: an Indian equity ISIN (INE + 9) with a valid check digit, else refused. */
+export function readChittorgarhIsin(html: string): DetailRead {
+  if (!html) return ABSENT;
+  const m = html.match(/ISIN<\/a>[\s\S]{0,160}?<td[^>]*>\s*([^<]*?)\s*<\/td>/i) ?? html.match(/ISIN<\/a>[\s\S]{0,160}?\b([A-Z0-9]{12})\b/i);
+  if (!m) return ABSENT;
+  const raw = m[1].trim().toUpperCase();
+  if (raw === '' || /^(n\/?a|-+|\[?[•●]\]?)$/i.test(raw)) return ABSENT;
+  if (!/^INE[A-Z0-9]{9}$/.test(raw)) return { refused: `ISIN "${raw}" is not an INE + 9 character ISIN` };
+  if (!isinCheckDigitValid(raw)) return { refused: `ISIN "${raw}" fails the ISIN check digit` };
+  return { value: raw };
 }

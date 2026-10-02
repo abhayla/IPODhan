@@ -1,4 +1,5 @@
 import { scaleToRupees, RUPEES_PER_CRORE } from '../utils/rupee-amount.js';
+import { isinCheckDigitValid } from './isin-check-digit.js';
 /**
  * Pure extractors for the Chittorgarh per-IPO detail page (#8 data-completeness).
  *
@@ -453,7 +454,8 @@ export function extractIsinFromDetailHtml(html: string): string | null {
   const m = html.match(/ISIN<\/a>[\s\S]{0,160}?\b([A-Z]{2}[0-9A-Z]{9}[0-9])\b/i);
   if (!m) return null;
   const isin = m[1].toUpperCase();
-  return /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/.test(isin) ? isin : null;
+  // Indian equity ISIN (INE + 9) with a valid ISO 6166 check digit; anything else is not an ISIN we store.
+  return /^INE[A-Z0-9]{9}$/.test(isin) && isinCheckDigitValid(isin) ? isin : null;
 }
 
 /** Plausible issue-size bounds in crore (#71): ₹1 Cr .. ₹5,00,000 Cr. */

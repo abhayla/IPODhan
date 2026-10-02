@@ -21,13 +21,13 @@ import { extractSectorFromDetailHtml, fetchChittorgarhDetailHtml } from '../scra
 import {
   extractAllotmentDateFromDetailHtml,
   extractFaceValueDecimalFromDetailHtml,
-  extractIsinFromDetailHtml,
   extractLotSizeFromDetailHtml,
   extractRegistrarFromDetailHtml,
 } from '../scrapers/chittorgarh-detail-fields.js';
 import {
   readChittorgarhAnchorBidDate,
   readChittorgarhFinancialData,
+  readChittorgarhIsin,
   readChittorgarhTimetableDate,
   type DetailRead,
 } from '../scrapers/chittorgarh-detail-financials.js';
@@ -66,7 +66,6 @@ const CHITTORGARH_DETAIL_EXTRACTORS: ReadonlyMap<string, (html: string) => strin
   string,
   (html: string) => string | number | null
 >([
-  ['ipos.isin', extractIsinFromDetailHtml],
   ['ipos.allotmentDate', extractAllotmentDateFromDetailHtml],
   ['ipos.faceValue', extractFaceValueDecimalFromDetailHtml],
   ['ipos.lotSize', extractLotSizeFromDetailHtml],
@@ -123,7 +122,9 @@ const CHITTORGARH_DETAIL_READS: ReadonlyMap<string, (html: string) => DetailRead
   ['ipo_details.initiationOfRefundsDate', (html) => readChittorgarhTimetableDate(html, 'Initiation of Refunds Description')],
   ['ipo_details.creditOfSharesDate', (html) => readChittorgarhTimetableDate(html, 'Credit of Shares to Demat Description')],
   ['ipo_details.faceValue', (html) => absentIfNull(extractFaceValueDecimalFromDetailHtml(html))],
-  ['ipo_details.isin', (html) => absentIfNull(extractIsinFromDetailHtml(html))],
+  // ISIN (ipos and ipo_details): INE + 9 with a valid check digit, else refused (review round 1).
+  ['ipos.isin', readChittorgarhIsin],
+  ['ipo_details.isin', readChittorgarhIsin],
   ['anchor_investors.bidDate', readChittorgarhAnchorBidDate],
 ]);
 
@@ -330,7 +331,8 @@ export function buildChittorgarhFetcher(
       const read = detailRead(html);
       if ('refused' in read) return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: ${read.refused}` };
       if ('absent' in read) return { outcome: 'NOT_AVAILABLE_YET' };
-      return { outcome: 'SUPPLIED', value: read.value };
+      // A provenance note (e.g. OD-167 "RoNW used for ROE") travels as the answer's cause.
+      return { outcome: 'SUPPLIED', value: read.value, ...(read.note ? { cause: read.note } : {}) };
     }
 
     if (camelFieldName === 'sector') {
