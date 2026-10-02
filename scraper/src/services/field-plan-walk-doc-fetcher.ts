@@ -45,7 +45,8 @@ import type { DocumentRepository } from '@ipodhan/shared';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { bestPlanDocument, isFixedPriceIssue, type PlanDocumentRef } from './document-state-machine.js';
 import { logger } from '../utils/logger.js';
-import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
+import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, familyForField, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
+import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
 
 /**
  * Which document-type family answers a manifest field's DOC rank, in
@@ -115,6 +116,15 @@ export interface DocFetcherDeps {
    * (all extracted before OD-91), the fetcher keeps its pre-OD-91 choice.
    */
   receiptReader?: (ipoId: string) => Promise<Map<string, ReadonlyMap<string, string | null>>>;
+  /**
+   * Item 38: counts the IPO's stored rows of a DOC_CHILD_ROWS_TABLES table and those with the camelCase
+   * column non-null. Absent: an IPO-level child row answers CHECK_FAILED transient (never NOT_PRINTED).
+   */
+  childColumnCounter?: (ipoId: string, tableName: string, camelFieldName: string) => Promise<ChildColumnCount>;
+  /** Item 38: the IPO's unresolved `field_extraction_failures` rows (the stated-absence evidence). */
+  openFailuresReader?: (
+    ipoId: string
+  ) => Promise<ReadonlyArray<{ tableName: string; documentId: string | null; cause: string | null }>>;
 }
 
 interface MinimalDocument {
@@ -186,6 +196,158 @@ function hasCompletedDocument(
  * key, which re-offers every COLUMN_READ_NOT_IMPLEMENTED row.
  */
 export const DOC_READABLE_TABLES: readonly string[] = ['ipos', 'ipo_details'];
+
+/**
+ * Item 38 (spec §2.5.6 item 1, OD-164(a), OD-161(a), OD-76): the child tables whose WHOLE section the
+ * filing persister records as ONE IPO-level provenance row, `field_sources (table, row_key '', field
+ * 'rows')`, carrying the document lineage (filing-persister.ts `trackField(<table>, 'rows')` — exactly
+ * these six). Their plan rows are IPO-level (row_key ''), so the DOC answer is read from that record and
+ * the stored child rows, and the walk CREDITS it without a write: the rows are already stored, and the
+ * writer refuses an IPO-level child row anyway (MISSING_ROW_KEY). Part of the coverage fingerprint
+ * (#884): adding a table here re-offers the rows parked under the old key.
+ *
+ * F-227 (measured 2026-10-02, staging): the KEYED per-row DRHP provenance rows of these tables carry
+ * NULL docType/documentId, so the family check reads ONLY the `rows` record, never the keyed rows.
+ */
+export const DOC_CHILD_ROWS_TABLES: readonly string[] = [
+  'financial_statements',
+  'ipo_intermediaries',
+  'ipo_risk_factors',
+  'peer_companies',
+  'promoter_acquisition_ranges',
+  'promoters',
+];
+
+/** The field name of the IPO-level section record the filing persister writes for a child table. */
+export const DOC_CHILD_ROWS_FIELD = 'rows';
+
+/** How many of the IPO's stored rows a child table holds, and how many carry the asked column. */
+export type ChildColumnCount = { status: 'ok'; rows: number; withValue: number } | { status: 'unknown_column' };
+
+/**
+ * The extractor reason inside a `field_extraction_failures.cause` written by the filing persister's
+ * empty-section path: `${docType} ${extractorField}: ${detail}` (filing-persister.ts recordEmptySection).
+ */
+export function emptySectionReasonOf(cause: string | null | undefined): string | null {
+  if (typeof cause !== 'string') return null;
+  const at = cause.indexOf(': ');
+  return at < 0 ? null : cause.slice(at + 2).trim();
+}
+
+/**
+ * Item 38 answer-state table (spec §2.5.6 item 1) for an IPO-level plan row of a DOC_CHILD_ROWS_TABLES
+ * table, decided in this order:
+ *
+ * | state         | condition                                                               | outcome                                   |
+ * | unreadable    | a read error                                                            | CHECK_FAILED transient, with the error    |
+ * | stated absent | no stored rows AND an open failure whose reason is on the #1420 list,  | NOT_PRINTED (definitive)                  |
+ * |               | from a COMPLETED document of the field's family                         |                                           |
+ * | row missing   | no `rows` record from a document (source DRHP)                         | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * | unresolved    | the record names no docType or no documentId (B4(c), fail closed)      | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * | wrong family  | the record's document is outside the field's family                    | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * | unknown column| the plan's column is not a column of the table (fail closed)           | CHECK_FAILED transient COLUMN_READ_NOT_IMPLEMENTED |
+ * | found         | >= 1 stored row with the column non-null                                | SUPPLIED, credited, NO write              |
+ * | column empty  | the record exists, the column is null on every stored row (or no rows) | CHECK_FAILED transient (extractor gap)    |
+ */
+async function answerChildRowsField(
+  deps: DocFetcherDeps,
+  ipoId: string,
+  tableName: string,
+  camelFieldName: string,
+  manifestDocType: string,
+  docs: MinimalDocument[]
+): Promise<FieldFetcherAnswer> {
+  if (!deps.childColumnCounter || !deps.openFailuresReader) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `DOC child-row read not wired for ${tableName}`,
+      transient: true,
+      gap: 'COLUMN_READ_NOT_IMPLEMENTED',
+    };
+  }
+  let record;
+  let failures;
+  let counted: ChildColumnCount;
+  try {
+    record = await deps.fieldSources.findByField(ipoId, tableName, DOC_CHILD_ROWS_FIELD, '');
+    failures = await deps.openFailuresReader(ipoId);
+    counted = await deps.childColumnCounter(ipoId, tableName, camelFieldName);
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+
+  const family = docTypeFamily(manifestDocType);
+  const completedFamilyDocIds = new Set(
+    docs.filter((d) => d.extractionStatus === 'COMPLETED' && d.isActive !== false && family.includes(d.type)).map((d) => d.id)
+  );
+  const storedRows = counted.status === 'ok' ? counted.rows : 0;
+  if (storedRows === 0) {
+    const stated = failures.find(
+      (f) =>
+        f.tableName === tableName &&
+        f.documentId != null &&
+        completedFamilyDocIds.has(f.documentId) &&
+        isStatedAbsenceReason(emptySectionReasonOf(f.cause))
+    );
+    if (stated) return { outcome: 'NOT_PRINTED' };
+  }
+
+  if (!record || record.source !== 'DRHP') {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `no document ${DOC_CHILD_ROWS_FIELD} record for ${tableName} on ${manifestDocType} (extractor gap or section absent) — not retired`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  const lineage = (record.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null; sourceSha?: string | null };
+  if (!lineage.docType || !lineage.documentId) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `${tableName} ${DOC_CHILD_ROWS_FIELD} record names no document type or id — not credited`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  if (!(familyForField(manifestDocType, lineage.docType) as ReadonlyArray<string>).includes(lineage.docType)) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `${tableName} ${DOC_CHILD_ROWS_FIELD} record is from ${lineage.docType}, outside the ${manifestDocType} family — not retired`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  if (counted.status === 'unknown_column') {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `DOC child-row read has no column ${camelFieldName} on ${tableName}`,
+      transient: true,
+      gap: 'COLUMN_READ_NOT_IMPLEMENTED',
+    };
+  }
+  if (counted.withValue > 0) {
+    const doc = docs.find((d) => d.id === lineage.documentId);
+    return {
+      outcome: 'SUPPLIED',
+      // The answer is "the document filled this column on N stored rows": the rows are the value,
+      // already stored by the filing persister, so the walk credits and never writes (OD-161(a)).
+      value: counted.withValue,
+      documentId: lineage.documentId,
+      documentType: lineage.docType,
+      sha256: lineage.sourceSha ?? doc?.sha256 ?? undefined,
+      credited: true,
+    };
+  }
+  return {
+    outcome: 'CHECK_FAILED',
+    reason:
+      counted.rows === 0
+        ? `${tableName} ${DOC_CHILD_ROWS_FIELD} record on ${lineage.docType} but no stored rows — a reader gap, not NOT_PRINTED`
+        : `${tableName}.${camelFieldName} is empty on all ${counted.rows} stored rows from ${lineage.docType} — an extractor gap, not NOT_PRINTED`,
+    transient: true,
+    gap: 'NO_DOCUMENT_PROVENANCE',
+  };
+}
 
 async function readColumnValue(
   deps: DocFetcherDeps,
@@ -271,6 +433,12 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
     const completedDoc = hasCompletedDocument(docs, family);
     if (!completedDoc) {
       return { outcome: 'NOT_AVAILABLE_YET' };
+    }
+
+    // Item 38: an IPO-level plan row of a child table whose section the filing persister records as one
+    // `rows` record — answered from that record and the stored rows, credited without a write.
+    if (DOC_CHILD_ROWS_TABLES.includes(tableName) && (rowKey ?? '') === '') {
+      return answerChildRowsField(deps, ipoId, tableName, camelFieldName, manifestDocType, docs);
     }
 
     // §9.2 item 9, §2.4 clarification: on an admin-held field the column holds the ADMIN value

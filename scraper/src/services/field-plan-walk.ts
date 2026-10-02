@@ -217,6 +217,13 @@ export type FieldFetcherAnswer =
       documentType?: string;
       sha256?: string;
       page?: number;
+      /**
+       * Item 38 (OD-161(a) "the document is credited, nothing is written"; OD-73; OD-76): the value is
+       * ALREADY stored by its own writer (an IPO-level child-table answer read from the filing
+       * persister's stored rows). The walk records SUPPLIED with this answer's evidence and makes NO
+       * writer call and no witness-verdict write (`isCreditedAnswer`). Generic: any fetcher may set it.
+       */
+      credited?: true;
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
@@ -1331,7 +1338,7 @@ async function attemptOneField(
         result.fieldsProvisional += 1;
         // OD-103: the provisional write created/updated the field_sources row, so this pass's
         // answers (the authoritative NOT_AVAILABLE_YET plus every lower rank) are its witnesses.
-        await writeWitnessVerdict(ipoId, plan, provisional.source, answers, policy, deps);
+        if (!provisional.credited) await writeWitnessVerdict(ipoId, plan, provisional.source, answers, policy, deps);
         logger.info(
           {
             ipoId,
@@ -1606,7 +1613,7 @@ async function attemptOneField(
       });
     }
 
-    await writeWitnessVerdict(ipoId, plan, source, answers, policy, deps);
+    if (!isCreditedAnswer(answer)) await writeWitnessVerdict(ipoId, plan, source, answers, policy, deps);
 
     result.fieldsSupplied += 1;
     return recordAndClassify(deps, result, {
@@ -1837,7 +1844,7 @@ async function tryProvisional(
     prior: new Set(),
     refusals: [],
   }
-): Promise<{ source: string; rank: number } | null> {
+): Promise<{ source: string; rank: number; credited: boolean } | null> {
   // Same resolver call `attemptOneField` already made for this field this walk — passed in
   // rather than re-resolved, so this stays ONE `resolvePolicy` call per field per walk.
   const lowerRanks: [number, string | null][] = policy.ranks
@@ -1847,7 +1854,7 @@ async function tryProvisional(
   // OD-103: EVERY lower rank is asked once and its answer recorded as a witness. Only the FIRST
   // SUPPLIED answer whose write lands becomes the provisional value -- the same value the old
   // stop-at-first loop wrote; ranks after it are asked for their answer and never written.
-  let provisional: { source: string; rank: number } | null = null;
+  let provisional: { source: string; rank: number; credited: boolean } | null = null;
   for (const [rank, source] of lowerRanks) {
     if (!source) continue;
     const fetcher = deps.sourceFetchers[source];
@@ -1917,7 +1924,7 @@ async function tryProvisional(
         failures.push(`provisional-rank${rank}:${source}:LOST_TO_PRIORITY:${verdict.reason}`);
         continue;
       }
-      provisional = { source, rank };
+      provisional = { source, rank, credited: isCreditedAnswer(answer) };
     } catch (error) {
       // A throw from the WRITE (not the fetch): same best-effort contract as before this slice --
       // the provisional value is lost, the ask stays open.
@@ -2069,6 +2076,8 @@ async function runWrite(
   deps: FieldPlanWalkDeps,
   planRankWins = false
 ): Promise<WriteVerdict> {
+  // Item 38: a credited answer is already stored by its own writer -- crediting it is the whole act.
+  if (isCreditedAnswer(answer)) return { happened: true, accepted: true };
   try {
     const camelFieldName = columnToCamelCase(plan.fieldName);
     const writeOptions = planRankWins ? { planRankWinnerFields: [camelFieldName] } : undefined;
@@ -2170,6 +2179,15 @@ async function runWrite(
     // the cause travels with it (signal-ownership R6).
     return { happened: false, skipReason: causeOf(error) };
   }
+}
+
+/**
+ * Item 38 (OD-161(a), OD-73, OD-76): an answer whose value is already stored by its own writer. The walk
+ * credits it (SUPPLIED, chosen evidence, chosen_confirmed_at) and never calls the writer -- an IPO-level
+ * child-table answer could not be written anyway (the writer refuses row_key '' with MISSING_ROW_KEY).
+ */
+export function isCreditedAnswer(answer: FieldFetcherAnswer): boolean {
+  return answer.outcome === 'SUPPLIED' && answer.credited === true;
 }
 
 /**

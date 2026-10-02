@@ -53,6 +53,8 @@ import {
 import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { and, eq } from 'drizzle-orm';
+import { makeChildColumnCounter } from './field-plan-walk-child-rows-reader.js';
+import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
 import { applyExchangeOverride } from '@ipodhan/shared/services/exchange-override';
 import { buildExchangeOverrideHook, composeHeldFieldHooks } from './exchange-override-hook.js';
@@ -76,7 +78,12 @@ import {
   type GapKeyProvenance,
   type GapKeyOverride,
 } from './field-plan-gap-keys.js';
-import { buildDocFetcher, DOC_READABLE_TABLES, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
+import {
+  buildDocFetcher,
+  DOC_CHILD_ROWS_TABLES,
+  DOC_READABLE_TABLES,
+  type DocFetcherDeps,
+} from './field-plan-walk-doc-fetcher.js';
 import { logger } from '../utils/logger.js';
 import { buildBseFetcher, BseFieldFetcherState, BSE_SERVEABLE_FIELDS } from './field-plan-walk-bse-fetcher.js';
 import { buildNseFetcher, NseFieldFetcherState, NSE_SERVEABLE_FIELDS } from './field-plan-walk-nse-fetcher.js';
@@ -208,6 +215,9 @@ export function buildFieldPlanWalkFetchers(
       const { db } = await import('@ipodhan/shared');
       return (await loadSupersessionInputs(db as never, ipoId)).receipts;
     },
+    // Item 38: IPO-level child-table answers (stored rows + the open stated-absence failures).
+    childColumnCounter: makeChildColumnCounter(db),
+    openFailuresReader: (ipoId: string) => new FieldExtractionFailuresRepository(db, redis).findUnresolvedForIPO(ipoId),
   });
 
   const bseState = new BseFieldFetcherState();
@@ -259,6 +269,7 @@ export function fieldPlanCoverageFingerprint(fetchers: Record<string, FieldFetch
     `NSE=${[...NSE_SERVEABLE_FIELDS.keys()].sort().join(',')}`,
     `CHITTORGARH=${[...CHITTORGARH_SERVEABLE_FIELDS].sort().join(',')}`,
     `DOC=${[...DOC_READABLE_TABLES].sort().join(',')}`,
+    `DOCROWS=${[...DOC_CHILD_ROWS_TABLES].sort().join(',')}`,
   ].join('|');
   return createHash('sha256').update(coverage).digest('hex').slice(0, 12);
 }
