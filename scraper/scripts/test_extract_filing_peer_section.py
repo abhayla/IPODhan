@@ -169,3 +169,9 @@ def test_a_single_listed_peer_is_read_with_its_footnote_references_dropped():
 def test_a_bracketed_negative_figure_is_not_taken_for_a_footnote():
     from peer_companies import drop_footnote_refs
     assert drop_footnote_refs({"name": "X Ltd", "eps_basic": "(4.20)", "pe": "(2)"}) ==         {"name": "X Ltd", "eps_basic": "(4.20)", "pe": "(2)"}
+
+
+def test_a_spaced_footnote_reference_is_dropped_from_a_name_only():
+    from peer_companies import drop_footnote_refs
+    got = drop_footnote_refs({"name": "Infosys Limited (1)", "alias": "Foo (India)", "pe": "(2)", "eps": "12 (3)"})
+    assert got == {"name": "Infosys Limited", "alias": "Foo (India)", "pe": "(2)", "eps": "12 (3)"}

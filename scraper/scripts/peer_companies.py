@@ -147,6 +147,9 @@ def _looks_like_the_peer_table(table, issuer_name=None):
 # bracket glued to a preceding character is a reference: a whole-cell "(4.20)" or
 # "(2)" is a bracketed negative and is left alone.
 _FOOTNOTE_REF = re.compile(r"(?<=[\w%.)])\(\d{1,2}\)$")
+# A reference after a space ("Infosys Limited (1)") is stripped only from a NAME that has letters,
+# so a numeric cell "(2)" or "12 (3)" stays as is.
+_SPACED_FOOTNOTE_REF = re.compile(r"(?<=[A-Za-z.)])\s+\(\d{1,2}\)$")
 
 
 def drop_footnote_refs(record):
@@ -154,7 +157,7 @@ def drop_footnote_refs(record):
     out = {}
     for key, value in record.items():
         if isinstance(value, str):
-            value = _FOOTNOTE_REF.sub("", value.strip())
+            value = _SPACED_FOOTNOTE_REF.sub("", _FOOTNOTE_REF.sub("", value.strip()))
         out[key] = value
     return out
 

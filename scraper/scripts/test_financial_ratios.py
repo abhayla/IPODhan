@@ -368,3 +368,17 @@ def test_a_current_ratio_label_wrapped_across_lines_keeps_the_miss_open():
     extra = (400, "1 Current\nRatio Current assets Current liabilities\n")
     read = read_ratio(pages("nse-rhp-no-current-ratio-printed.txt") + [extra], "current_ratio", (2026, 3, 31))
     assert read["reason"] == "ratio_row_not_in_note"
+
+
+@pytest.mark.parametrize("printed", ["CurrentRatio 1.36 1.28", "Current-Ratio 1.36 1.28", "Current Ratio 1.36"])
+def test_a_glued_or_hyphenated_current_ratio_keeps_the_miss_open(printed):
+    extra = (376, "Particulars\n" + printed + "\n")
+    read = read_ratio(pages("nse-rhp-no-current-ratio-printed.txt") + [extra], "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_row_not_in_note", read
+
+
+def test_a_glued_inventory_turnover_keeps_the_miss_open():
+    extra = (400, "InventoryTurnover 4.1 3.9\n")
+    pg = pages("nse-rhp-no-current-ratio-printed.txt") + [extra]
+    from financial_ratios import _ratio_named_anywhere
+    assert _ratio_named_anywhere(pg, "inventory_turnover")

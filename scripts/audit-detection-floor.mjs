@@ -44,6 +44,7 @@ import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprov
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { runCheckAgainstIds } from './lib/run-check.mjs';
 import { runDocYieldPerDocument, runDocRank1Unanswered, runWitnessMissing, runListedSourceNeverAsked, runOcrAmountMagnitude } from './lib/doc-yield-checks.mjs';
+import { judgePromotersPeersYield } from './lib/prospectus-yield-checks.mjs';
 import { evaluateShiftedHolidayCopies } from './lib/shifted-holiday-copies.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import { fetchOracleCalendar } from './lib/chittorgarh-oracle-parser.mjs';
@@ -1600,7 +1601,7 @@ async function checkM() {
            -- Item 46 (OD-165, OD-158): the cover STATES the issuer has no identifiable promoter
            -- (NSE); the persister records it as an open NOT_PRINTED promoters row.
            EXISTS (SELECT 1 FROM field_extraction_failures fef
-                    WHERE fef.ipo_id = d.ipo_id AND fef.table_name = 'promoters'
+                    WHERE fef.ipo_id = d.ipo_id AND fef.document_id = d.id AND fef.table_name = 'promoters'
                       AND fef.rule_id = 'NOT_PRINTED' AND fef.resolved_at IS NULL
                       AND fef.cause LIKE '%: promoters_issuer_states_no_identifiable_promoter') AS promoters_stated_none
       FROM documents d
@@ -1612,17 +1613,7 @@ async function checkM() {
        AND d.extracted_at IS NOT NULL
        AND d.extracted_at >= timestamp '${PROMOTER_PEER_WIRING_MERGED_AT}'
   `);
-  const yieldMisses = yieldRows
-    .flatMap((r) => {
-      const out = [];
-      const tag = `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)})`;
-      if (r.promoter_rows === 0 && r.promoters_stated_none !== true) out.push(`${tag}: 0 promoters`);
-      if (r.peer_rows === 0 && !/peer_comparison_issuer_states_no_listed_peers/.test(r.e6_evidence)) {
-        const why = (r.e6_evidence.match(/"peerReason":"([^"]+)"/) || [])[1] || 'no E6 reason';
-        out.push(`${tag}: 0 peers (${why})`);
-      }
-      return out;
-    });
+  const yieldMisses = yieldRows.flatMap(judgePromotersPeersYield);
   for (const v of yieldMisses)
     notify('prospectus_promoters_peers_yield', 'P2', v, 'A completed RHP/DRHP extraction left its IPO with no promoters or no peers', v);
   record('prospectus_promoters_peers_yield',

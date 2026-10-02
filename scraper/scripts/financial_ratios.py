@@ -457,8 +457,8 @@ def current_ratio_line_pages(page_texts):
 # Item 46: the ratio's NAME anywhere in the document, whitespace (and line
 # breaks) collapsed - deliberately looser than a row match, so that "no page
 # names it" is the only way a located-but-rowless note becomes "no note".
-_NAMED = {"current_ratio": re.compile(r"current\s+ratio", re.I),
-          "inventory_turnover": re.compile(r"inventory\s+turnover", re.I)}
+_NAMED = {"current_ratio": re.compile(r"current\W*ratio", re.I),
+          "inventory_turnover": re.compile(r"inventory\W*turnover", re.I)}
 
 
 def _ratio_named_anywhere(page_texts, key):
