@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/all-upcoming-issues?category=ipo",
+  "capturedAt": "2026-10-03",
+  "pageType": true,
+  "note": "Raw NSE upcoming-issues board, unmodified (sha256 fc3dfa49216f7e45e98ded404225828925fce540cb7393e2de6c9b82f97b4782), captured 2026-10-03 01:28 IST in the same session as ipo-detail-RUNWALENTR. Rows: VNL|EQ, NITYAS|EQ, SMCG04|DEBT, RKFAL|SME; RUNWALENTR absent. #1486."
+}

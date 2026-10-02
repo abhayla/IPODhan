@@ -1252,6 +1252,18 @@ export async function fetchNSEIssueInfo(symbol: string, series?: 'EQ' | 'SME'): 
 }
 
 /**
+ * #1486: the raw `/api/ipo-detail` payload for one NSE issue, for the field-plan walk's fallback
+ * when the IPO has left the current/upcoming boards. Unlike `fetchNSEIssueInfo` this THROWS on a
+ * failed request: the walk must tell "NSE could not be read" (CHECK_FAILED) from "NSE served no
+ * detail" (abstention, OD-145). Same session, headers and retry as every other NSE request.
+ * SME REQUIRES series='SME' (C-1); EQ is asked without a series, as every capture so far was.
+ */
+export async function fetchNSEIPODetailPayload(symbol: string, series: 'EQ' | 'SME'): Promise<unknown> {
+  const params: Record<string, string> = series === 'SME' ? { symbol, series } : { symbol };
+  return makeRequest(ENDPOINTS.IPO_DETAIL, params);
+}
+
+/**
  * Main function to scrape NSE IPO data using API
  */
 export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
