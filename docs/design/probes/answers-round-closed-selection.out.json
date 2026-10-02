@@ -1,0 +1,44 @@
+{
+  "measuredAt": "2026-10-02T22:52:10.622Z",
+  "version": "ra30957ab2031+x2026-10-02",
+  "answersRoundOn": {
+    "total": 379,
+    "byKind": {
+      "walk LISTED/IPO": 281,
+      "walk CLOSED/OFS": 4,
+      "walk CLOSED/IPO": 24,
+      "walk CLOSED/TENDER": 16,
+      "walk LISTED/INVITS": 2,
+      "walk CLOSED/BUYBACK": 1,
+      "walk LISTED/REITS": 1,
+      "walk CLOSED/INVITS": 1,
+      "walk CLOSED/NCD": 1,
+      "answersOnly UPCOMING/NCD": 1,
+      "answersOnly LISTED/IPO": 20,
+      "answersOnly CLOSED/RIGHTS": 6,
+      "answersOnly CLOSED/NCD": 6,
+      "answersOnly CLOSED/OFS": 15
+    }
+  },
+  "answersRoundOff": {
+    "total": 331,
+    "byKind": {
+      "walk LISTED/IPO": 281,
+      "walk CLOSED/OFS": 4,
+      "walk CLOSED/IPO": 24,
+      "walk CLOSED/TENDER": 16,
+      "walk LISTED/INVITS": 2,
+      "walk CLOSED/BUYBACK": 1,
+      "walk LISTED/REITS": 1,
+      "walk CLOSED/INVITS": 1,
+      "walk CLOSED/NCD": 1
+    }
+  },
+  "cap10": {
+    "total": 10,
+    "byKind": {
+      "walk LISTED/IPO": 9,
+      "walk CLOSED/OFS": 1
+    }
+  }
+}

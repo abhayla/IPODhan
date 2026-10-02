@@ -760,6 +760,7 @@ async function runClosedIpoWake(): Promise<number> {
           partial: summary.outcomes.PARTIAL,
           failed: summary.outcomes.FAILED,
           answersRoundOnly: summary.answersRoundOnly,
+          answersRoundOnlyByType: summary.answersRoundOnlyByType,
           snapshot: summary.snapshot ? `${summary.snapshot.path} (${summary.snapshot.rows} rows)` : 'none',
         },
         'closed-IPO job: run complete'

@@ -27,7 +27,15 @@ const NEVER_WALKED = '00000000-0000-4000-8000-000000042102';
 const DUE_REPICK = '00000000-0000-4000-8000-000000042103';
 const DONE_CLOSED = '00000000-0000-4000-8000-000000042104';
 const STORE_IPO = '00000000-0000-4000-8000-000000042105';
-const ALL = [DONE_LISTED, NEVER_WALKED, DUE_REPICK, DONE_CLOSED, STORE_IPO];
+// #1493: non-IPO offerings the data slots never serve (PASS 3 is offering_type = 'IPO').
+const DONE_CLOSED_OFS = '00000000-0000-4000-8000-000000042106';
+const NEVER_WALKED_UPCOMING_NCD = '00000000-0000-4000-8000-000000042107';
+const HIDDEN_CLOSED_TENDER = '00000000-0000-4000-8000-000000042108';
+const UPCOMING_IPO = '00000000-0000-4000-8000-000000042109';
+const ALL = [
+  DONE_LISTED, NEVER_WALKED, DUE_REPICK, DONE_CLOSED, STORE_IPO,
+  DONE_CLOSED_OFS, NEVER_WALKED_UPCOMING_NCD, HIDDEN_CLOSED_TENDER, UPCOMING_IPO,
+];
 const VERSION = 'item42-answers-round-test-version';
 
 describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store (${RUN_LABEL})`, () => {
@@ -42,11 +50,11 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, ALL));
   }
 
-  async function seedIpo(id: string, status: 'LISTED' | 'CLOSED', closeDate: string) {
+  async function seedIpo(id: string, status: 'LISTED' | 'CLOSED' | 'UPCOMING', closeDate: string, offeringType = 'IPO') {
     await db.execute(sql`
-      INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date)
+      INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date, offering_type)
       VALUES (${id}::uuid, ${'Item 42 fixture ' + id.slice(-3)}, ${'item42-answers-round-' + id.slice(-3)}, 'MAINBOARD',
-              'MAINBOARD', '["NSE","BSE"]'::jsonb, ${status}, '2025-01-01', ${closeDate})`);
+              'MAINBOARD', '["NSE","BSE"]'::jsonb, ${status}, '2025-01-01', ${closeDate}, ${offeringType}::offering_type)`);
   }
 
   async function seedResourcing(id: string, outcome: 'DONE' | 'PARTIAL', version: string) {
@@ -114,8 +122,60 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
     expect(capped[0].answersOnly).toBe(false);
   });
 
-  it('never selects a CLOSED IPO for the round (LISTED only: CLOSED runs it in the document cycle)', async () => {
+  it('never selects a CLOSED offering_type=IPO row for the round (it runs in the normal data slots, PASS 3)', async () => {
     expect((await wide(true)).some((c) => c.id === DONE_CLOSED)).toBe(false);
+  });
+
+  describe('#1493: CLOSED and UPCOMING non-IPO offerings (no data-slot path)', () => {
+    beforeEach(async () => {
+      await seedIpo(DONE_CLOSED_OFS, 'CLOSED', '2025-03-12', 'OFS');
+      await seedResourcing(DONE_CLOSED_OFS, 'DONE', VERSION);
+      await seedIpo(NEVER_WALKED_UPCOMING_NCD, 'UPCOMING', '2099-12-31', 'NCD');
+      await seedIpo(HIDDEN_CLOSED_TENDER, 'CLOSED', '2025-03-13', 'TENDER');
+      await seedResourcing(HIDDEN_CLOSED_TENDER, 'DONE', VERSION);
+      await db.execute(sql`UPDATE ipos SET hidden_at = now() WHERE id = ${HIDDEN_CLOSED_TENDER}::uuid`);
+      await seedIpo(UPCOMING_IPO, 'UPCOMING', '2099-12-31', 'IPO');
+    });
+
+    it('selects a CLOSED OFS row with a DONE walk and answers_round_at NULL, labelled answersOnly, only when answersRound is on', async () => {
+      const pick = (await wide(true)).find((c) => c.id === DONE_CLOSED_OFS);
+      expect(pick).toBeDefined();
+      expect(pick!.answersOnly).toBe(true);
+      expect(pick!.offeringType).toBe('OFS');
+      expect((await wide(false)).some((c) => c.id === DONE_CLOSED_OFS)).toBe(false);
+    });
+
+    it('selects a never-walked UPCOMING NCD for the round ONLY (answersOnly): the closed-IPO job never walks an UPCOMING row', async () => {
+      const pick = (await wide(true)).find((c) => c.id === NEVER_WALKED_UPCOMING_NCD);
+      expect(pick).toBeDefined();
+      expect(pick!.answersOnly).toBe(true);
+      expect((await wide(false)).some((c) => c.id === NEVER_WALKED_UPCOMING_NCD)).toBe(false);
+    });
+
+    it('never selects an UPCOMING offering_type=IPO row (data slots) nor a hidden non-IPO row', async () => {
+      const ids = (await wide(true)).map((c) => c.id);
+      expect(ids).not.toContain(UPCOMING_IPO);
+      expect(ids).not.toContain(HIDDEN_CLOSED_TENDER);
+    });
+
+    it('sorts after every walk pick, and with cap 1 never takes the slot from a due walk', async () => {
+      const ids = (await wide(true)).map((c) => c.id);
+      expect(ids.indexOf(DUE_REPICK)).toBeLessThan(ids.indexOf(DONE_CLOSED_OFS));
+      expect(ids.indexOf(NEVER_WALKED)).toBeLessThan(ids.indexOf(NEVER_WALKED_UPCOMING_NCD));
+      const capped = await job.selectClosedIpoCandidates(db as never, VERSION, 1, true);
+      expect(capped).toHaveLength(1);
+      expect(capped[0].answersOnly).toBe(false);
+    });
+
+    it('LISTED behaviour unchanged: the DONE LISTED IPO is still an answers-only pick', async () => {
+      expect((await wide(true)).find((c) => c.id === DONE_LISTED)?.answersOnly).toBe(true);
+    });
+
+    it('once stamped, a CLOSED OFS row is never selected again', async () => {
+      const store = round.buildAnswersRoundStore(db as never);
+      expect(await store.markRoundDone(DONE_CLOSED_OFS)).toBe(true);
+      expect((await wide(true)).some((c) => c.id === DONE_CLOSED_OFS)).toBe(false);
+    });
   });
 
   it('once the round is stamped the IPO is never selected for it again; a round left unstamped is selected again', async () => {

@@ -46,6 +46,8 @@ export interface ClosedIpoCandidate {
   id: string;
   closeDate: Date | string | null;
   status: string;
+  /** `ipos.offering_type` (IPO, RIGHTS, OFS, NCD, TENDER, ...), for the run log's per-type counts. */
+  offeringType?: string | null;
   /** Selected ONLY for its OD-163(b) answers-only round: run that; no walk, no resourcing row. */
   answersOnly?: boolean;
 }
@@ -96,6 +98,8 @@ export interface ClosedIpoJobSummary {
   skippedCycleLockHeld: boolean;
   /** Item 42: picks that ran only the answers-only round (never counted in `attempted`/`outcomes`). */
   answersRoundOnly: number;
+  /** #1493: answers-only picks by `<status>/<offering type>` (signal-ownership R1: a count with its identities). */
+  answersRoundOnlyByType: Record<string, number>;
   /** Where the F-31 snapshot for this run was written; null when nothing was selected. */
   snapshot: { path: string; rows: number } | null;
 }
@@ -165,7 +169,7 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * nothing interpolates this string into a query.
  */
 export const CLOSED_IPO_CANDIDATES_SQL = `
-  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status, NOT c.due AS "answersOnly"
+  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status, i.offering_type::text AS "offeringType", NOT w.walk AS "answersOnly"
     FROM ipos i
     LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
     CROSS JOIN LATERAL (
@@ -185,14 +189,20 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
         )
       ), false) AS due
     ) c
-   WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
-     AND i.close_date < CURRENT_DATE
-     AND i.hidden_at IS NULL
+    CROSS JOIN LATERAL (
+      SELECT (upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due) AS walk
+    ) w
+   WHERE i.hidden_at IS NULL
      AND (
-       c.due
-       OR ($2 AND upper(i.status::text) = 'LISTED' AND i.answers_round_at IS NULL)
+       w.walk
+       OR (
+         $2 AND i.answers_round_at IS NULL AND (
+           (upper(i.status::text) = 'LISTED' AND i.close_date < CURRENT_DATE)
+           OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text <> 'IPO')
+         )
+       )
      )
-   ORDER BY (r.ipo_id IS NOT NULL), (NOT c.due), i.close_date DESC, i.id
+   ORDER BY (NOT w.walk), (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
    LIMIT $3
 `;
 
@@ -208,14 +218,22 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
  * (`answersOnly`) is the LOWEST priority: it sorts after every never-walked IPO and every due re-pick,
  * inside the same `cap`, so it never displaces one. It runs ONLY the answers round (no walk, no
  * closed_ipo_resourcing write). `answersRound` false (no round runner: the verdict writer is off, so
- * the round could only skip) selects none of them: a pick that can never stamp must not take a slot.
+ * the round could only skip) selects none of them: a pick that can never stamp must not take a slot. *
+ * #1493: the same answers-only pick also takes CLOSED and UPCOMING rows whose `offering_type` is not
+ * 'IPO' (RIGHTS, OFS, NCD, TENDER, BUYBACK, INVITS, ...). OD-163(b) puts closed and upcoming IPOs in the
+ * normal data slots, but the slots' PASS 3 selects `offering_type = 'IPO'` only, so these rows had no
+ * path to the round (34 on staging, 2026-10-03). They are never WALKED here: `w.walk` is the walk
+ * population (LISTED/CLOSED, closed before today, due) and `answersOnly = NOT w.walk`, so a
+ * never-walked UPCOMING NCD (due by the LEFT JOIN rule) only runs the round, sorted after every walk
+ * pick inside the same cap. CLOSED/UPCOMING `offering_type = 'IPO'` rows stay with the data slots.
+ * The round asks only fields that apply to the type (section 1.11, manifest `na`; field-plan-answers-round.ts).
  */
 export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number, answersRound = false) {
   // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
   // internal string today, but a query built by string-replacement is the
   // wrong shape regardless of who supplies the value.
   return sql`
-  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status, NOT c.due AS "answersOnly"
+  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status, i.offering_type::text AS "offeringType", NOT w.walk AS "answersOnly"
     FROM ipos i
     LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
     CROSS JOIN LATERAL (
@@ -235,14 +253,20 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
         )
       ), false) AS due
     ) c
-   WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
-     AND i.close_date < CURRENT_DATE
-     AND i.hidden_at IS NULL
+    CROSS JOIN LATERAL (
+      SELECT (upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due) AS walk
+    ) w
+   WHERE i.hidden_at IS NULL
      AND (
-       c.due
-       OR (${answersRound} AND upper(i.status::text) = 'LISTED' AND i.answers_round_at IS NULL)
+       w.walk
+       OR (
+         ${answersRound} AND i.answers_round_at IS NULL AND (
+           (upper(i.status::text) = 'LISTED' AND i.close_date < CURRENT_DATE)
+           OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text <> 'IPO')
+         )
+       )
      )
-   ORDER BY (r.ipo_id IS NOT NULL), (NOT c.due), i.close_date DESC, i.id
+   ORDER BY (NOT w.walk), (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
    LIMIT ${cap}
 `;
 }
@@ -264,6 +288,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
     outcomes: { DONE: 0, PARTIAL: 0, FAILED: 0 },
     skippedCycleLockHeld: false,
     answersRoundOnly: 0,
+    answersRoundOnlyByType: {},
     snapshot: null,
   };
 
@@ -304,6 +329,8 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
       // fact. The round's own stamp (`ipos.answers_round_at`) is the record: a round stopped at its
       // deadline leaves it NULL, so the IPO is picked again on a later night (lowest priority).
       summary.answersRoundOnly += 1;
+      const typeKey = `${String(candidate.status ?? '').toUpperCase()}/${candidate.offeringType ?? 'UNKNOWN'}`;
+      summary.answersRoundOnlyByType[typeKey] = (summary.answersRoundOnlyByType[typeKey] ?? 0) + 1;
       try {
         const r = deps.runAnswersRound
           ? await deps.runAnswersRound(candidate.id)
