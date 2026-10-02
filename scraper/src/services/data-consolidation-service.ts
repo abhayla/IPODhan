@@ -214,6 +214,13 @@ export interface ConsolidateIPODataInput {
    */
   planRankWinnerFields?: readonly string[];
   /**
+   * F-233: a stored value with NO field_sources row has an unknown owner. When set, such a value is KEPT
+   * (an equal value is still confirmed) -- the field-plan walk sets it for an answer that is not the
+   * plan's rank-1 source, so a lower-ranked website answer never replaces a value that may have come
+   * from the offer document (OD-73, Appendix A). Unset = the M-1 untracked rule unchanged.
+   */
+  keepUntrackedStoredValue?: boolean;
+  /**
    * Natural key of the row within `tableName`. `''` (the default) for every table with
    * exactly one row per IPO — `ipos`, `ipo_details`, `anchor_investors`, `financial_data`.
    * Non-empty for tables that hold several rows per IPO (`financial_statements`:
@@ -1746,6 +1753,7 @@ export class DataConsolidationService {
             // ipoType resolution above already uses.
             listingExchanges: storedExchanges ?? input.incomingData?.listingExchanges ?? null,
             planRankWins: input.planRankWinnerFields?.includes(fieldName) ?? false,
+            keepUntrackedStoredValue: input.keepUntrackedStoredValue ?? false,
           });
 
           result.fieldResults.push(fieldResult);
@@ -1864,6 +1872,8 @@ export class DataConsolidationService {
   private async consolidateField(params: {
     /** OD-144: see `ConsolidateIPODataInput.planRankWinnerFields`. */
     planRankWins?: boolean;
+    /** F-233: see `ConsolidateIPODataInput.keepUntrackedStoredValue`. */
+    keepUntrackedStoredValue?: boolean;
     /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
     incoming?: IncomingLineage;
     /** OD-131: collect provenance writes here instead of writing them (`deferProvenance`). */
@@ -2101,7 +2111,10 @@ export class DataConsolidationService {
         };
       }
 
-      if (!outranksUntrackedValue(fieldName, incomingSource, tableName, ipoType)) {
+      if (
+        !outranksUntrackedValue(fieldName, incomingSource, tableName, ipoType) ||
+        (params.keepUntrackedStoredValue && incomingSource !== 'ADMIN')
+      ) {
         logger.warn(
           { ipoId, tableName, fieldName, incomingSource, storedValue, incomingValue },
           'untracked_existing_value_kept: incoming source does not outrank an untracked stored value'

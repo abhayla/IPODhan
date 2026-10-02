@@ -325,16 +325,16 @@ describe('every item-1 child table has a consolidator call site', () => {
     return readFile(join(here, '../../../src/services', rel), 'utf8');
   };
 
-  it('routes all eight, so a contract table with no writer fails here', async () => {
+  it('routes all nine, so a contract table with no writer fails here', async () => {
     const orchestrator = await readSource('data-consolidation-orchestrator.ts');
     const union = orchestrator.slice(
       orchestrator.indexOf('export type ChildConsolidationTable'),
       orchestrator.indexOf(';', orchestrator.indexOf('export type ChildConsolidationTable'))
     );
     const contractTables = [...union.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
-    // Positive control: the union parse itself must find eight names, or the
+    // Positive control: the union parse itself must find nine names, or the
     // "every table is routed" verdict below would be vacuously true.
-    expect(contractTables).toHaveLength(8);
+    expect(contractTables).toHaveLength(9);
     expect(contractTables).toContain('anchor_investors');
 
     const callSites = [
@@ -350,7 +350,12 @@ describe('every item-1 child table has a consolidator call site', () => {
       ].map((m) => m[1])
     );
 
-    const unrouted = contractTables.filter((t) => !routed.has(t));
+    // F-233: financial_data has no persister call site of its own (the filing persister writes it through
+    // its repository); its consolidated writer is the field-plan walk, which routes `plan.tableName`.
+    const WALK_ONLY = ['financial_data'];
+    const walk = await readSource('field-plan-walk.ts');
+    expect(walk).toMatch(/consolidatedUpsertChildRows\(\s*ipoId,\s*plan\.tableName/);
+    const unrouted = contractTables.filter((t) => !routed.has(t) && !WALK_ONLY.includes(t));
     expect(unrouted).toEqual([]);
   });
 });

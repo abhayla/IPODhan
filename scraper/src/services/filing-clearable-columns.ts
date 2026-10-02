@@ -95,6 +95,20 @@ export const NOT_ONE_TO_ONE_COLUMNS: Readonly<Record<string, string>> = {
   ),
 };
 
+/**
+ * F-233: financial_data columns the field-plan walk may write (a website source such as CHITTORGARH,
+ * Appendix A) that the filing persister NEVER writes. No document receipt exists for them, so no older
+ * DOC read can have stored one, and the OD-153 / OD-158 re-read clear (which clears only a value an
+ * older read of the SAME document stored) has nothing to clear; OD-160 keeps every other value. Key
+ * `<table>.<column>`. A column the persister starts writing moves to one of the two lists above.
+ */
+export const WALK_ONLY_FINANCIAL_DATA_COLUMNS: Readonly<Record<string, string>> = Object.fromEntries(
+  ['reservesAndSurplus', 'totalAssets', 'totalBorrowing', 'debtToEquity', 'roe', 'preIpoEps', 'postIpoEps'].map((c) => [
+    `financial_data.${c}`,
+    'written only by the walk from a ranked website answer; never by the filing persister, so no re-read clear applies',
+  ])
+);
+
 // Read lazily: a module that imports the persister under a mocked schema never touches it.
 function drizzleTable(table: ClearableTable) {
   return table === 'ipos' ? schema.ipos : table === 'ipo_details' ? schema.ipoDetails : schema.financialData;

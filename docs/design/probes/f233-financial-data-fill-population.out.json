@@ -1,0 +1,15 @@
+{
+  "measured_at": "2026-10-02T21:17:40.418Z",
+  "database": "ipodhan_staging",
+  "plan_rows_refused_missing_row_key": {
+    "rows": 0,
+    "ipos": 0
+  },
+  "would_fill_by_supplier_status": [],
+  "would_fill_sample": [],
+  "stored_values_without_provenance": {
+    "fields": 1780,
+    "ipos": 94
+  },
+  "ipos_with_two_financial_data_rows": 0
+}

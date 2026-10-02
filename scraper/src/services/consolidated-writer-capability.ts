@@ -9,10 +9,18 @@ import { FEATURE_FLAGS } from '../config/feature-flags.js';
  * Tables with structurally ONE row per IPO. Only these may legitimately carry
  * the `''` row key — for any other table `''` means "the caller could not key
  * this row", which is a skip, not a write.
+ *
+ * Membership is structural, not a name list: a table is here exactly when its
+ * `ipo_id` column is UNIQUE in the schema (ipo_details, financial_data), or when
+ * its only writer keys the row by `ipo_id` (anchor_investors, see
+ * child-row-keys.ts#anchorInvestorsRowKey). Kept as a literal so this module
+ * loads no schema; tests/unit/services/walk-financial-data-writer.test.ts
+ * derives the set from the schema and fails when the two differ (F-233).
  */
 export const SINGLETON_ROW_CHILD_TABLES: ReadonlySet<string> = new Set([
   'ipo_details',
   'anchor_investors',
+  'financial_data',
 ]);
 
 /**
