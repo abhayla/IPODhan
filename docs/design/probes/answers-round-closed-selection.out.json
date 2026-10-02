@@ -1,8 +1,8 @@
 {
-  "measuredAt": "2026-10-02T22:52:10.622Z",
+  "measuredAt": "2026-10-02T23:05:42.499Z",
   "version": "ra30957ab2031+x2026-10-02",
   "answersRoundOn": {
-    "total": 379,
+    "total": 364,
     "byKind": {
       "walk LISTED/IPO": 281,
       "walk CLOSED/OFS": 4,
@@ -16,8 +16,7 @@
       "answersOnly UPCOMING/NCD": 1,
       "answersOnly LISTED/IPO": 20,
       "answersOnly CLOSED/RIGHTS": 6,
-      "answersOnly CLOSED/NCD": 6,
-      "answersOnly CLOSED/OFS": 15
+      "answersOnly CLOSED/NCD": 6
     }
   },
   "answersRoundOff": {

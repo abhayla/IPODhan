@@ -32,9 +32,10 @@ const DONE_CLOSED_OFS = '00000000-0000-4000-8000-000000042106';
 const NEVER_WALKED_UPCOMING_NCD = '00000000-0000-4000-8000-000000042107';
 const HIDDEN_CLOSED_TENDER = '00000000-0000-4000-8000-000000042108';
 const UPCOMING_IPO = '00000000-0000-4000-8000-000000042109';
+const DONE_CLOSED_RIGHTS = '00000000-0000-4000-8000-000000042110';
 const ALL = [
   DONE_LISTED, NEVER_WALKED, DUE_REPICK, DONE_CLOSED, STORE_IPO,
-  DONE_CLOSED_OFS, NEVER_WALKED_UPCOMING_NCD, HIDDEN_CLOSED_TENDER, UPCOMING_IPO,
+  DONE_CLOSED_OFS, NEVER_WALKED_UPCOMING_NCD, HIDDEN_CLOSED_TENDER, UPCOMING_IPO, DONE_CLOSED_RIGHTS,
 ];
 const VERSION = 'item42-answers-round-test-version';
 
@@ -130,6 +131,8 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
     beforeEach(async () => {
       await seedIpo(DONE_CLOSED_OFS, 'CLOSED', '2025-03-12', 'OFS');
       await seedResourcing(DONE_CLOSED_OFS, 'DONE', VERSION);
+      await seedIpo(DONE_CLOSED_RIGHTS, 'CLOSED', '2025-03-14', 'RIGHTS');
+      await seedResourcing(DONE_CLOSED_RIGHTS, 'DONE', VERSION);
       await seedIpo(NEVER_WALKED_UPCOMING_NCD, 'UPCOMING', '2099-12-31', 'NCD');
       await seedIpo(HIDDEN_CLOSED_TENDER, 'CLOSED', '2025-03-13', 'TENDER');
       await seedResourcing(HIDDEN_CLOSED_TENDER, 'DONE', VERSION);
@@ -137,12 +140,16 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
       await seedIpo(UPCOMING_IPO, 'UPCOMING', '2099-12-31', 'IPO');
     });
 
-    it('selects a CLOSED OFS row with a DONE walk and answers_round_at NULL, labelled answersOnly, only when answersRound is on', async () => {
-      const pick = (await wide(true)).find((c) => c.id === DONE_CLOSED_OFS);
+    it('selects a CLOSED RIGHTS row with a DONE walk and answers_round_at NULL, labelled answersOnly, only when answersRound is on', async () => {
+      const pick = (await wide(true)).find((c) => c.id === DONE_CLOSED_RIGHTS);
       expect(pick).toBeDefined();
       expect(pick!.answersOnly).toBe(true);
-      expect(pick!.offeringType).toBe('OFS');
-      expect((await wide(false)).some((c) => c.id === DONE_CLOSED_OFS)).toBe(false);
+      expect(pick!.offeringType).toBe('RIGHTS');
+      expect((await wide(false)).some((c) => c.id === DONE_CLOSED_RIGHTS)).toBe(false);
+    });
+
+    it('OD-169 / OD-53: never selects a CLOSED OFS row with answers_round_at NULL (frozen; the round calls sources live)', async () => {
+      expect((await wide(true)).some((c) => c.id === DONE_CLOSED_OFS)).toBe(false);
     });
 
     it('selects a never-walked UPCOMING NCD for the round ONLY (answersOnly): the closed-IPO job never walks an UPCOMING row', async () => {
@@ -160,7 +167,7 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
 
     it('sorts after every walk pick, and with cap 1 never takes the slot from a due walk', async () => {
       const ids = (await wide(true)).map((c) => c.id);
-      expect(ids.indexOf(DUE_REPICK)).toBeLessThan(ids.indexOf(DONE_CLOSED_OFS));
+      expect(ids.indexOf(DUE_REPICK)).toBeLessThan(ids.indexOf(DONE_CLOSED_RIGHTS));
       expect(ids.indexOf(NEVER_WALKED)).toBeLessThan(ids.indexOf(NEVER_WALKED_UPCOMING_NCD));
       const capped = await job.selectClosedIpoCandidates(db as never, VERSION, 1, true);
       expect(capped).toHaveLength(1);
@@ -171,10 +178,10 @@ describe.skipIf(!DATABASE_URL)(`item 42: answers-only round selection and store 
       expect((await wide(true)).find((c) => c.id === DONE_LISTED)?.answersOnly).toBe(true);
     });
 
-    it('once stamped, a CLOSED OFS row is never selected again', async () => {
+    it('once stamped, a CLOSED RIGHTS row is never selected again', async () => {
       const store = round.buildAnswersRoundStore(db as never);
-      expect(await store.markRoundDone(DONE_CLOSED_OFS)).toBe(true);
-      expect((await wide(true)).some((c) => c.id === DONE_CLOSED_OFS)).toBe(false);
+      expect(await store.markRoundDone(DONE_CLOSED_RIGHTS)).toBe(true);
+      expect((await wide(true)).some((c) => c.id === DONE_CLOSED_RIGHTS)).toBe(false);
     });
   });
 

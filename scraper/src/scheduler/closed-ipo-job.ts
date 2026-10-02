@@ -198,7 +198,7 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
        OR (
          $2 AND i.answers_round_at IS NULL AND (
            (upper(i.status::text) = 'LISTED' AND i.close_date < CURRENT_DATE)
-           OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text <> 'IPO')
+           OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text NOT IN ('IPO', 'OFS'))
          )
        )
      )
@@ -218,14 +218,18 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
  * (`answersOnly`) is the LOWEST priority: it sorts after every never-walked IPO and every due re-pick,
  * inside the same `cap`, so it never displaces one. It runs ONLY the answers round (no walk, no
  * closed_ipo_resourcing write). `answersRound` false (no round runner: the verdict writer is off, so
- * the round could only skip) selects none of them: a pick that can never stamp must not take a slot. *
- * #1493: the same answers-only pick also takes CLOSED and UPCOMING rows whose `offering_type` is not
- * 'IPO' (RIGHTS, OFS, NCD, TENDER, BUYBACK, INVITS, ...). OD-163(b) puts closed and upcoming IPOs in the
- * normal data slots, but the slots' PASS 3 selects `offering_type = 'IPO'` only, so these rows had no
- * path to the round (34 on staging, 2026-10-03). They are never WALKED here: `w.walk` is the walk
+ * the round could only skip) selects none of them: a pick that can never stamp must not take a slot.
+ *
+ * #1493 (OD-169): the same answers-only pick also takes CLOSED and UPCOMING rows whose `offering_type`
+ * is neither 'IPO' nor 'OFS' (RIGHTS, NCD, TENDER, BUYBACK, INVITS, ...). OD-163(b) puts closed and
+ * upcoming IPOs in the normal data slots, but the slots' PASS 3 selects `offering_type = 'IPO'` only, so
+ * these rows had no path to the round (51 incl. 19 OFS on staging, 2026-10-03). OFS rows are excluded:
+ * OD-53 freezes them and the round calls every listed source live. They are never WALKED here: `w.walk` is the walk
  * population (LISTED/CLOSED, closed before today, due) and `answersOnly = NOT w.walk`, so a
  * never-walked UPCOMING NCD (due by the LEFT JOIN rule) only runs the round, sorted after every walk
  * pick inside the same cap. CLOSED/UPCOMING `offering_type = 'IPO'` rows stay with the data slots.
+ * Gap (follow-up): such a row stamped by the round gets no answers for values stored AFTER the stamp
+ * (OD-163(a) coverage runs at the IPO's next walk, and this job never walks an UPCOMING row).
  * The round asks only fields that apply to the type (section 1.11, manifest `na`; field-plan-answers-round.ts).
  */
 export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number, answersRound = false) {
@@ -262,7 +266,7 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
        OR (
          ${answersRound} AND i.answers_round_at IS NULL AND (
            (upper(i.status::text) = 'LISTED' AND i.close_date < CURRENT_DATE)
-           OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text <> 'IPO')
+           OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text NOT IN ('IPO', 'OFS'))
          )
        )
      )
