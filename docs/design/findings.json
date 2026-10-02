@@ -2229,6 +2229,15 @@
       "title": "Chittorgarh prints 'Total Income', not revenue from operations",
       "detail": "Measured 2026-10-02 on live Chittorgarh IPO detail pages (item 43, PR #1466, owner-questions-item43.md pair 8): the financials block labels the row 'Total Income'; no 'Revenue from Operations' row was seen. Appendix A row 111 ranks CG for financial_statements.revenue ('CG restated table carries this per fiscal year'), which would store total income (revenue plus other income) as revenue. Under §2.3.5 capability is decided by fetching; OD-167 requires a three-IPO re-check (mainboard, SME, closed) before CG is removed from the field's ranks. Open: re-check pending.",
       "phase1": false
+    },
+    {
+      "id": "F-231",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "§2.5.6 ocr_amount_magnitude; DOC label (PRICE_BAND_AD); item 44",
+      "title": "An OCR-read price on a price-band advert can lose its leading digit(s) and be stored as the published price band",
+      "detail": "Measured 2026-10-03 on ipodhan_staging (read-only): glass-wall-systems-india-ltd stores price_range_min/max 72/82, field_sources source DRHP (label DOC), from PRICE_BAND_AD extracted by extract_filing.py at 2026-09-27; lot_size 82 comes from BSE. The real band is Rs 172-182, lot 82, issue Rs 427.89 crore (https://choiceindia.com/news/glass-wall-systems-india-ipo-subscription-day-2 ; https://www.indiainfoline.com/news/companies/glass-wall-systems-ipo-gmp-price-band-dates-allotment-financials-and-key-details ; https://www.kotakneo.com/news/ipos/glass-wall-systems-shares-list-at-a-7-percent-premium/). The leading '1' was dropped, so a value 100 below the real one was stored. Discriminating measure: lot_size x price_range_max outside Rs 13,000-16,000 on MAINBOARD IPO-type rows with open_date >= 2024-01-01 flags 7 of 110 rows on staging. glass-wall-systems-india-ltd is the only DOC-sourced one and the only one confirmed wrong. The other 6 are unverified: kwality-walls-india-ltd 21-21 lot 100 (BSE); pngs-reva-diamond-jewellery-ltd 386-386 lot 32 (CHITTORGARH); om-power-transmission-ltd 175-175 lot 100 (CHITTORGARH); suryo-foods-industries-ltd 15-15 lot 3000 (no source row); icici-prudential-asset-management-company 2061-2165 lot 100 (CHITTORGARH); stallion-india-fluorochemicals-ltd 85-90 lot 4000 (CHITTORGARH). Open for owner decision on the check threshold. Issue #1477.",
+      "phase1": false
     }
   ],
   "false_assertions": [

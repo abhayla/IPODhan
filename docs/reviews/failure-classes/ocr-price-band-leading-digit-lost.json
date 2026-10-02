@@ -1,0 +1,13 @@
+{
+  "class_id": "an OCR-read price on a price-band advert loses its leading digit(s) and is stored as the published price band",
+  "feature": "any OCR or text extraction of a price figure from an advert or filing page (PRICE_BAND_AD and similar DOC-label price fields) that is persisted as the IPO's price band without a cross-check against another source",
+  "symptom": "OCR on a price figure can drop its leading digit(s), so a three-digit price reads as a two-digit one. The extracted number is a well-formed positive integer, so it passes type, range and not-null checks, and it is stored as the price band with a DOC source label that ranks above exchange and aggregator values. The error is not a power-of-ten slip against one other value, it is a missing leading digit, so a check that only compares magnitude against a single text value can miss it. A cross-field identity catches it: lot size times the upper price should land in the exchange's application-size range (Rs 13,000-16,000 for a MAINBOARD IPO), and a lost leading digit pushes the product far below it. The tell is a stored price band whose lot_size x price_range_max is outside that range while the lot size comes from a different source than the price.",
+  "first_seen": "2026-10-03 - IPODhan, measured read-only on ipodhan_staging. glass-wall-systems-india-ltd stores price_range_min/max 72/82 with field_sources source DRHP (label DOC), from PRICE_BAND_AD extracted by extract_filing.py at 2026-09-27; lot_size 82 is from BSE. The real band is Rs 172-182 (lot 82, issue Rs 427.89 crore). Population measure: lot_size x price_range_max outside Rs 13,000-16,000 for MAINBOARD IPO-type rows with open_date >= 2024-01-01 flags 7 of 110 rows; glass-wall is the only DOC-sourced one and the only one confirmed wrong; the other 6 (kwality-walls-india-ltd, pngs-reva-diamond-jewellery-ltd, om-power-transmission-ltd, suryo-foods-industries-ltd, icici-prudential-asset-management-company, stallion-india-fluorochemicals-ltd) are unverified, so the check's false-positive rate is unknown. Finding F-231, issue #1477.",
+  "fix_prs": "none yet. Tracked in #1477.",
+  "detection_check": "none yet. Proposed: a lot_size x price_range_max application-size check on MAINBOARD rows, threshold open for owner decision (F-231); and extending ocr_amount_magnitude (section 2.5.6, item 44) to cover price-band adverts.",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5.6",
+    "§2.3.5"
+  ]
+}
