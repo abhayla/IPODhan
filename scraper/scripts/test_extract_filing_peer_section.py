@@ -155,7 +155,7 @@ def test_a_single_listed_peer_is_read_with_its_footnote_references_dropped():
     import json
     from peer_companies import extract_peer_companies
     with open(os.path.join(FIXTURES, "nse-rhp-peer-table.txt"), encoding="utf-8") as handle:
-        text = handle.read().split(">>>\n", 1)[1]
+        text = handle.read().split(">>>", 1)[1].lstrip("\r\n")
     with open(os.path.join(FIXTURES, "nse-rhp-peer-cells.json"), encoding="utf-8") as handle:
         cells = json.load(handle)
     found, reason = extract_peer_companies([(138, text)], lambda _i: cells, issuer_name=None)

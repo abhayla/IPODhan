@@ -127,8 +127,8 @@ def load_text_pages(name):
     out = []
     for chunk in raw.split("<<<PAGE "):
         if chunk.strip():
-            head, _, body = chunk.partition(">>>\n")
-            out.append((int(head), body))
+            head, _, body = chunk.partition(">>>")
+            out.append((int(head), body.lstrip("\r\n")))
     return out
 
 
