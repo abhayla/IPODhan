@@ -73,7 +73,7 @@ const report: unknown[] = [];
 for (const ipo of picked) {
   const recorded: unknown[] = [];
   const valueOf = async () =>
-    q(`SELECT table_name, row_key, field_name, value::text AS value, source::text AS source, updated_by FROM field_sources WHERE ipo_id=$1 ORDER BY 1,2,3`, [ipo.id]);
+    (async () => ({ ipoRow: (await q(`SELECT to_jsonb(i) - 'updated_at' AS row FROM ipos i WHERE id=$1`, [ipo.id]))[0]?.row ?? null, sources: await q(`SELECT table_name, row_key, field_name, source::text AS source, updated_by FROM field_sources WHERE ipo_id=$1 ORDER BY 1,2,3`, [ipo.id]) }))();
   const before = await valueOf();
   const store: AnswersRoundStore = {
     readIpo: async (id) => ({ status: (await q(`SELECT status::text AS s FROM ipos WHERE id=$1`, [id]))[0]?.s ?? null, answersRoundAt: null }),
@@ -108,7 +108,7 @@ for (const ipo of picked) {
     { listedAllowed: true }
   );
   const after = await valueOf();
-  report.push({ slug: ipo.slug, result, publishedValuesUnchanged: JSON.stringify(before) === JSON.stringify(after), storedValues: before.length, recorded });
+  report.push({ slug: ipo.slug, result, publishedValuesUnchanged: JSON.stringify(before) === JSON.stringify(after), storedValues: (before as any).sources.length, recorded });
 }
 console.log(JSON.stringify(report, null, 1));
 await pool.end();
