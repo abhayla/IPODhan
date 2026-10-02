@@ -165,12 +165,25 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
     expect(fieldResult?.chosenSource).toBe('CHITTORGARH');
   });
 
-  it('(iv) ipo_details.fresh_issue and ipos.issue_size (same flipped group, different tables) resolve to DIFFERENT rank lists — proves table is part of the resolver key', async () => {
-    // ipo_details.fresh_issue (group issue-size, flipped) ranks [DOC,BSE,CHITTORGARH] MAINBOARD;
-    // ipos.issue_size (same group) ranks [DOC,CHITTORGARH] MAINBOARD — BSE is capable for one
-    // table's field and not the other's, proving the table dimension of the key actually reaches
-    // the writer's decision (not just the column name).
+  it('(iv) ipo_details.fresh_issue and ipos.lot_size (same flipped group, different tables) resolve to DIFFERENT rank lists — proves table is part of the resolver key', async () => {
+    // ipos.lot_size (group issue-size, flipped) ranks [DOC,BSE,NSE] MAINBOARD;
+    // ipo_details.fresh_issue (same group) ranks [DOC,CHITTORGARH] MAINBOARD since OD-167
+    // (2026-10-02: BSE's IPO detail prints no fresh-issue split, so BSE was removed) — BSE is
+    // capable for one table's field and not the other's, proving the table dimension of the key
+    // actually reaches the writer's decision (not just the column name). (Before OD-167 this test
+    // used ipos.issue_size, whose ranks became identical to fresh_issue's.)
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const lotSizeResult = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipos',
+      incomingData: { lotSize: 100 },
+      existingData: { lotSize: 50, segment: 'MAINBOARD' }, // untracked
+      source: 'BSE',
+      confidence: 80,
+    });
+    // BSE IS ranked for ipos.lot_size -> outranks the untracked value.
+    expect(lotSizeResult.fieldResults.find((f) => f.fieldName === 'lotSize')?.chosenSource).toBe('BSE');
 
     const freshIssueResult = await service.consolidateIPOData({
       ipoId: 'policy-test',
@@ -180,25 +193,9 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
       source: 'BSE',
       confidence: 80,
     });
-    // BSE IS ranked for ipo_details.fresh_issue -> outranks the untracked value.
-    expect(freshIssueResult.fieldResults.find((f) => f.fieldName === 'freshIssue')?.chosenSource).toBe('BSE');
-
-    // Above the MAINBOARD issue-size floor (Rs10 Cr = 1e9) and a filing-total source (CHITTORGARH
-    // is not in ISSUE_SIZE_FILING_TOTAL_SOURCES, but no shares/band data is supplied here so the
-    // shares-x-band coherence branch never engages) so the value reaches the real untracked-value
-    // decision instead of being rejected by the plausibility gate.
-    const issueSizeResult = await service.consolidateIPOData({
-      ipoId: 'policy-test',
-      tableName: 'ipos',
-      incomingData: { issueSize: 1500000000 },
-      existingData: { issueSize: 1400000000, segment: 'MAINBOARD' }, // untracked
-      source: 'BSE',
-      confidence: 80,
-    });
-    // BSE is NOT ranked for ipos.issue_size -> cannot outrank the untracked value; kept (existing
-    // value survives, source falls back to the incoming source per the untracked-keep contract,
-    // but the VALUE must stay the stored one, not the incoming one).
-    expect(issueSizeResult.fieldResults.find((f) => f.fieldName === 'issueSize')?.finalValue).toBe(1400000000);
+    // BSE is NOT ranked for ipo_details.fresh_issue -> cannot outrank the untracked value; kept
+    // (the VALUE must stay the stored one, not the incoming one).
+    expect(freshIssueResult.fieldResults.find((f) => f.fieldName === 'freshIssue')?.finalValue).toBe(1400000000);
   });
 
   it('(v) an E-1 field (ipos.open_date, class T, unflipped) never accepts a document value — unaffected by the flip', async () => {
@@ -291,47 +288,30 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
   // OPPOSITE outcomes on this exact input, so reverting `tableName` at the getSourcePriority
   // call sites (which forces the one-arg `getFieldRules` fallback regardless of the flag/flip
   // state) must turn this test red.
-  it('(viii) TRACKED vs TRACKED: stored NSE (legacy-default-ranked, POLICY-unranked) loses to incoming BSE through the real orchestrator', async () => {
-    // NOTE: `fieldSourceRow()` hardcodes `tableName: 'ipos'` (it is used by every other test in
-    // this file, all of which target `ipos.*`) — this field is `ipo_details.fresh_issue`, so the
-    // tracked row is built inline with the correct tableName; otherwise the row-key match
-    // (`fieldSource.tableName === input.tableName`) silently fails and the field reads as
-    // untracked, masking the tracked-vs-tracked case this test exists to prove.
+  it('(viii) TRACKED vs TRACKED: stored CHITTORGARH (legacy-default-ranked, POLICY-unranked) loses to incoming BSE through the real orchestrator', async () => {
+    // Uses ipos.lot_size (flipped group issue-size). It was ipo_details.fresh_issue until OD-167
+    // (2026-10-02) removed BSE from that field's ranks (BSE's detail prints no fresh-issue split).
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
-      {
-        ipoId: 'policy-test', tableName: 'ipo_details', fieldName: 'freshIssue', source: 'NSE', value: '1400000000',
-        confidence: 100, dataLineage: null, previousValue: null, previousSource: null,
-        updatedAt: new Date('2026-09-01T00:00:00Z'), createdAt: new Date('2026-09-01T00:00:00Z'),
-      } as any,
+      fieldSourceRow('lotSize', 'CHITTORGARH', '50'),
     ]);
 
     const result = await service.consolidateIPOData({
       ipoId: 'policy-test',
-      tableName: 'ipo_details',
-      incomingData: { freshIssue: 1500000000 },
+      tableName: 'ipos',
+      incomingData: { lotSize: 100 },
       existingData: { segment: 'MAINBOARD' },
       source: 'BSE',
       confidence: 80,
     });
 
-    // Policy ranks: [DOC, BSE, CHITTORGARH] -- NSE is UNRANKED (priority -1), BSE is ranked
-    // (priority 1) -- BSE must win regardless of what the legacy DEFAULT list says about NSE.
-    expect(Number(result.consolidatedData.freshIssue)).toBe(1500000000);
-    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'freshIssue');
+    // Policy ranks: [DOC, BSE, NSE] -- CHITTORGARH is UNRANKED (priority -1), BSE is ranked
+    // (priority 1) -- BSE must win regardless of what the legacy DEFAULT list says about CHITTORGARH.
+    expect(Number(result.consolidatedData.lotSize)).toBe(100);
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'lotSize');
     expect(fieldResult?.chosenSource).toBe('BSE');
     expect(fieldResult?.conflictReason).toBe('SOURCE_PRIORITY');
   });
 
-  // Review round 1, MAJOR-1: prove `allowsSameSourceRefresh` (:2365) receives `tableName` through
-  // the REAL orchestrator. `ipos.lot_size` is in the flipped `issue-size` group (switchover.json),
-  // has `sameSourceRefresh: true` in the legacy matrix (issueSize itself does NOT, so it cannot be
-  // used here -- allowsSameSourceRefresh short-circuits false before reaching tableName/policy
-  // logic when the field has no sameSourceRefresh flag at all). Legacy lotSize entry:
-  // `sameSourceRefreshSources: ['DRHP']` only -- BSE is EXCLUDED from self-refresh. Manifest
-  // policy MAINBOARD ranks `[DOC, BSE, NSE]` for ipos.lot_size -- BSE IS ranked. A same-source
-  // BSE-vs-BSE conflict (newer BSE value replacing an older BSE value) must be REFUSED under the
-  // legacy allow-list and ALLOWED under the policy allow-list -- the two answers differ, proving
-  // this is a genuine behavioural discriminator, not a tableName-presence check in disguise.
   it('(ix) same-source refresh through the orchestrator: BSE-vs-BSE on ipos.lot_size — legacy refuses, policy allows', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('lotSize', 'BSE', '100', '2026-09-01T00:00:00Z'),
