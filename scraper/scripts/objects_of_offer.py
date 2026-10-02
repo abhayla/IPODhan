@@ -34,7 +34,14 @@ _UNIT_CONTEXT_RX = re.compile(r"(?:₹|\bRs\b|\bINR\b|\bin\b|\bis\b)", re.I)
 _UNIT_TO_CR = {"million": 0.1, "mn": 0.1, "lakh": 0.01, "lakhs": 0.01, "lac": 0.01, "lacs": 0.01,
                "crore": 1.0, "crores": 1.0}
 
-_TOK = r"(?:\[\s*\S{0,3}\s*\]|\d[\d,]*\.\d{2})"
+_NUM = r"\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?"
+_TOK = r"(?:\[\s*\S{0,3}\s*\]|(?<![\d,.])(?:" + _NUM + r")(?![\d,]))"
+_DEC_RX = re.compile(r"\d[\d,]*\.\d{2}")
+_YEAR_RX = re.compile(r"^(?:19|20)\d{2}$")
+_YEAR_CONTEXT_RX = re.compile(
+    r"(?:\b(?:fy|fiscal|financial\s+year|year|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|"
+    r"july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|in|by|before|until|"
+    r"upto|up\s+to|from|since|for|of|to)\.?\s*[-:]?)$", re.I)
 _TAIL_RX = re.compile(r"(?P<run>(?:\s+" + _TOK + r"[\^*#]*(?:\(\d\))?%?)+)\s*$")
 _AMOUNT_RX = re.compile(_TOK)
 _SERIAL_RX = re.compile(r"^(\d{1,2})[.)]?\s+(?=[A-Z(\[])")
@@ -48,14 +55,16 @@ _HEADER_RX = re.compile(
 _FOOTNOTE_RX = re.compile(r"^(?:\(\d\)|[*^#])")
 _PAGE_NO_RX = re.compile(r"^\d{1,3}$")
 _GCP_RX = re.compile(r"general\s+corporate", re.I)
-_GROSS_RX = re.compile(r"^gross\s+proceeds\b.*?(" + r"\d[\d,]*\.\d{1,2}" + r")\s*$", re.I)
-_NET_RX = re.compile(r"^net\s+(?:offer\s+|issue\s+|fresh\s+)?proceeds\b.*?(\d[\d,]*\.\d{1,2})\s*$", re.I)
+_GROSS_RX = re.compile(r"^gross\s+proceeds\b.*?(" + r"\d[\d,]*(?:\.\d{1,2})?" + r")\s*$", re.I)
+_NET_RX = re.compile(r"^net\s+(?:offer\s+|issue\s+|fresh\s+)?proceeds\b.*?(\d[\d,]*(?:\.\d{1,2})?)\s*$", re.I)
 _PLACEHOLDER_END_RX = re.compile(r"^(?:gross|net)\s+(?:offer\s+|issue\s+|fresh\s+)?proceeds\b.*\[\s*\S{0,3}\s*\]\s*$", re.I)
 _MARKS_RX = re.compile(r"\(\d\)|[#*^]")
 _OFS_ONLY_RX = re.compile(
     r"(?:our\s+)?company\s+will\s+not\s+receive\s+(?:any\s+|the\s+)?(?:of\s+the\s+)?(?:offer\s+)?proceeds", re.I)
 
 NO_FRESH_ISSUE_REASON = "no_fresh_issue_pure_offer_for_sale"
+FRESH_ISSUE_ELSEWHERE_REASON = "fresh_issue_mentioned_outside_objects_page"
+_FRESH_ISSUE_RX = re.compile(r"fresh\s+(?:issue|offer)", re.I)
 GCP_MAX_SHARE_OF_GROSS = 0.25
 F4_TOLERANCE = 0.01
 
@@ -67,7 +76,7 @@ def _num(tok):
 def _unit_of(line):
     """The unit word a table-header line prints, e.g. '(Rs. in Lacs)' -> 'lacs', or None."""
     s = line.strip()
-    if len(s) > 70 or _AMOUNT_RX.search(s):
+    if len(s) > 70 or _DEC_RX.search(s):
         return None
     m = _UNIT_WORD_RX.search(s)
     if m and _UNIT_CONTEXT_RX.search(s):
@@ -77,12 +86,22 @@ def _unit_of(line):
 
 def _split_amount(line):
     """(label, first_amount_token or None). The first token of the trailing run is the amount; the
-    other tokens are percentage columns."""
+    other tokens are percentage columns. A bare year in the label ("FY 2027", "March 2027") is label
+    text, never the amount."""
     m = _TAIL_RX.search(line)
     if not m:
         return line.strip(), None
-    tok = _AMOUNT_RX.search(m.group("run")).group(0)
-    return line[:m.start()].strip(), tok
+    toks = [t.group(0) for t in _AMOUNT_RX.finditer(m.group("run"))]
+    cut = m.start()
+    head = line[:cut]
+    while toks and _YEAR_RX.match(toks[0]) and (len(toks) > 1 or _YEAR_CONTEXT_RX.search(head.rstrip())):
+        k = m.group("run").index(toks[0])
+        cut = m.start() + k + len(toks[0])
+        head = line[:cut]
+        toks.pop(0)
+    if not toks:
+        return line.strip(), None
+    return head.strip(), toks[0]
 
 
 def _clean_label(parts):
@@ -291,9 +310,15 @@ def read_objects_of_offer(page_texts):
                                           proceeds_unpriced=proceeds_unpriced)}
     if unreadable:
         return unreadable
+    # A stated absence clears a stored value (OD-160), so "no fresh issue" needs the whole offer, not one
+    # page: any page that mentions a fresh issue (cover, "The Offer", the objects chapter) means the offer
+    # may be mixed and the answer is a miss.
+    fresh_anywhere = any(_FRESH_ISSUE_RX.search(t or "") for _i, t in page_texts)
     for pos, (idx, text) in enumerate(page_texts):
         if not any(_OBJECTS_HEAD_RX.match(ln) for ln in (text or "").split("\n")):
             continue
-        if _OFS_ONLY_RX.search(re.sub(r"\s+", " ", text or "")) and not re.search(r"fresh\s+issue", text or "", re.I):
+        if _OFS_ONLY_RX.search(re.sub(r"\s+", " ", text or "")):
+            if fresh_anywhere:
+                return {"state": "UNREADABLE", "reason": FRESH_ISSUE_ELSEWHERE_REASON, "page": idx}
             return {"state": "STATED_NONE", "reason": NO_FRESH_ISSUE_REASON, "page": idx}
     return {"state": "NOT_FOUND", "reason": "objects_table_not_found", "page": None}

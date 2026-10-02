@@ -168,3 +168,60 @@ def test_unit_conversion_to_crore_happens_once(unit, factor):
     text = "Utilisation of Net Proceeds\n(%s in %s)\n1. Capex 100.00\nTotal 100.00\nMeans of finance\n" % (RUPEE, unit)
     a = oo.read_objects_of_offer([(0, text)])
     assert a["items"][0]["amount_cr"] == round(100.0 * factor, 4)
+
+
+# --- integer amounts, years in labels, whole-offer stated-none (PR #1462 round 2) -------------------------
+
+def _table(rows, extra=""):
+    return ("Utilisation of Net Proceeds\n(%s in million)\n%s\nTotal 1,350\n%sMeans of finance\n"
+            % (RUPEE, "\n".join(rows), extra))
+
+
+def test_integer_amounts_are_priced_and_f4_really_sums():
+    text = "Net Proceeds 1,350\n" + _table(["1. Capital expenditure 1,250", "2. General corporate purposes 100"])
+    a = oo.read_objects_of_offer([(0, text)])
+    assert a["state"] == "TABLE"
+    assert [(i["printed_amount"], i["amount_cr"], i["check"]) for i in a["items"]] == [
+        (1250.0, 125.0, "priced"), (100.0, 10.0, "priced")]
+    assert a["f4"][0] is True and a["f4"][1].startswith("objects sum 135.00 Cr == ")
+
+
+def test_integer_amounts_not_summing_to_the_total_are_refused():
+    a = oo.read_objects_of_offer([(0, _table(["1. Capital expenditure 1,250", "2. General corporate purposes 50"]))])
+    assert isinstance(a["f4"], answer_states.Refused)
+
+
+def test_placeholder_row_stays_unpriced_next_to_integer_amounts():
+    a = oo.read_objects_of_offer([(0, _table(["1. Capital expenditure 1,250", "2. General corporate purposes [" + "●" + "]"]))])
+    assert [i["check"] for i in a["items"]] == ["priced", "not_priced_yet"]
+    assert a["items"][1]["amount_cr"] is None
+
+
+def test_year_in_label_is_not_the_amount():
+    rows = ["1. Repayment of loans by March 2027 1,250", "2. Capex in FY 2027 100 7.41", "3. Working capital for 2027"]
+    a = oo.read_objects_of_offer([(0, _table(rows))])
+    got = [(i["label"], i["printed_amount"]) for i in a["items"]]
+    assert got == [("Repayment of loans by March 2027", 1250.0), ("Capex in FY 2027", 100.0),
+                   ("Working capital for 2027", None)]
+
+
+def test_serial_number_is_not_the_amount():
+    a = oo.read_objects_of_offer([(0, _table(["1 Capital expenditure 1,250", "2 General corporate purposes 100"]))])
+    assert [i["printed_amount"] for i in a["items"]] == [1250.0, 100.0]
+
+
+OFS_PAGE = ("OBJECTS OF THE OFFER\nThe Offer comprises an Offer for Sale. Our Company will not receive any "
+            "proceeds of the Offer.")
+
+
+def test_pure_ofs_with_a_fresh_issue_on_the_cover_is_not_stated_none():
+    pages = [(1, "RED HERRING PROSPECTUS\nFresh Issue of up to 1,000 million and an Offer for Sale"), (50, OFS_PAGE)]
+    a = oo.read_objects_of_offer(pages)
+    assert a["state"] == "UNREADABLE" and a["reason"] == oo.FRESH_ISSUE_ELSEWHERE_REASON
+    f = envelope(pages)
+    assert f["state"] == answer_states.MISSED and f["value"] is None
+
+
+def test_pure_ofs_with_no_fresh_issue_anywhere_stays_stated_none():
+    a = oo.read_objects_of_offer([(1, "RED HERRING PROSPECTUS\nOffer for Sale of equity shares"), (50, OFS_PAGE)])
+    assert a["state"] == "STATED_NONE"
