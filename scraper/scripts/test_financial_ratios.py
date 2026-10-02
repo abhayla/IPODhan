@@ -411,3 +411,18 @@ def test_a_row_shaped_mention_still_keeps_the_miss_open(printed):
     pg = pages("vishal-nirmiti-rhp-current-ratio-prose-only.txt") + [(500, printed)]
     read = read_ratio(pg, "current_ratio", (2026, 3, 31))
     assert read["reason"] == "ratio_row_not_in_note", (printed, read)
+
+
+@pytest.mark.parametrize("printed", [
+    "Note 45 Ratios\n(a) Current ratio Current assets to current liabilities 1.36 1.28\n",
+    "inventory turnover ratio Current ratio Debt to equity ratio\n",
+    "ratios are\ncurrent ratio\n",
+    "Key Ratios Disclosed Under Schedule III Include current ratio Debt Equity Ratio Return On Equity\n",
+    "the following ratios are disclosed as current ratio and quick ratio\n1.36 1.28\n",
+])
+def test_review_r1_label_rows_are_never_prose(printed):
+    # Item 46 review round 1, MAJOR 1: each of these is a label row or a table
+    # cell, never prose; the answer must stay a MISS (fail closed).
+    pg = pages("vishal-nirmiti-rhp-current-ratio-prose-only.txt") + [(500, printed)]
+    read = read_ratio(pg, "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_row_not_in_note", (printed, read)

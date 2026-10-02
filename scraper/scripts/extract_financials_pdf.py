@@ -178,7 +178,12 @@ OTHER_METRICS = [
     # 37.60" (NSE RHP p401) is a clean-looking row of PERCENTAGES and was read
     # as net worth in Rs million. A return/ratio/percent row is never the
     # amount, whatever its shape.
-    (re.compile(r"^(?!.*(?:\breturn\b|\bRoNW\b|%)).*?net\s*worth", re.I), "netWorth"),
+    # Review round 1 (MAJOR 2): "Debt to Net worth 0.45", "Net debt / net worth
+    # (times)", "Net worth per equity share" are ratios or per-share figures,
+    # not the amount. Only the amount label is net worth: any return / ratio /
+    # times / per-share / debt / percent shape on the line is refused.
+    (re.compile(r"^(?!.*(?:\breturn\b|\bRoNW\b|%|\bratio\b|\btimes\b|\bper\b|"
+                r"\bdebt\b|\bto\s+net\s*worth\b)).*?net\s*worth", re.I), "netWorth"),
 ]
 
 # ---------------------------------------------------------------- item 8b ---
@@ -430,7 +435,10 @@ def _parse_pnl_page(text):
     # isolate it so column-year counting is not polluted by dates inside notes.
     data_start = next(
         (i for i, ln in enumerate(lines)
-         if re.search(r"revenue\s+from\s+operations|total\s+income", ln, re.I)),
+         # Review round 1 (MINOR 4): "R evenue from operations" / "T otal
+         # income" are split by pdfplumber the same way the rows are.
+         if re.search(r"revenue\s+from\s+operations|total\s+income",
+                      _rejoin_split_initial(ln), re.I)),
         None,
     )
     if data_start is None:
