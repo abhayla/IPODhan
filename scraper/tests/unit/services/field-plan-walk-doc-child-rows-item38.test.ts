@@ -7,7 +7,10 @@
 // `rows` record from its RHP with 79 stored rows; papadmalji-agro-foods-ltd peer_companies stated absence
 // (`peer_comparison_issuer_states_no_listed_peers`, DRHP + RHP, no stored rows); NSE promoter_acquisition_ranges
 // `rows` record from a PRICE_BAND_AD (outside the RHP family).
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { FEATURE_FLAGS } from '../../../src/config/feature-flags.js';
+import { orderAndCapCandidates } from '../../../src/services/document-cycle.js';
+import type { DiscoveryIpo } from '../../../src/services/document-discovery-runner.js';
 import {
   buildDocFetcher,
   DOC_CHILD_ROWS_TABLES,
@@ -50,7 +53,11 @@ describe('item 38 DOC answer-state table for an IPO-level child-table row', () =
   it('found: rows record from a family document and >=1 stored row with the column -> SUPPLIED, credited, evidence from the record', async () => {
     const d = deps();
     const a = await buildDocFetcher(d)(IPO_ID, 'ipo_risk_factors', '', 'heading');
-    expect(a).toEqual({ outcome: 'SUPPLIED', value: 79, documentId: RHP_ID, documentType: 'RHP', sha256: 'b'.repeat(64), credited: true });
+    // Fix round 1 (finding 2): a row count is never the value -- value null, marker + count as evidence.
+    expect(a).toEqual({
+      outcome: 'SUPPLIED', value: null, rowCount: 79, documentId: RHP_ID, documentType: 'RHP', sha256: 'b'.repeat(64),
+      credited: 'DOCUMENT_ROWS_STORED',
+    });
     expect(isCreditedAnswer(a)).toBe(true);
     // The section record is read, never a keyed per-row provenance row (F-227: those carry no lineage).
     expect((d.fieldSources.findByField as any).mock.calls).toEqual([[IPO_ID, 'ipo_risk_factors', 'rows', '']]);
@@ -215,5 +222,179 @@ describe('item 38 the walk credits a DOC child-table answer with ZERO writer cal
     await walkFieldPlanForIPO(IPO_ID, walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
     expect(orchestrator.consolidatedUpsertChildRows).not.toHaveBeenCalled();
     expect(recorded[0].state).not.toBe('SUPPLIED');
+  });
+});
+
+describe('item 38 fix round 1 -- fetcher guards (findings 3, 4, 5)', () => {
+  it('finding 4: an unknown column is CHECK_FAILED even when a stated absence would otherwise apply (never NOT_PRINTED)', async () => {
+    const a = await buildDocFetcher(
+      deps({
+        fieldSources: { findByField: vi.fn().mockResolvedValue(null) } as any,
+        childColumnCounter: vi.fn().mockResolvedValue({ status: 'unknown_column' }),
+        openFailuresReader: vi.fn().mockResolvedValue([STATED_NO_PEERS]),
+      })
+    )(IPO_ID, 'peer_companies', '', 'not_a_column');
+    expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true, gap: 'COLUMN_READ_NOT_IMPLEMENTED' });
+  });
+
+  it('M7: a rows record whose source is not DRHP is never credited', async () => {
+    const a = await buildDocFetcher(
+      deps({ fieldSources: { findByField: vi.fn().mockResolvedValue({ ...RISK_ROWS_RECORD, source: 'NSE' }) } as any })
+    )(IPO_ID, 'ipo_risk_factors', '', 'heading');
+    expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true, gap: 'NO_DOCUMENT_PROVENANCE' });
+  });
+
+  it('M9: a stated absence does NOT win while stored rows exist (rows present, column empty) -> CHECK_FAILED', async () => {
+    const a = await buildDocFetcher(
+      deps({
+        childColumnCounter: vi.fn().mockResolvedValue({ status: 'ok', rows: 5, withValue: 0 }),
+        openFailuresReader: vi.fn().mockResolvedValue([{ ...STATED_NO_PEERS, tableName: 'ipo_risk_factors' }]),
+      })
+    )(IPO_ID, 'ipo_risk_factors', '', 'kpis');
+    expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true });
+  });
+
+  it('a rows record naming a docType but no documentId -> fails closed, never SUPPLIED', async () => {
+    const a = await buildDocFetcher(
+      deps({ fieldSources: { findByField: vi.fn().mockResolvedValue({ source: 'DRHP', dataLineage: { docType: 'RHP' } }) } as any })
+    )(IPO_ID, 'ipo_risk_factors', '', 'heading');
+    expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true, gap: 'NO_DOCUMENT_PROVENANCE' });
+  });
+
+  const OTHER_ID = '00000000-0000-4000-8000-0000000038ff';
+  it.each([
+    ['a document that is not one of this IPO', OTHER_ID, DOCS],
+    ['a document still extracting', RHP_ID, [{ ...DOCS[0], extractionStatus: 'PENDING' }, DOCS[1]]],
+    ['an inactive document', RHP_ID, [{ ...DOCS[0], isActive: false }, DOCS[1]]],
+    ['a document outside the field family (record says RHP, id is the price-band ad)', PBA_ID, DOCS],
+  ])('finding 3: a rows record naming %s is never credited -> CHECK_FAILED transient', async (_label, docId, docs) => {
+    const a = await buildDocFetcher(
+      deps({
+        fieldSources: { findByField: vi.fn().mockResolvedValue({ source: 'DRHP', dataLineage: { docType: 'RHP', documentId: docId } }) } as any,
+        documentRepository: { findByIPO: vi.fn().mockResolvedValue(docs) } as any,
+      })
+    )(IPO_ID, 'ipo_risk_factors', '', 'heading');
+    expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true, gap: 'NO_DOCUMENT_PROVENANCE' });
+  });
+});
+
+describe('item 38 fix round 1 -- a credited pass keeps every rank answer on the plan row (OD-103, OD-137; findings 1, 2, M3b)', () => {
+  afterEach(() => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = false;
+  });
+
+  function run(ranks: string[], fetchers: Record<string, unknown>) {
+    const recorded: any[] = [];
+    const queue = [
+      {
+        // financial_statements.revenue is MONEY-family in the manifest, so the witness writer would really run (M3b).
+        id: 'plan-38b', ipoId: IPO_ID, tableName: 'financial_statements', rowKey: '', fieldName: 'revenue',
+        rank1Source: ranks[0] ?? null, rank2Source: ranks[1] ?? null, rank3Source: ranks[2] ?? null, state: 'CHECK_FAILED' as const,
+        chosenSource: null, chosenRank: null, attempts: 0, cause: null, claimToken: 'tok-38b',
+        manifestVersion: 2, policyOrigin: 'registry:2', reopenedUnderPolicy: null,
+      },
+    ];
+    const orchestrator = { consolidatedUpsertIPO: vi.fn(), consolidatedUpsertChildRows: vi.fn() };
+    const trackWitnessVerdict = vi.fn();
+    const walkDeps = {
+      fieldPlanRepository: {
+        claimNextDueField: vi.fn(async () => queue.shift() ?? null),
+        recordOutcome: vi.fn(async (p: any) => { recorded.push(p); return { written: true }; }),
+        releaseClaimUnrecorded: vi.fn(async () => ({ released: true })),
+        restoreSettledAfterReopen: vi.fn(async () => ({ restored: true })),
+      },
+      orchestrator,
+      sourceFetchers: fetchers,
+      ipoRepository: { findById: vi.fn(async () => ({ id: IPO_ID, companyName: 'National Stock Exchange of India Ltd', segment: 'MAINBOARD' })) },
+      resolvePolicy: () => ({ ranks, documentType: 'RHP', origin: { kind: 'registry', version: 2 }, na: false, incapable: {} }),
+      trackWitnessVerdict,
+    } as unknown as FieldPlanWalkDeps;
+    return { walkDeps, recorded, orchestrator, trackWitnessVerdict };
+  }
+
+  it('first round, flag ON: DOC credited, CHITTORGARH a value, BSE an abstention -> all three on ipo_field_plan.answers; no count as a value', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const { walkDeps, recorded, orchestrator, trackWitnessVerdict } = run(['DOC', 'CHITTORGARH', 'BSE'], {
+      DOC: buildDocFetcher(deps()),
+      CHITTORGARH: vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' })),
+      BSE: vi.fn(async () => ({ outcome: 'NOT_PRINTED' as const })),
+    });
+    await walkFieldPlanForIPO(IPO_ID, walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
+    expect(orchestrator.consolidatedUpsertChildRows).not.toHaveBeenCalled();
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].state).toBe('SUPPLIED');
+    expect(recorded[0].answers).toEqual([
+      expect.objectContaining({ source: 'DOC', outcome: 'SUPPLIED', value: null, credited: 'DOCUMENT_ROWS_STORED', rowCount: 79, docType: 'RHP' }),
+      expect.objectContaining({ source: 'CHITTORGARH', outcome: 'SUPPLIED', value: '1000000' }),
+      expect.objectContaining({ source: 'BSE', outcome: 'NOT_PRINTED', value: null }),
+    ]);
+    expect(recorded[0].answers.some((a: any) => a.value === 79)).toBe(false);
+  });
+
+  it('provisional path, flag ON: NSE not yet published, DOC credited at rank 2 -> answers stay on the plan row, no witness write', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const { walkDeps, recorded, trackWitnessVerdict } = run(['NSE', 'DOC'], {
+      NSE: vi.fn(async () => ({ outcome: 'NOT_AVAILABLE_YET' as const })),
+      DOC: buildDocFetcher(deps()),
+    });
+    await walkFieldPlanForIPO(IPO_ID, walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+    expect(recorded[0].state).toBe('NOT_AVAILABLE_YET');
+    expect(recorded[0].answers).toEqual([
+      expect.objectContaining({ source: 'NSE', outcome: 'NOT_AVAILABLE_YET' }),
+      expect.objectContaining({ source: 'DOC', outcome: 'SUPPLIED', value: null, credited: 'DOCUMENT_ROWS_STORED', rowCount: 79 }),
+    ]);
+  });
+});
+
+describe('item 38 fix round 1 -- the live tier is walked first even with re-offered gap rows (finding 6)', () => {
+  function ipo(over: Partial<DiscoveryIpo> & { id: string; stage: DiscoveryIpo['stage'] }): DiscoveryIpo {
+    return { companyName: `Company ${over.id}`, symbol: null, segment: 'MAINBOARD', issue: { isFixedPrice: false, withdrawn: false }, ...over };
+  }
+
+  it('a LISTED IPO with many re-offered DOCROWS rows never claims before the OPEN IPO under the shared deadline', async () => {
+    // The DOCROWS coverage-fingerprint change re-offers every parked child-table row; the LISTED IPO holds 50 of them.
+    const ordered = orderAndCapCandidates(
+      [ipo({ id: 'listed-many', stage: 'LISTED', listingDate: '2026-09-01' }), ipo({ id: 'open-1', stage: 'OPEN' })],
+      10
+    ).candidates;
+    const queues: Record<string, Array<{ id: string; ipoId: string }>> = {
+      'listed-many': Array.from({ length: 50 }, (_, i) => ({ id: `l-${i}`, ipoId: 'listed-many' })),
+      'open-1': [{ id: 'o-1', ipoId: 'open-1' }],
+    };
+    const claimed: string[] = [];
+    let clock = 0;
+    const deadlineMs = 10; // a shared budget smaller than the LISTED backlog
+    for (const c of ordered) {
+      if (clock >= deadlineMs) break;
+      const q = queues[c.id];
+      const walkDeps = {
+        fieldPlanRepository: {
+          claimNextDueField: vi.fn(async () => {
+            const row = q.shift();
+            if (!row) return null;
+            claimed.push(row.id);
+            clock += 1;
+            return {
+              ...row, tableName: 'ipo_risk_factors', rowKey: '', fieldName: 'heading', rank1Source: 'DOC', rank2Source: null,
+              rank3Source: null, state: 'CHECK_FAILED', chosenSource: null, chosenRank: null, attempts: 0, cause: 'gap',
+              claimToken: `t-${row.id}`, manifestVersion: 2, policyOrigin: 'registry:2', reopenedUnderPolicy: null,
+            };
+          }),
+          recordOutcome: vi.fn(async () => ({ written: true })),
+          releaseClaimUnrecorded: vi.fn(async () => ({ released: true })),
+          restoreSettledAfterReopen: vi.fn(async () => ({ restored: true })),
+        },
+        orchestrator: { consolidatedUpsertIPO: vi.fn(), consolidatedUpsertChildRows: vi.fn() },
+        sourceFetchers: { DOC: buildDocFetcher(deps()) },
+        ipoRepository: { findById: vi.fn(async () => ({ id: c.id, companyName: c.companyName, segment: 'MAINBOARD' })) },
+        resolvePolicy: () => ({ ranks: ['DOC'], documentType: 'RHP', origin: { kind: 'registry', version: 2 }, na: false, incapable: {} }),
+      } as unknown as FieldPlanWalkDeps;
+      await walkFieldPlanForIPO(c.id, walkDeps, { deadlineMs, now: () => clock });
+    }
+    expect(ordered.map((c) => c.id)).toEqual(['open-1', 'listed-many']);
+    expect(claimed[0]).toBe('o-1');
+    expect(claimed.length).toBeLessThan(51); // the shared deadline cut the LISTED backlog, never the OPEN row
   });
 });

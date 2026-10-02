@@ -103,6 +103,9 @@ interface StoredAnswer {
   docType?: unknown;
   outcome?: unknown;
   cause?: unknown;
+  /** Item 38: the document supplied rows already stored; `rowCount` is evidence, never a value. */
+  credited?: unknown;
+  rowCount?: unknown;
 }
 
 function statusOf(outcome: unknown): SourceWitness['status'] {
@@ -132,13 +135,18 @@ export function buildWitnesses(args: {
       const w = list.find((x) => x && labelMatchesRank(x.source, rank));
       if (!w) continue;
       const status = statusOf(w.outcome);
-      const hasValue = status === 'value' && w.value !== null && w.value !== undefined;
+      const credited = w.credited !== undefined;
+      const hasValue = status === 'value' && !credited && w.value !== null && w.value !== undefined;
       return {
         rank: i + 1,
         source: rank,
         status: status === 'value' && !hasValue ? 'abstained' : status,
         value: hasValue ? w.value : null,
-        cause: typeof w.cause === 'string' ? w.cause : null,
+        cause: credited
+          ? `the document supplied ${typeof w.rowCount === 'number' ? `${w.rowCount} stored row(s)` : 'stored rows'} (no single value)`
+          : typeof w.cause === 'string'
+            ? w.cause
+            : null,
         readAt: typeof w.at === 'string' ? w.at : null,
         docType: typeof w.docType === 'string' ? w.docType : null,
         pickLabel: hasValue ? String(w.source) : null,

@@ -454,6 +454,8 @@ interface StoredAnswer {
   value?: unknown;
   at?: unknown;
   outcome?: unknown;
+  /** Item 38: a credited answer ("the document supplied rows") -- never a value to pick or compare. */
+  credited?: unknown;
 }
 
 const sameSource = (a: unknown, b: string) => typeof a === 'string' && a.trim().toUpperCase() === b.trim().toUpperCase();
@@ -464,6 +466,7 @@ function suppliedAnswerOf(list: unknown, label: string): { value: unknown; readD
   for (const w of list as StoredAnswer[]) {
     if (!w || !sameSource(w.source, label)) continue;
     if (w.outcome !== undefined && w.outcome !== 'SUPPLIED') continue;
+    if (w.credited !== undefined) continue;
     if (w.value === null || w.value === undefined) continue;
     return { value: w.value, readDate: typeof w.at === 'string' ? w.at : null };
   }

@@ -238,16 +238,19 @@ export function emptySectionReasonOf(cause: string | null | undefined): string |
  * Item 38 answer-state table (spec §2.5.6 item 1) for an IPO-level plan row of a DOC_CHILD_ROWS_TABLES
  * table, decided in this order:
  *
- * | state         | condition                                                               | outcome                                   |
- * | unreadable    | a read error                                                            | CHECK_FAILED transient, with the error    |
- * | stated absent | no stored rows AND an open failure whose reason is on the #1420 list,  | NOT_PRINTED (definitive)                  |
- * |               | from a COMPLETED document of the field's family                         |                                           |
- * | row missing   | no `rows` record from a document (source DRHP)                         | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
- * | unresolved    | the record names no docType or no documentId (B4(c), fail closed)      | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
- * | wrong family  | the record's document is outside the field's family                    | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
- * | unknown column| the plan's column is not a column of the table (fail closed)           | CHECK_FAILED transient COLUMN_READ_NOT_IMPLEMENTED |
- * | found         | >= 1 stored row with the column non-null                                | SUPPLIED, credited, NO write              |
- * | column empty  | the record exists, the column is null on every stored row (or no rows) | CHECK_FAILED transient (extractor gap)    |
+ * | state           | condition                                                              | outcome                                   |
+ * | unreadable      | a read error                                                           | CHECK_FAILED transient, with the error    |
+ * | unknown column  | the plan's column is not a column of the table (checked FIRST)         | CHECK_FAILED transient COLUMN_READ_NOT_IMPLEMENTED |
+ * | stated absent   | no stored rows AND an open failure whose reason is on the #1420 list, | NOT_PRINTED (definitive)                  |
+ * |                 | from a COMPLETED document of the field's family                        |                                           |
+ * | row missing     | no `rows` record from a document (source DRHP)                        | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * | unresolved      | the record names no docType or no documentId (B4(c), fail closed)     | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * | wrong family    | the record's docType is outside the field's family                    | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * | doc not usable  | the record's documentId is not a COMPLETED, active, family document   | CHECK_FAILED transient NO_DOCUMENT_PROVENANCE |
+ * |                 | of THIS IPO                                                            |                                           |
+ * | found           | >= 1 stored row with the column non-null                               | SUPPLIED, credited 'DOCUMENT_ROWS_STORED', |
+ * |                 |                                                                        | value NULL + rowCount, NO write           |
+ * | column empty    | the record exists, the column is null on every stored row (or no rows)| CHECK_FAILED transient (extractor gap)    |
  */
 async function answerChildRowsField(
   deps: DocFetcherDeps,
@@ -276,12 +279,21 @@ async function answerChildRowsField(
     return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
   }
 
+  // Fail closed BEFORE any other branch: a column the table does not have can never be NOT_PRINTED.
+  if (counted.status === 'unknown_column') {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `DOC child-row read has no column ${camelFieldName} on ${tableName}`,
+      transient: true,
+      gap: 'COLUMN_READ_NOT_IMPLEMENTED',
+    };
+  }
+
   const family = docTypeFamily(manifestDocType);
   const completedFamilyDocIds = new Set(
     docs.filter((d) => d.extractionStatus === 'COMPLETED' && d.isActive !== false && family.includes(d.type)).map((d) => d.id)
   );
-  const storedRows = counted.status === 'ok' ? counted.rows : 0;
-  if (storedRows === 0) {
+  if (counted.rows === 0) {
     const stated = failures.find(
       (f) =>
         f.tableName === tableName &&
@@ -317,25 +329,33 @@ async function answerChildRowsField(
       gap: 'NO_DOCUMENT_PROVENANCE',
     };
   }
-  if (counted.status === 'unknown_column') {
+  // The credited document must be a COMPLETED, active document of THIS IPO in the field's family.
+  const doc = docs.find((d) => d.id === lineage.documentId);
+  if (
+    !doc ||
+    doc.extractionStatus !== 'COMPLETED' ||
+    doc.isActive === false ||
+    !(familyForField(manifestDocType, doc.type) as ReadonlyArray<string>).includes(doc.type)
+  ) {
     return {
       outcome: 'CHECK_FAILED',
-      reason: `DOC child-row read has no column ${camelFieldName} on ${tableName}`,
+      reason: `${tableName} ${DOC_CHILD_ROWS_FIELD} record names document ${lineage.documentId}, not a completed active ${manifestDocType}-family document of this IPO — not credited`,
       transient: true,
-      gap: 'COLUMN_READ_NOT_IMPLEMENTED',
+      gap: 'NO_DOCUMENT_PROVENANCE',
     };
   }
   if (counted.withValue > 0) {
-    const doc = docs.find((d) => d.id === lineage.documentId);
     return {
       outcome: 'SUPPLIED',
-      // The answer is "the document filled this column on N stored rows": the rows are the value,
-      // already stored by the filing persister, so the walk credits and never writes (OD-161(a)).
-      value: counted.withValue,
+      // "The document supplied rows": the rows are already stored by the filing persister, so the walk
+      // credits and never writes (OD-161(a)). The value is NULL -- a row count is never a value an admin
+      // could pick (§9.2 item 9); the count rides separately as evidence.
+      value: null,
+      rowCount: counted.withValue,
       documentId: lineage.documentId,
       documentType: lineage.docType,
-      sha256: lineage.sourceSha ?? doc?.sha256 ?? undefined,
-      credited: true,
+      sha256: lineage.sourceSha ?? doc.sha256 ?? undefined,
+      credited: 'DOCUMENT_ROWS_STORED',
     };
   }
   return {

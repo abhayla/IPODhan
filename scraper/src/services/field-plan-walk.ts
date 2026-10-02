@@ -98,6 +98,10 @@ interface RankAnswer {
   at: string;
   docType?: string;
   cause?: string;
+  /** Item 38: a credited answer (value already stored by its own writer) -- `value` is null, never a count. */
+  credited?: CreditedMarker;
+  /** Item 38: how many stored rows carry the asked column, for a credited child-table answer. Never a value. */
+  rowCount?: number;
 }
 
 /** `rank<N>:<source>=<outcome>` per answer -- the per-rank record for a pass that stored no value. */
@@ -115,6 +119,40 @@ function rankAnswer(
 }
 
 /**
+ * A SUPPLIED answer as recorded. Item 38 (OD-103, OD-137, §9.2 item 9): a credited answer records
+ * value NULL plus its marker and row count, so no reader (witness picker, baseline, verdict) can ever
+ * take the row count for the document's value.
+ */
+function suppliedRankAnswer(
+  rank: number,
+  source: string,
+  answer: Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }>
+): RankAnswer {
+  if (isCreditedAnswer(answer)) {
+    return {
+      ...rankAnswer(rank, source, 'SUPPLIED', { value: null, docType: answer.documentType }),
+      credited: answer.credited,
+      ...(typeof answer.rowCount === 'number' ? { rowCount: answer.rowCount } : {}),
+    };
+  }
+  return rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType });
+}
+
+/** The stored shape of one answer (plan row or witness): credited answers carry their marker, never a value. */
+function storedAnswerShape(a: RankAnswer): Witness {
+  return {
+    source: a.source,
+    outcome: a.outcome,
+    value: a.outcome === 'SUPPLIED' && !a.credited ? a.value : null,
+    at: a.at,
+    ...(a.docType !== undefined ? { docType: a.docType } : {}),
+    ...(a.cause !== undefined ? { cause: a.cause } : {}),
+    ...(a.credited !== undefined ? { credited: a.credited } : {}),
+    ...(a.rowCount !== undefined ? { rowCount: a.rowCount } : {}),
+  };
+}
+
+/**
  * OD-137: the `answers` part of an outcome write, riding on the SAME claim-token-guarded
  * `recordOutcome` UPDATE (never a second write). `answers` = this pass's per-rank answers when it
  * stored NO value (witness shape, rank order; the order is the rank, so no `rank` key); `null` when
@@ -125,16 +163,7 @@ function rankAnswer(
 function planRowAnswers(answers: readonly RankAnswer[] | null): { answers?: Witness[] | null } {
   if (!FEATURE_FLAGS.ENABLE_VERDICT_WRITER) return {};
   if (answers === null) return { answers: null };
-  return {
-    answers: answers.map((a) => ({
-      source: a.source,
-      outcome: a.outcome,
-      value: a.outcome === 'SUPPLIED' ? a.value : null,
-      at: a.at,
-      ...(a.docType !== undefined ? { docType: a.docType } : {}),
-      ...(a.cause !== undefined ? { cause: a.cause } : {}),
-    })),
-  };
+  return { answers: answers.map(storedAnswerShape) };
 }
 
 /**
@@ -221,9 +250,12 @@ export type FieldFetcherAnswer =
        * Item 38 (OD-161(a) "the document is credited, nothing is written"; OD-73; OD-76): the value is
        * ALREADY stored by its own writer (an IPO-level child-table answer read from the filing
        * persister's stored rows). The walk records SUPPLIED with this answer's evidence and makes NO
-       * writer call and no witness-verdict write (`isCreditedAnswer`). Generic: any fetcher may set it.
+       * writer call and no witness-verdict write (`isCreditedAnswer`); its `value` is null and its
+       * per-rank answers stay on `ipo_field_plan.answers` (OD-137). Generic: any fetcher may set it.
        */
-      credited?: true;
+      credited?: CreditedMarker;
+      /** Item 38: stored rows carrying the asked column, for a credited answer. Evidence, never a value. */
+      rowCount?: number;
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
@@ -907,7 +939,7 @@ async function readHeldField(
       continue;
     }
     if (answer.outcome === 'SUPPLIED') {
-      answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
+      answers.push(suppliedRankAnswer(rank, source, answer));
     } else if (answer.outcome === 'CHECK_FAILED') {
       answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: `rank${rank}:${source}:CHECK_FAILED:${answer.reason}` }));
     } else {
@@ -1046,14 +1078,7 @@ export function mergeHeldWitnesses(
 
 /** The witness shape of a pass's answers (rank order), independent of the verdict-writer flag. */
 function witnessShape(answers: readonly RankAnswer[]): Witness[] {
-  return answers.map((a) => ({
-    source: a.source,
-    outcome: a.outcome,
-    value: a.outcome === 'SUPPLIED' ? a.value : null,
-    at: a.at,
-    ...(a.docType !== undefined ? { docType: a.docType } : {}),
-    ...(a.cause !== undefined ? { cause: a.cause } : {}),
-  })) as Witness[];
+  return answers.map(storedAnswerShape);
 }
 
 /**
@@ -1367,8 +1392,9 @@ async function attemptOneField(
         state: 'NOT_AVAILABLE_YET',
         reasonCode: 'NOT_PUBLISHED_YET',
         cause: [`rank${rank}:${source}:NOT_AVAILABLE_YET`, ...provisionalRefusals].join('; '),
-        // A provisional value was stored -> its witnesses hold the answers; none -> the plan row does.
-        ...planRowAnswers(provisional ? null : answers),
+        // A provisional value was stored -> its witnesses hold the answers; none (or a credited one, which
+        // writes no witness) -> the plan row does (OD-137, item 38).
+        ...planRowAnswers(provisional && !provisional.credited ? null : answers),
       });
     }
 
@@ -1384,7 +1410,7 @@ async function attemptOneField(
     // winner is already known are new: they are logged, never written
     // (S2's `witnesses` column is S3b's job).
     suppliedAnswers.push({ rank, source, answer });
-    answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
+    answers.push(suppliedRankAnswer(rank, source, answer));
     if (!winner) {
       winner = { rank, source, answer };
     }
@@ -1623,7 +1649,8 @@ async function attemptOneField(
       writeHappened: true,
       state: 'SUPPLIED',
       chosen: evidenceFor(source, rank, answer),
-      ...planRowAnswers(null),
+      // Item 38 (OD-103/OD-137): a credited answer writes no witness, so the plan row keeps every rank's answer.
+      ...planRowAnswers(isCreditedAnswer(answer) ? answers : null),
     });
   }
 
@@ -1885,7 +1912,7 @@ async function tryProvisional(
       continue;
     }
     // SUPPLIED: always a witness; written only while no provisional value has landed yet.
-    answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
+    answers.push(suppliedRankAnswer(rank, source, answer));
     if (provisional) continue;
     const token = refusalToken(source, answer.value, refusalCtx.validationKey);
     if (token && refusalCtx.prior.has(token)) {
@@ -2186,9 +2213,14 @@ async function runWrite(
  * credits it (SUPPLIED, chosen evidence, chosen_confirmed_at) and never calls the writer -- an IPO-level
  * child-table answer could not be written anyway (the writer refuses row_key '' with MISSING_ROW_KEY).
  */
-export function isCreditedAnswer(answer: FieldFetcherAnswer): boolean {
-  return answer.outcome === 'SUPPLIED' && answer.credited === true;
+export function isCreditedAnswer(
+  answer: FieldFetcherAnswer
+): answer is Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }> & { credited: CreditedMarker } {
+  return answer.outcome === 'SUPPLIED' && answer.credited === 'DOCUMENT_ROWS_STORED';
 }
+
+/** Item 38: the one credited kind -- "the document supplied rows already stored by the filing persister". */
+export type CreditedMarker = 'DOCUMENT_ROWS_STORED';
 
 /**
  * Record an outcome and READ THE RETURN. `recordOutcome` refuses silently

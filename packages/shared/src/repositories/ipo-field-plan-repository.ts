@@ -256,6 +256,10 @@ export interface FieldPlanAnswer {
   at: string;
   docType?: string;
   cause?: string;
+  /** Item 38: the document supplied rows already stored (value null; never a pickable value). */
+  credited?: 'DOCUMENT_ROWS_STORED';
+  /** Item 38: stored rows carrying the asked column -- evidence, never the field's value. */
+  rowCount?: number;
 }
 
 /** One generated row's incoming order, as `reconcileSettledToOverrides` reads it. */
