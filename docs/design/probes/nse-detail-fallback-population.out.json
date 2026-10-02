@@ -1,0 +1,408 @@
+{
+  "measured_at": "2026-10-02T20:12:58.518Z",
+  "byStateCause": [
+    {
+      "status": "CLOSED",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 7,
+      "ipos": 1
+    },
+    {
+      "status": "CLOSED",
+      "state": "SUPPLIED",
+      "cause": "rank1:NSE:NOT_AVAILABLE_YET",
+      "rows": 2,
+      "ipos": 1
+    },
+    {
+      "status": "CLOSED",
+      "state": "SUPPLIED",
+      "cause": "rank2:NSE:NOT_AVAILABLE_YET",
+      "rows": 2,
+      "ipos": 1
+    },
+    {
+      "status": "CLOSED",
+      "state": "SUPPLIED",
+      "cause": "rank3:NSE:NOT_AVAILABLE_YET",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "CLOSED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 139,
+      "ipos": 30
+    },
+    {
+      "status": "CLOSED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:NSE:NOT_AVAILABLE_YET",
+      "rows": 38,
+      "ipos": 19
+    },
+    {
+      "status": "CLOSED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank2:NSE:NOT_AVAILABLE_YET",
+      "rows": 19,
+      "ipos": 19
+    },
+    {
+      "status": "CLOSED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "[held-read:CLOSED|1] rank1:NSE:NOT_AVAILABLE_YET",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "CLOSED",
+      "state": "CHECK_FAILED",
+      "cause": "rank2:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 56,
+      "ipos": 19
+    },
+    {
+      "status": "CLOSED",
+      "state": "CHECK_FAILED",
+      "cause": "rank1:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 35,
+      "ipos": 18
+    },
+    {
+      "status": "CLOSED",
+      "state": "CHECK_FAILED",
+      "cause": "rank3:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 5,
+      "ipos": 5
+    },
+    {
+      "status": "LISTED",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 21,
+      "ipos": 3
+    },
+    {
+      "status": "LISTED",
+      "state": "SUPPLIED",
+      "cause": "rank2:NSE:NOT_AVAILABLE_YET",
+      "rows": 6,
+      "ipos": 4
+    },
+    {
+      "status": "LISTED",
+      "state": "SUPPLIED",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "status": "LISTED",
+      "state": "SUPPLIED",
+      "cause": "rank3:NSE:NOT_AVAILABLE_YET",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "status": "LISTED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 487,
+      "ipos": 100
+    },
+    {
+      "status": "LISTED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank2:NSE:NOT_AVAILABLE_YET",
+      "rows": 307,
+      "ipos": 141
+    },
+    {
+      "status": "LISTED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:NSE:NOT_AVAILABLE_YET",
+      "rows": 272,
+      "ipos": 136
+    },
+    {
+      "status": "LISTED",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank3:NSE:NOT_AVAILABLE_YET",
+      "rows": 27,
+      "ipos": 27
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "rank2:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 5,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"2026-09-25\" over NSE \"2",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"2026-09-23\" over NSE \"2",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"2026-09-28\" over NSE \"2",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"2026-09-24\" over NSE \"2",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 126 over NSE 126 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 134 over NSE 134 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 175 over NSE 175 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 185 over NSE 185 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 343 over NSE 343 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 350 over NSE 350 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 362 over NSE 362 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value 375 over NSE 375 (matrix",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept DRHP value \"ArMee Infotech Ltd.\" over NSE ",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept DRHP value \"Elevate Campuses Ltd.\" over NS",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept DRHP value \"Swastika Infra Ltd.\" over NSE ",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept BSE value \"ELEVATE\" over NSE \"ELEVATE\" (ma",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"Adroit Industries (Indi",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"Green Asia Impex Ltd.\" ",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "LISTED",
+      "state": "CHECK_FAILED",
+      "cause": "consolidator kept CHITTORGARH value \"Moneyview Ltd.\" over NS",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "status": "OPEN",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 10,
+      "ipos": 2
+    },
+    {
+      "status": "OPEN",
+      "state": "CHECK_FAILED",
+      "cause": "rank2:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 18,
+      "ipos": 5
+    },
+    {
+      "status": "OPEN",
+      "state": "CHECK_FAILED",
+      "cause": "rank1:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 10,
+      "ipos": 5
+    },
+    {
+      "status": "OPEN",
+      "state": "CHECK_FAILED",
+      "cause": "rank3:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "status": "UPCOMING",
+      "state": "CHECK_FAILED",
+      "cause": "rank2:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 6,
+      "ipos": 1
+    },
+    {
+      "status": "UPCOMING",
+      "state": "CHECK_FAILED",
+      "cause": "rank1:NSE:CHECK_FAILED:NSE board empty (source=browser): scr",
+      "rows": 2,
+      "ipos": 1
+    }
+  ],
+  "boardEmpty": [
+    {
+      "status": "CLOSED",
+      "rows": 96,
+      "ipos": 19
+    },
+    {
+      "status": "LISTED",
+      "rows": 5,
+      "ipos": 1
+    },
+    {
+      "status": "OPEN",
+      "rows": 30,
+      "ipos": 5
+    },
+    {
+      "status": "UPCOMING",
+      "rows": 8,
+      "ipos": 1
+    }
+  ],
+  "keyCoverage": [
+    {
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "ipos": 19,
+      "with_active_nse_key": 6
+    },
+    {
+      "status": "CLOSED",
+      "segment": "SME",
+      "ipos": 3,
+      "with_active_nse_key": 3
+    },
+    {
+      "status": "CLOSED",
+      "segment": null,
+      "ipos": 17,
+      "with_active_nse_key": 0
+    },
+    {
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "ipos": 91,
+      "with_active_nse_key": 7
+    },
+    {
+      "status": "LISTED",
+      "segment": "SME",
+      "ipos": 54,
+      "with_active_nse_key": 3
+    },
+    {
+      "status": "LISTED",
+      "segment": null,
+      "ipos": 1,
+      "with_active_nse_key": 0
+    }
+  ],
+  "runwal": [
+    {
+      "field_name": "price_range_max",
+      "state": "CHECK_FAILED",
+      "cause": "rank2:NSE:CHECK_FAILED:NSE board empty (source=browser): scrape failed or returned no rows",
+      "reason_code": "COVERAGE_GAP",
+      "chosen_source": null
+    },
+    {
+      "field_name": "price_range_min",
+      "state": "CHECK_FAILED",
+      "cause": "rank2:NSE:CHECK_FAILED:NSE board empty (source=browser): scrape failed or returned no rows",
+      "reason_code": "COVERAGE_GAP",
+      "chosen_source": null
+    }
+  ],
+  "runwalKey": [
+    {
+      "key_value": "RUNWALENTR|EQ",
+      "state": "ACTIVE",
+      "attrs": {
+        "series": "EQ",
+        "shares": 12111294,
+        "priceMax": 302,
+        "priceMin": 290
+      }
+    }
+  ]
+}

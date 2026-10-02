@@ -208,7 +208,12 @@ async function initNSESession(): Promise<void> {
  * Make API request with proper headers, cookie management, and retry logic
  * Enhanced for Story 11.3 - handles 401/403 authentication errors with automatic cookie refresh
  */
-async function makeRequest(endpoint: string, params?: Record<string, string>, retryCount: number = 0): Promise<any> {
+async function makeRequest(
+  endpoint: string,
+  params?: Record<string, string>,
+  retryCount: number = 0,
+  opts: { authRetry?: boolean } = {}
+): Promise<any> {
   const MAX_RETRIES = 3;
   const url = new URL(BASE_URL + endpoint);
 
@@ -237,6 +242,11 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 
     // Handle authentication errors (401/403) with retry logic
     if (response.status === 401 || response.status === 403) {
+      // PR #1488: a caller with authRetry:false (the walk's one-request ipo-detail read) gets the
+      // auth failure as a thrown error at once, never the session-refresh loop.
+      if (opts.authRetry === false) {
+        throw new Error(`NSE API returned ${response.status} (auth refused, no retry on this read)`);
+      }
       if (retryCount >= MAX_RETRIES) {
         logger.error({
           endpoint,
@@ -1249,6 +1259,19 @@ export async function fetchNSEIssueInfo(symbol: string, series?: 'EQ' | 'SME'): 
     logger.warn({ symbol, series, error: (error as Error).message }, 'Failed to fetch NSE issueInfo');
     return null;
   }
+}
+
+/**
+ * #1486: the raw `/api/ipo-detail` payload for one NSE issue, for the field-plan walk's fallback
+ * when the IPO has left the current/upcoming boards. Unlike `fetchNSEIssueInfo` this THROWS on a
+ * failed request: the walk must tell "NSE could not be read" (CHECK_FAILED) from "NSE served no
+ * detail" (abstention, OD-145). Same session, headers and retry as every other NSE request.
+ * SME REQUIRES series='SME' (C-1); EQ is asked without a series, as every capture so far was.
+ */
+export async function fetchNSEIPODetailPayload(symbol: string, series: 'EQ' | 'SME'): Promise<unknown> {
+  const params: Record<string, string> = series === 'SME' ? { symbol, series } : { symbol };
+  // ONE request per IPO per ask (PR #1488 review): no 401/403 session-retry loop here.
+  return makeRequest(ENDPOINTS.IPO_DETAIL, params, 0, { authRetry: false });
 }
 
 /**

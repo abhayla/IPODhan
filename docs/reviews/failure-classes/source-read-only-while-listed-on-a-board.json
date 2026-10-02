@@ -1,0 +1,14 @@
+{
+  "class_id": "a source read only while the record sits on its live board",
+  "feature": "field-plan walk fetchers (NSE first); any adapter that resolves a record by scanning a current/upcoming list",
+  "symptom": "an adapter that finds a record only by scanning the source's live lists (current, upcoming) loses the record the moment it leaves those lists, although the source keeps serving the record's own detail page and may correct values there. Every later ask then answers 'not found' or 'list failed', so a value the source corrected after the record left the list is never re-read, and the stale value the source stated earlier keeps its rank against a correct lower-ranked answer. Universal shape: lookup-by-list-membership for a record whose lifetime outlasts its list membership; the fix is lookup-by-stored-identity (the record key) on the source's per-record endpoint, with list failure and record failure kept distinct.",
+  "first_seen": "2026-10-03 — issue #1486, staging read-only. runwal-enterprises-ltd price_range_max 302 from NSE (NSE key attrs 290/302, BSE key 290/305, previous value 305 from CHITTORGARH); NSE /api/ipo-detail?symbol=RUNWALENTR states 'Rs. 290 to Rs. 305' while the symbol is absent from both NSE boards (F-235). Population: 139 NSE-ranked plan rows CHECK_FAILED 'NSE board empty' (19 CLOSED, 1 LISTED, 5 OPEN, 1 UPCOMING IPOs); only 19 of 185 CLOSED/LISTED IPOs with NSE plan rows carry an ACTIVE NSE_ISSUE key.",
+  "fix_prs": "#1486 fix PR (fix/nse-detail-fallback): field-plan-walk-nse-fetcher.ts reads /api/ipo-detail by the ACTIVE NSE_ISSUE key when the IPO is off the boards or the boards failed; answer states pinned by scraper/tests/unit/services/field-plan-walk-nse-detail-fallback.test.ts on real 2026-10-03 payloads",
+  "detection_check": "none. A cross-check of NSE-supplied bands against the BSE/NSE source-key attrs flagged 0 of 18 NSE-supplied IPOs on staging (2026-10-03), Runwal included, because its NSE key attrs (302) agree with the stale stored value: the only discriminating signal is NSE's own later detail value, which is what the fix starts reading. The other BSE/Chittorgarh fetchers are not checked for this shape yet.",
+  "status": "unguarded",
+  "spec_ref": [
+    "§0.0.1",
+    "§1.2",
+    "§2.3.5"
+  ]
+}

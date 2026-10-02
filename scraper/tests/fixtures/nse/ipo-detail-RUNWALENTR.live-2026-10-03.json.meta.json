@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/ipo-detail?symbol=RUNWALENTR",
+  "capturedAt": "2026-10-03",
+  "company": "Runwal Enterprises Limited",
+  "note": "Raw NSE ipo-detail answer, unmodified (sha256 751002bb9a1516b41d4e5719f80cf5ac341952c410c0f2962fdc52e0ab78fc01), captured 2026-10-03 01:28 IST after a homepage cookie warm-up, read-only. issueInfo.dataList carries 'Price Range' = 'Rs. 290 to Rs. 305 per Equity Share', 'Issue Period' 25-Sep-2026 to 29-Sep-2026, 'Bid Lot' 49. Runwal (CLOSED) is absent from the same-minute ipo-current-issue and all-upcoming-issues captures. #1486."
+}

@@ -4550,6 +4550,13 @@ shape and code reading. Doing it properly corrected **fifty-one ranks**:
 | **NSE** | 53 fields | mostly right, **3 wrong, 6 missing** | `/api/ipo-detail` `issueInfo` genuinely carries registrar, lead managers, issue type, sponsor bank, tick size and market timings — which I had as filing-only or BSE-ranked. It does **not** carry `designated_exchange`, `retail_max_allottees` or the allocation percentages |
 | **BSE** | 54 fields | mostly right, **1 wrong** | `GetMkt_ISSUE_BBS_IPO` carries registrar, lead managers, sponsor bank, tick size, market timings — but **not** `issue_type`, which I had ranked to BSE |
 
+**F-235 (2026-10-03, #1486):** NSE keeps serving `/api/ipo-detail` after an IPO leaves its current and
+upcoming boards, and corrects values there (Runwal Enterprises: boards no longer list RUNWALENTR; ipo-detail
+states 'Rs. 290 to Rs. 305' where the stored NSE value was 302). The walk's NSE fetcher therefore reads
+ipo-detail by the IPO's ACTIVE `NSE_ISSUE` key (OD-85, never a name search) when the IPO is off the boards;
+empty detail is an abstention (OD-60), a failed read is CHECK_FAILED (OD-145). No timer: the read happens
+only when the walk asks (§2, OD-56).
+
 **The Moneycontrol result has a consequence worth stating.** After correction, **Moneycontrol earns
 zero ranks** — not because it is excluded, but because for all nine fields it serves, the document
 and both exchanges are better and already available. It never reaches the top three. It contributes

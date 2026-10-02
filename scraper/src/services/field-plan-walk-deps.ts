@@ -56,7 +56,8 @@ import { and, eq } from 'drizzle-orm';
 import { dataConflicts, documentFieldReceipts } from '@ipodhan/shared/db/schema';
 import type { DocAdminListing } from './field-plan-walk.js';
 import { makeChildColumnCounter } from './field-plan-walk-child-rows-reader.js';
-import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
+import { FieldExtractionFailuresRepository, findSourceKeysForIpo } from '@ipodhan/shared/repositories';
+import { fetchNSEIPODetailPayload } from '../scrapers/nse-api-client.js';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
 import { applyExchangeOverride } from '@ipodhan/shared/services/exchange-override';
 import { buildExchangeOverrideHook, composeHeldFieldHooks } from './exchange-override-hook.js';
@@ -227,7 +228,19 @@ export function buildFieldPlanWalkFetchers(
   const bseState = new BseFieldFetcherState();
   const bseFetcher = buildBseFetcher({ ipoRepository, isBseCapable: isCapable('BSE') }, bseState);
   const nseState = new NseFieldFetcherState();
-  const nseFetcher = buildNseFetcher({ ipoRepository, isNseCapable: isCapable('NSE') }, nseState);
+  const nseFetcher = buildNseFetcher(
+    {
+      ipoRepository,
+      isNseCapable: isCapable('NSE'),
+      // #1486: an IPO off NSE's boards is read from /api/ipo-detail by its ACTIVE NSE_ISSUE key (OD-85).
+      nseIssueKeys: async (ipoId: string) =>
+        (await findSourceKeysForIpo(db as never, ipoId))
+          .filter((k) => k.source === 'NSE' && k.keyType === 'NSE_ISSUE' && k.state === 'ACTIVE')
+          .map((k) => k.keyValue),
+      fetchNseDetail: fetchNSEIPODetailPayload,
+    },
+    nseState
+  );
 
   const chittorgarhState = new ChittorgarhFieldFetcherState();
   const chittorgarhFetcher = buildChittorgarhFetcher(

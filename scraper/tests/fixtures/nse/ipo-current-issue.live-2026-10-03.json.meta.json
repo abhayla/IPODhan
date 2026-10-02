@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/ipo-current-issue",
+  "capturedAt": "2026-10-03",
+  "pageType": true,
+  "note": "Raw NSE current-issue board, unmodified (sha256 6ef25c425104386145d4785498c7a35afda1f818c4779368971377dec2ccb264), captured 2026-10-03 01:28 IST in the same session as ipo-detail-RUNWALENTR. Rows: VNL|EQ, NITYAS|EQ, EVENTIONS|SME; RUNWALENTR absent. #1486."
+}
