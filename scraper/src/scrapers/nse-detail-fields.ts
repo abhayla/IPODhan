@@ -12,6 +12,7 @@
  *                (a single price is not a band: T-308, same as `parsePriceRange` on the board path)
  *   { error }    the row is duplicated, or present and unparseable -> the caller answers CHECK_FAILED
  */
+import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { parseNSEDate, parsePriceRange } from './nse-api-client.js';
 
 export type NseDetailField = 'symbol' | 'openDate' | 'closeDate' | 'priceRangeMin' | 'priceRangeMax' | 'lotSize';
@@ -85,10 +86,13 @@ function lot(rows: DataRow[]): NseDetailFieldAnswer {
 }
 
 /**
- * Parse one ipo-detail payload asked for `expectedSymbol`. A payload whose own symbol differs is an
- * identity mismatch for every field (fail closed), never a value of the IPO that was asked about.
+ * Parse one ipo-detail payload asked for `expectedSymbol` on behalf of the IPO stored as
+ * `expectedCompanyName`. Identity must be PROVEN, not merely not contradicted (PR #1488 review):
+ * the reply must carry a symbol equal to the one asked, AND its company-name row (dataList[0].title,
+ * e.g. "Runwal Enterprises Limited") must normalise to the stored company name. Anything else is an
+ * identity refusal for every field (fail closed), never a value of the IPO that was asked about.
  */
-export function parseNseDetailFields(payload: unknown, expectedSymbol: string): NseDetailParse {
+export function parseNseDetailFields(payload: unknown, expectedSymbol: string, expectedCompanyName: string): NseDetailParse {
   const issueInfo = (payload as { issueInfo?: { dataList?: unknown; symbol?: unknown } } | null)?.issueInfo;
   const dataList = issueInfo?.dataList;
   if (!Array.isArray(dataList) || dataList.length === 0) return { kind: 'empty' };
@@ -100,8 +104,22 @@ export function parseNseDetailFields(payload: unknown, expectedSymbol: string): 
     return { kind: 'identity_mismatch', cause: `ipo-detail answered for ${payloadSymbol}, asked for ${want}` };
   }
   const symbolRow = single(rows, 'Symbol');
+  if ('error' in symbolRow) return { kind: 'identity_mismatch', cause: `detail identity unproven: ${symbolRow.error}` };
   if ('value' in symbolRow && symbolRow.value.toUpperCase() !== want) {
     return { kind: 'identity_mismatch', cause: `ipo-detail "Symbol" row is ${symbolRow.value}, asked for ${want}` };
+  }
+  if (!payloadSymbol && !('value' in symbolRow)) {
+    return { kind: 'identity_mismatch', cause: `detail identity unproven: the reply for ${want} carries no symbol` };
+  }
+
+  const nameTitle = typeof rows[0]?.title === 'string' ? rows[0].title.trim() : '';
+  const replyName = nameTitle ? normalizeCompanyNameForMatching(nameTitle) : '';
+  const storedName = normalizeCompanyNameForMatching(expectedCompanyName ?? '');
+  if (!replyName || !storedName) {
+    return { kind: 'identity_mismatch', cause: `detail identity unproven: no company name to compare ("${nameTitle}" vs "${expectedCompanyName ?? ''}")` };
+  }
+  if (replyName !== storedName) {
+    return { kind: 'identity_mismatch', cause: `detail is a different company: "${nameTitle}", stored "${expectedCompanyName}"` };
   }
 
   const b = band(rows);

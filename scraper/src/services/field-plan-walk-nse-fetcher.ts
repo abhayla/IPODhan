@@ -106,7 +106,10 @@ type DetailRead =
   | { status: 'no_key' }
   | { status: 'refused'; cause: string }
   | { status: 'failed'; key: string; cause: string }
-  | { status: 'read'; key: string; parse: NseDetailParse };
+  | { status: 'read'; key: string; parse: NseDetailParse; ipo: StoredIpo };
+
+/** The stored row the detail answer is compared with (identity, and the PR #1488 difference counter). */
+type StoredIpo = Record<string, unknown> & { slug?: string | null; companyName?: string | null };
 
 /**
  * Per-cycle memo state -- construct ONE instance per document-cycle wake and
@@ -144,9 +147,11 @@ export class NseFieldFetcherState {
     if (!symbol || rest.length > 0 || (series !== 'EQ' && series !== 'SME')) {
       return { status: 'refused', cause: `NSE key ${keys[0]} is not an EQ/SME issue ipo-detail serves` };
     }
+    const ipo = (await deps.ipoRepository.findById(ipoId)) as StoredIpo | null;
+    if (!ipo) return { status: 'refused', cause: `IPO ${ipoId} not found` };
     try {
       const payload = await deps.fetchNseDetail(symbol, series);
-      return { status: 'read', key: keys[0], parse: parseNseDetailFields(payload, symbol) };
+      return { status: 'read', key: keys[0], parse: parseNseDetailFields(payload, symbol, String(ipo.companyName ?? '')), ipo };
     } catch (error) {
       return { status: 'failed', key: keys[0], cause: error instanceof Error ? error.message : String(error) };
     }
@@ -292,9 +297,28 @@ function answerFromDetail(read: DetailRead, boardKey: string, boardError: string
       const detailField = DETAIL_FIELD_FOR_BOARD_KEY.get(boardKey);
       if (!detailField) return { outcome: 'NOT_AVAILABLE_YET' };
       const answer = parse.fields[detailField];
-      if ('value' in answer) return { outcome: 'SUPPLIED', value: answer.value as never };
+      if ('value' in answer) {
+        logIfDiffersFromStored(read, boardKey, answer.value);
+        return { outcome: 'SUPPLIED', value: answer.value as never };
+      }
       if ('error' in answer) return { outcome: 'CHECK_FAILED', reason: `ipo-detail ${read.key}: ${answer.error}` };
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
   }
+}
+
+/**
+ * PR #1488 review (detection): an identity-bearing counter line whenever NSE's detail states a value
+ * that differs from what is stored, so a corrected value (Runwal: 302 stored, 305 in ipo-detail) is
+ * countable in the cycle log by slug and field.
+ */
+function logIfDiffersFromStored(read: Extract<DetailRead, { status: 'read' }>, boardKey: string, detail: string | number): void {
+  const stored = read.ipo[boardKey];
+  if (stored === undefined || stored === null || stored === '') return;
+  const same = typeof detail === 'number' ? Number(stored) === detail : (stored instanceof Date ? stored.toISOString() : String(stored)).slice(0, 10) === String(detail);
+  if (same) return;
+  logger.info(
+    { counter: 'nse_detail_differs_from_stored', slug: read.ipo.slug ?? null, key: read.key, field: boardKey, stored, detail },
+    'PASS 3 NSE fetcher: ipo-detail differs from the stored value'
+  );
 }

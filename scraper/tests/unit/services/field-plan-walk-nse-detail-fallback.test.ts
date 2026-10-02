@@ -164,6 +164,46 @@ describe('NSE fetcher, ipo-detail fallback for IPOs off the boards (#1486)', () 
     expect((answer as { reason: string }).reason).toMatch(/OTHERSYM/);
   });
 
+  it('PR #1488 review: a reply carrying no symbol is refused -- "detail identity unproven"', async () => {
+    const list = DETAIL.issueInfo.dataList.filter((r: { title: string | null }) => r.title !== 'Symbol');
+    const { deps: d } = deps({ detail: async () => ({ ...DETAIL, issueInfo: { dataList: list } }) });
+    const answer = await buildNseFetcher(d, new NseFieldFetcherState())(IPO_ID, 'ipos', '', 'price_range_max');
+    expect(answer.outcome).toBe('CHECK_FAILED');
+    expect((answer as { reason: string }).reason).toMatch(/detail identity unproven/);
+  });
+
+  it('PR #1488 review: a reply naming a different company is refused, never SUPPLIED', async () => {
+    const list = DETAIL.issueInfo.dataList.map((r: { title: string | null; value: string }, i: number) =>
+      i === 0 ? { title: 'Runwal Developers Limited', value: '' } : r
+    );
+    const { deps: d } = deps({ detail: async () => withDataList(list) });
+    const answer = await buildNseFetcher(d, new NseFieldFetcherState())(IPO_ID, 'ipos', '', 'price_range_max');
+    expect(answer.outcome).toBe('CHECK_FAILED');
+    expect((answer as { reason: string }).reason).toMatch(/detail is a different company/);
+  });
+
+  it('PR #1488 review: the real reply ("Runwal Enterprises Limited") matches the stored "Runwal Enterprises Ltd"', async () => {
+    expect(DETAIL.issueInfo.dataList[0].title).toBe('Runwal Enterprises Limited');
+    const { deps: d } = deps();
+    expect(await buildNseFetcher(d, new NseFieldFetcherState())(IPO_ID, 'ipos', '', 'price_range_max')).toEqual({
+      outcome: 'SUPPLIED',
+      value: 305,
+    });
+  });
+
+  it('PR #1488 review: logs an identity-bearing counter line when detail differs from the stored value', async () => {
+    const { logger } = await import('../../../src/utils/logger.js');
+    const info = vi.spyOn(logger, 'info');
+    const { deps: d } = deps({ ipo: { ...RUNWAL, slug: 'runwal-enterprises-ltd', priceRangeMax: 302, priceRangeMin: 290 } });
+    const fetcher = buildNseFetcher(d, new NseFieldFetcherState());
+    await fetcher(IPO_ID, 'ipos', '', 'price_range_max');
+    await fetcher(IPO_ID, 'ipos', '', 'price_range_min');
+    const lines = info.mock.calls.filter((c) => (c[0] as { counter?: string })?.counter === 'nse_detail_differs_from_stored');
+    expect(lines).toHaveLength(1);
+    expect(lines[0][0]).toMatchObject({ slug: 'runwal-enterprises-ltd', field: 'priceRangeMax', stored: 302, detail: 305 });
+    info.mockRestore();
+  });
+
   it('two ACTIVE NSE keys: CHECK_FAILED, no detail request', async () => {
     const { deps: d, fetchNseDetail } = deps({ keys: ['RUNWALENTR|EQ', 'RUNWAL|EQ'] });
     const answer = await buildNseFetcher(d, new NseFieldFetcherState())(IPO_ID, 'ipos', '', 'price_range_max');

@@ -208,7 +208,12 @@ async function initNSESession(): Promise<void> {
  * Make API request with proper headers, cookie management, and retry logic
  * Enhanced for Story 11.3 - handles 401/403 authentication errors with automatic cookie refresh
  */
-async function makeRequest(endpoint: string, params?: Record<string, string>, retryCount: number = 0): Promise<any> {
+async function makeRequest(
+  endpoint: string,
+  params?: Record<string, string>,
+  retryCount: number = 0,
+  opts: { authRetry?: boolean } = {}
+): Promise<any> {
   const MAX_RETRIES = 3;
   const url = new URL(BASE_URL + endpoint);
 
@@ -237,6 +242,11 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 
     // Handle authentication errors (401/403) with retry logic
     if (response.status === 401 || response.status === 403) {
+      // PR #1488: a caller with authRetry:false (the walk's one-request ipo-detail read) gets the
+      // auth failure as a thrown error at once, never the session-refresh loop.
+      if (opts.authRetry === false) {
+        throw new Error(`NSE API returned ${response.status} (auth refused, no retry on this read)`);
+      }
       if (retryCount >= MAX_RETRIES) {
         logger.error({
           endpoint,
@@ -1260,7 +1270,8 @@ export async function fetchNSEIssueInfo(symbol: string, series?: 'EQ' | 'SME'): 
  */
 export async function fetchNSEIPODetailPayload(symbol: string, series: 'EQ' | 'SME'): Promise<unknown> {
   const params: Record<string, string> = series === 'SME' ? { symbol, series } : { symbol };
-  return makeRequest(ENDPOINTS.IPO_DETAIL, params);
+  // ONE request per IPO per ask (PR #1488 review): no 401/403 session-retry loop here.
+  return makeRequest(ENDPOINTS.IPO_DETAIL, params, 0, { authRetry: false });
 }
 
 /**
