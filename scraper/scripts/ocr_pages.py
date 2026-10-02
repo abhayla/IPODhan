@@ -877,6 +877,181 @@ def demote_dependents_of_ambiguous(fields, guarded):
         field.pop("refused_page", None)
 
 
+# --------------------------------------------------------------------------- #
+# #1477 / F-231: an OCR-read price band (or face value) whose leading digit is wrong.
+#
+# Two OCR faults leave a well-formed number that passes every type, range and ordering check:
+#   lost digit    "Rs 172.00" read "72.00"  (the band reads 72 / 82)
+#   extra digit   the rupee glyph read as a digit, "Rs 172.00" read "7172.00", "Rs 2" read "72"
+# The advert prints each end of the band more than once ("lower / upper end of the Price Band
+# (x)", "FLOOR PRICE x", "Price Band of x to y"), and the face value many times. When those other
+# mentions contradict the read in either direction, the read is AMBIGUOUS: the field becomes
+# MISSED with the cause (the item 44 shape, `guard_ambiguous_thousands`), never REFUSED. MISSED is
+# on the KEEP path of the re-read clear (reread-answer-clear.ts), so a stored band survives a
+# misjudged guard; a REFUSED here would clear a correct published band (PR #1483 review MAJOR-1).
+#
+# Evidence is deliberately narrow: whole-rupee numbers only; nothing from a P/E, EPS, "times" or
+# market-capitalisation line (or the line after such a heading), where a floor/cap price is
+# printed as an input to another figure; and a longer mention whose extra lead is one glyph-shaped
+# digit (2 / 7 / 8, how the rupee sign OCRs) is a glyph misread, not evidence of a lost digit.
+# --------------------------------------------------------------------------- #
+OCR_PRICE_LOST_DIGIT_REASON = "ocr_price_band_leading_digit_lost"
+OCR_PRICE_EXTRA_DIGIT_REASON = "ocr_price_band_glyph_read_as_digit"
+OCR_FACE_EXTRA_DIGIT_REASON = "ocr_face_value_glyph_read_as_digit"
+OCR_PRICE_SIBLING_REASON = "ocr_price_band_sibling_ambiguous"
+OCR_PRICE_UNORDERED_REASON = "ocr_price_band_unordered"
+OCR_BAND_MAX_RATIO = 1.4  # SME cap / floor limit (extract_filing.check_price_band); MAINBOARD is 1.2
+GLYPH_DIGITS = "278"
+_AMT = r"(?:[^\s\d(]\s*)?(\d[\d,]*(?:\.\d+)?)"
+_BAND_MENTION_RX = {
+    "price_band_floor": [
+        re.compile(r"FLOOR\s+PRICE\s*(?:OF\s*)?\(?\s*" + _AMT, re.I),
+        re.compile(r"LOWER\s+END\s+OF\s+THE\s+PRICE\s+BAND\s*\(\s*" + _AMT, re.I),
+        re.compile(r"PRICE\s+BAND\s+OF\s*" + _AMT + r"\s*TO\b", re.I),
+    ],
+    "price_band_cap": [
+        re.compile(r"CAP\s+PRICE\s*(?:OF\s*)?\(?\s*" + _AMT, re.I),
+        re.compile(r"(?:UPPER|HIGHER)\s+END\s+OF\s+THE\s+PRICE\s+BAND\s*\(\s*" + _AMT, re.I),
+        re.compile(r"PRICE\s+BAND\s+OF\s*(?:[^\s\d(]\s*)?\d[\d,]*(?:\.\d+)?\s*TO\s*" + _AMT, re.I),
+    ],
+    "face_value": [re.compile(r"FACE\s*VALUE\s*OF\s*" + _AMT, re.I)],
+}
+_DERIVED_CONTEXT_RX = re.compile(
+    r"P\s*/\s*E\b|\bPIE\b|PRICE\s*TO\s*EARNING|EARNINGS?\s+PER\s+SHARE|\bEPS\b|\bTIMES\b|MARKET\s*CAP", re.I)
+
+
+def _whole_rupees(token):
+    """'172.00' / '1,700' -> '172' / '1700'; a non-integer amount ('16.54') -> None."""
+    try:
+        value = float(str(token).replace(",", ""))
+    except ValueError:
+        return None
+    if value <= 0 or value != int(value):
+        return None
+    return str(int(value))
+
+
+def band_mentions(name, texts):
+    """Every whole-rupee number the advert prints for `name` (one band end, or the face value),
+    skipping any printed on a P/E / EPS / times / market-cap line or the line after one."""
+    found = []
+    for text in texts:
+        lines = (text or "").splitlines()
+        for k, line in enumerate(lines):
+            prev = lines[k - 1] if k > 0 else ""
+            for rx in _BAND_MENTION_RX.get(name, ()):
+                for m in rx.finditer(line):
+                    if _DERIVED_CONTEXT_RX.search(prev) or _DERIVED_CONTEXT_RX.search(line[:m.start()]):
+                        continue
+                    w = _whole_rupees(m.group(1))
+                    if w is not None:
+                        found.append(w)
+    return found
+
+
+def _lost_digit_sources(read, mentions):
+    """Longer mentions ending in the read digits, minus a single glyph-shaped extra lead."""
+    if read in mentions:
+        return []
+    return sorted({m for m in mentions if len(m) > len(read) and m.endswith(read)
+                   and not (len(m) == len(read) + 1 and m[0] in GLYPH_DIGITS)}, key=int)
+
+
+def _extra_digit_source(read, mentions):
+    """The read minus a glyph-shaped first digit, when the advert prints THAT more often than the
+    read itself (glass-wall's OCR prints "FACE VALUE OF 72" twice and "OF 2" ten times)."""
+    if len(read) < 2 or read[0] not in GLYPH_DIGITS or read[1] == "0":
+        return None
+    shorter = read[1:]
+    return shorter if mentions.count(shorter) > mentions.count(read) else None
+
+
+def _mark_ambiguous(field, value, reason, detail):
+    field.update({
+        "value": None,
+        "check": {"name": "not_extractable", "passed": True, "detail": "%s: %s" % (reason, detail)},
+        "state": "MISSED",
+        "ambiguous_token": str(value),
+    })
+    field.pop("refused_value", None)
+    field.pop("refused_page", None)
+
+
+def guard_price_band_lost_digit(fields, page_text):
+    """MISS (never refuse) an OCR-only price band whose leading digit the advert itself
+    contradicts, in either direction, and an OCR-only face value whose first digit is the
+    rupee glyph. `page_text` maps page index -> that page's text. Returns `fields`.
+
+    Lost digit: a band end's read digits are the tail of a longer number the advert prints for
+    that end (and never the read number), and some such pair forms a valid band.
+    Extra digit: a band end reads with a leading 2 / 7 / 8 the advert never prints, while it
+    prints the number without that digit. One ambiguous end makes both ends MISSED (B4(c))."""
+    if not fields:
+        return fields
+    texts = [page_text[k] for k in sorted(page_text)]
+    guarded = []
+    floor_f, cap_f = fields.get("price_band_floor"), fields.get("price_band_cap")
+    if floor_f and cap_f and "OCR" in (floor_f.get("source_text"), cap_f.get("source_text")):
+        floor_v, cap_v = _read_value(floor_f), _read_value(cap_f)
+        if floor_v is not None and cap_v is not None:
+            why, cands = {}, {}
+            for name, value in (("price_band_floor", floor_v), ("price_band_cap", cap_v)):
+                read = _whole_rupees(value)
+                if read is None:
+                    cands[name] = [value]
+                    continue
+                mentions = band_mentions(name, texts)
+                longer = _lost_digit_sources(read, mentions)
+                cands[name] = [int(read)] + [int(m) for m in longer]
+                if longer:
+                    why[name] = (OCR_PRICE_LOST_DIGIT_REASON,
+                                 "read %s, the advert prints %s" % (value, "/".join(longer)))
+                shorter = _extra_digit_source(read, mentions)
+                if shorter:
+                    why[name] = (OCR_PRICE_EXTRA_DIGIT_REASON, "read %s, the advert prints %s" % (value, shorter))
+            read_pair = (cands["price_band_floor"][0], cands["price_band_cap"][0])
+            lost_pair = any(r == OCR_PRICE_LOST_DIGIT_REASON for r, _ in why.values()) and any(
+                (f, c) != read_pair and f < c <= OCR_BAND_MAX_RATIO * f
+                for f in cands["price_band_floor"] for c in cands["price_band_cap"])
+            extra = any(r == OCR_PRICE_EXTRA_DIGIT_REASON for r, _ in why.values())
+            if lost_pair or extra:
+                for name, field, value in (("price_band_floor", floor_f, floor_v), ("price_band_cap", cap_f, cap_v)):
+                    original = (field.get("check") or {}).get("name")
+                    if name in why:
+                        _mark_ambiguous(field, value, *why[name])
+                    else:
+                        other = "price_band_cap" if name == "price_band_floor" else "price_band_floor"
+                        _mark_ambiguous(field, value, OCR_PRICE_SIBLING_REASON, other)
+                    guarded.append((name, original))
+    # An OCR band its own ordering check refused (omara-ventures: "TO 31 1.00" read 31 for 311)
+    # is an unreadable read, not evidence the stored band is wrong: MISSED, kept (OD-161 keeps an
+    # OCR value; only a text read may clear). A text-layer refusal is untouched.
+    if (floor_f and cap_f and not guarded
+            and any(f.get("source_text") == "OCR" and f.get("state") == "REFUSED"
+                    and (f.get("check") or {}).get("name") == "price_band_ordering" for f in (floor_f, cap_f))):
+        detail = (floor_f.get("check") or {}).get("detail") or (cap_f.get("check") or {}).get("detail")
+        for name, field in (("price_band_floor", floor_f), ("price_band_cap", cap_f)):
+            if field.get("state") not in ("REFUSED", "VALUE"):
+                continue
+            original = (field.get("check") or {}).get("name")
+            _mark_ambiguous(field, _read_value(field), OCR_PRICE_UNORDERED_REASON, detail)
+            guarded.append((name, original))
+    face_f = fields.get("face_value")
+    if face_f and face_f.get("source_text") == "OCR":
+        value = _read_value(face_f)
+        read = _whole_rupees(value) if value is not None else None
+        if read is not None:
+            shorter = _extra_digit_source(read, band_mentions("face_value", texts))
+            if shorter:
+                original = (face_f.get("check") or {}).get("name")
+                _mark_ambiguous(face_f, value, OCR_FACE_EXTRA_DIGIT_REASON,
+                                "read %s, the advert prints %s" % (value, shorter))
+                guarded.append(("face_value", original))
+    if guarded:
+        demote_dependents_of_ambiguous(fields, guarded)
+    return fields
+
+
 def main():
     # MINOR-3: `import memory_guard` resolves via the script's own directory
     # on sys.path — true automatically when this file is run directly

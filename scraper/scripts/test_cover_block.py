@@ -188,13 +188,16 @@ def test_refused_phone_reaches_the_envelope_as_refused():
     assert rec["value"] is None and rec["state"] == answer_states.REFUSED
 
 
-def test_run_carries_the_fields_for_an_rhp_and_not_for_a_price_band_ad():
+def test_run_carries_the_fields_for_an_rhp_and_for_a_price_band_ad():
     env = run(load("rkfal-sme-rhp"), "RHP", "rkfal.pdf", segment="SME")
     assert env["fields"]["registrar_name"]["value"] == "Cameo Corporate Services Limited"
     assert env["fields"]["lead_managers"]["value"] == ["Affinity Global Capital Market Private Limited"]
+    # Item 39 round 2 (spec 2.5.6 item 2, "the price band advert ... where printed"): the advert
+    # carries the cover reader's answers too. They are RHP-family fields, so the persister never
+    # writes them from an advert (OD-96, filing-persister documentMayWriteField).
     pba = run(load("dove-soft-sme-price-band-ad"), "PRICE_BAND_AD", "dove-pba.pdf", segment="SME")
-    assert "lead_managers" not in pba["fields"]
-    assert "registrar_name" not in pba["fields"]
+    for name in ("lead_managers", "registrar_name", "company_website"):
+        assert pba["fields"][name]["state"] in answer_states.ALL_STATES
 
 
 def test_email_domain_cross_check_is_recorded_not_enforced():
