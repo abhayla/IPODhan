@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-02T14:21:30.770Z",
+  "generated_at": "2026-10-02T16:07:21.487Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 219,
     "retired": 60
   },
-  "next_id": 279,
+  "next_id": 280,
   "rules": [
     {
       "id": "R-151",
@@ -837,7 +837,7 @@
       "retired": false
     },
     {
-      "id": "R-278",
+      "id": "R-279",
       "hash": "061f320e7cdc",
       "section": "2.5 When a supplied value is asked for again",
       "kind": "prose",

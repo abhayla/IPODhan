@@ -560,6 +560,7 @@ jobs:
         run: |
           node --test \
             scripts/tests/apply-rule-ownership.test.mjs \
+            scripts/tests/generate-rule-index.test.mjs \
             scripts/tests/audit-alert-channel.test.mjs \
             scripts/tests/audit-alert-drill.test.mjs \
             scripts/tests/audit-reverse-sweep.test.mjs \

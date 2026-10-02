@@ -408,7 +408,10 @@ function computeHashDrift({ base, rulesPath, rules, cardClaims, testDeclarations
   const headRaw = readFileSync(rulesPath, 'utf8');
   const identical = headRaw === baseInfo.raw;
 
-  const baseById = new Map(baseInfo.rules.map((r) => [r.id, r]));
+  // On a duplicate id in base, the first occurrence is the one the generator keeps (see
+  // generate-rule-index.mjs), so compare against that one rather than the last.
+  const baseById = new Map();
+  for (const r of baseInfo.rules) if (!baseById.has(r.id)) baseById.set(r.id, r);
   const headLive = rules.filter((r) => !r.retired);
 
   const eligible = [];
@@ -494,6 +497,22 @@ function main() {
 
   let hasBlockingFinding = false;
   const lines = [];
+
+  // --- Duplicate ids: two parallel PRs regenerated rules.json from the same next_id. ---
+  // Checked over live AND retired rules in the working-tree file. A duplicate that exists only in
+  // the base ref (and is repaired here) is not a failure of this diff, so base is only noted.
+  {
+    const seen = new Set();
+    const dups = new Set();
+    for (const r of rules) (seen.has(r.id) ? dups : seen).add(r.id);
+    for (const id of dups) {
+      hasBlockingFinding = true;
+      lines.push(
+        `DUPLICATE RULE ID — duplicate rule id ${id} — two parallel PRs allocated the same id; ` +
+          `run generate-rule-index --apply`
+      );
+    }
+  }
 
   // --- Mode 1: a live rule claimed by no card and not declared unclaimed ---
   const orphans = liveIds.filter((id) => !cardClaims.has(id) && !declaredUnclaimed.has(id));
