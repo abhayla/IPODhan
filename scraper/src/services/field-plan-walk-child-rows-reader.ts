@@ -7,22 +7,24 @@ import * as schema from '@ipodhan/shared/db/schema';
 import type { ChildColumnCount, DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
 
 /**
- * Item 38: the schema table behind each DOC_CHILD_ROWS_TABLES name. A name with no entry, or a column the
+ * Item 38: the schema export behind each DOC_CHILD_ROWS_TABLES name. A name with no entry, or a column the
  * table does not have, answers `unknown_column` (the fetcher fails closed, CHECK_FAILED transient).
  */
-const DOC_CHILD_ROWS_SCHEMA: Readonly<Record<string, any>> = {
-  financial_statements: schema.financialStatements,
-  ipo_intermediaries: schema.ipoIntermediaries,
-  ipo_risk_factors: schema.ipoRiskFactors,
-  peer_companies: schema.peerCompanies,
-  promoter_acquisition_ranges: schema.promoterAcquisitionRanges,
-  promoters: schema.promoters,
+const DOC_CHILD_ROWS_SCHEMA_EXPORT: Readonly<Record<string, string>> = {
+  financial_statements: 'financialStatements',
+  ipo_intermediaries: 'ipoIntermediaries',
+  ipo_risk_factors: 'ipoRiskFactors',
+  peer_companies: 'peerCompanies',
+  promoter_acquisition_ranges: 'promoterAcquisitionRanges',
+  promoters: 'promoters',
 };
 
 /** Item 38: one read-only count per ask -- the IPO's stored rows, and those with the column non-null. */
 export function makeChildColumnCounter(database: { select: (...args: any[]) => any }): NonNullable<DocFetcherDeps['childColumnCounter']> {
   return async (ipoId, tableName, camelFieldName): Promise<ChildColumnCount> => {
-    const table = DOC_CHILD_ROWS_SCHEMA[tableName];
+    // Resolved per call, never at import: a test that mocks the schema module then imports this file freely.
+    const exportName = DOC_CHILD_ROWS_SCHEMA_EXPORT[tableName];
+    const table = exportName ? (schema as Record<string, any>)[exportName] : undefined;
     const column = table ? (getTableColumns(table) as Record<string, any>)[camelFieldName] : undefined;
     if (!table || !column || camelFieldName === 'ipoId') return { status: 'unknown_column' };
     const rows = await database
