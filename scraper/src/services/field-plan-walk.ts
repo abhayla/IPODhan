@@ -312,7 +312,10 @@ export interface DocAdminListing {
   documentValue: string;
   /** OD-97 mark of the document's receipt; null = unknown. */
   mark: string | null;
-  outcome: 'REPLACED' | 'KEPT';
+  /** `FAILED_VALIDATION` = the document's text value failed the field's checks at the write; the stored value stays (§3.2). */
+  outcome: 'REPLACED' | 'KEPT' | 'FAILED_VALIDATION';
+  /** FAILED_VALIDATION only: the failed check's reason as the write door gave it (OD-62, §2.4). */
+  failedCheck?: string;
 }
 
 /**
@@ -1507,6 +1510,7 @@ async function attemptOneField(
         const cause = refusalCause('', candidate.rank, candidate.source, candidateVerdict.reason, token, false);
         refusals.push(cause);
         markAnswerRefused(answers, candidate.rank, candidate.source, cause);
+        if (candidate.answer.adminListing) await listRefusedDocValue(deps, candidate.answer.adminListing, candidateVerdict.reason);
         logger.warn(
           { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source: candidate.source, rank: candidate.rank, reason: candidateVerdict.reason },
           'PASS 3: the write door REFUSED this value (OD-21) -- dropped, the next rank answer of this pass is tried'
@@ -1975,6 +1979,7 @@ async function tryProvisional(
         const cause = refusalCause('provisional-', rank, source, verdict.reason, token, false);
         refusalCtx.refusals.push(cause);
         markAnswerRefused(answers, rank, source, cause);
+        if (answer.adminListing) await listRefusedDocValue(deps, answer.adminListing, verdict.reason);
         continue;
       }
       if (verdict.happened === false) {
@@ -2272,6 +2277,11 @@ export function isCreditedAnswer(
  * Item 41 (OD-161(a)): "the document prints the value already stored" -- equal value, nothing written.
  */
 export type CreditedMarker = 'DOCUMENT_ROWS_STORED' | 'DOCUMENT_VALUE_STORED';
+
+/** OD-161 + OD-62/OD-63: the document's text value failed the field's checks -- list it under FAILED_VALIDATION with the check. */
+async function listRefusedDocValue(deps: FieldPlanWalkDeps, row: DocAdminListing, failedCheck: string): Promise<void> {
+  await listDocDifference(deps, { ...row, outcome: 'FAILED_VALIDATION', failedCheck });
+}
 
 /** Item 41: list a document difference for the admin; a failed listing never fails the walk. */
 async function listDocDifference(deps: FieldPlanWalkDeps, row: DocAdminListing): Promise<void> {

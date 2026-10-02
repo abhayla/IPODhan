@@ -52,6 +52,20 @@ describe('acceptCorrigendumSuggestion on OD-161 listings', () => {
     expect(d.error).toContain('REFUSED');
   });
 
+  it('a FAILED_VALIDATION listing accepts through the admin write with NO override reason, so the write own check refuses a failing value', async () => {
+    writeSpy.mockResolvedValue({ kind: 'INVALID', reason: 'ipos.lotSize fails its check: x. Save again with a written reason to keep it.' } as never);
+    const failing = { ...od161, reasonCode: 'FAILED_VALIDATION', check: 'lot rule' };
+    const d = await acceptCorrigendumSuggestion(stubDb({ ...base, fieldName: 'lotSize', value2: '-5', evidence: failing }), 'c1', 'a', undefined, 'tok', 'adm');
+    expect(d.ok).toBe(false);
+    expect(d.error).toContain('INVALID');
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect((writeSpy.mock.calls[0][1] as unknown as Record<string, unknown>).overrideReason).toBeUndefined();
+  });
+
+  it('the check the accept runs does fail a bad lot size (ipoFieldCheckFailure, the write own check)', () => {
+    expect(adminFieldWrite.ipoFieldCheckFailure({ priceRangeMin: 100, priceRangeMax: 110 }, 'lotSize', -5)).not.toBeNull();
+  });
+
   it('a corrigendum row still routes through its own field map (closeDate ok, lotSize refused)', async () => {
     const ok = await acceptCorrigendumSuggestion(stubDb({ ...base, fieldName: 'closeDate', evidence: {} }), 'c1', 'a', undefined, 'tok', 'adm');
     expect(ok.ok).toBe(true);

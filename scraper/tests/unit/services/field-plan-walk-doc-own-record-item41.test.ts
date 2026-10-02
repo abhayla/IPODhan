@@ -186,11 +186,29 @@ describe('item 41 the real walk over the real DOC fetcher', () => {
     expect((w.listDocDifferenceForAdmin.mock.calls[0] as any[])[0]).toMatchObject({ outcome: 'REPLACED', documentValue: '2400' });
   });
 
-  it('TEXT replacement REFUSED by the write checks (#721 lot rule) -> not SUPPLIED, nothing listed as replaced', async () => {
+  it('TEXT replacement REFUSED by the write checks (#721 lot rule) -> not SUPPLIED, stored value kept, ONE FAILED_VALIDATION listing', async () => {
     const w = walkSetup({ DOC: buildDocFetcher(deps()) }, ['DOC'], 'lot_size', { refusedLotFields: ['lotSize'] });
     await walkFieldPlanForIPO(IPO_ID, w.walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
     expect(w.recorded[0].state).not.toBe('SUPPLIED');
-    expect(w.listDocDifferenceForAdmin).not.toHaveBeenCalled();
+    expect(w.listDocDifferenceForAdmin).toHaveBeenCalledTimes(1);
+    expect((w.listDocDifferenceForAdmin.mock.calls[0] as any[])[0]).toMatchObject({
+      outcome: 'FAILED_VALIDATION',
+      documentValue: '2400',
+      storedValue: '1200',
+      storedSource: 'NSE',
+      documentType: 'RHP',
+    });
+    expect(String((w.listDocDifferenceForAdmin.mock.calls[0] as any[])[0].failedCheck).length).toBeGreaterThan(0);
+  });
+
+  it('FAILED_VALIDATION listing evidence names reason, rule, check, values and stored source', async () => {
+    const { docDifferenceEvidence } = await import('../../../src/services/field-plan-walk-deps.js');
+    const e = docDifferenceEvidence({
+      outcome: 'FAILED_VALIDATION', documentType: 'RHP', mark: 'TEXT', storedSource: 'NSE', failedCheck: 'lot rule', documentValue: '2400', storedValue: '1200',
+    } as never);
+    expect(e).toMatchObject({
+      reasonCode: 'FAILED_VALIDATION', rule: 'OD-161', check: 'lot rule', documentType: 'RHP', documentValue: '2400', storedValue: '1200', storedSource: 'NSE',
+    });
   });
 
   it('OCR difference -> no write, ONE KEPT listing, plan row not settled by DOC', async () => {

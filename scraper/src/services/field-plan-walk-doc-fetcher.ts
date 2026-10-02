@@ -474,6 +474,8 @@ type OwnRecordArgs = {
  * | differs; DOC outranks the owner; mark TEXT                  | SUPPLIED with the document's value -> the walk's normal    |
  * |                                                             |   write (its checks may refuse it); listed for the admin   |
  * |                                                             |   only when that write is accepted (OD-161(b))             |
+ * | ... and that write REFUSES it (the field's checks fail)     | stored value kept; listed for the admin under              |
+ * |                                                             |   FAILED_VALIDATION with the failed check (OD-62/63/95(b)) |
  */
 async function answerFromOwnRecord(deps: DocFetcherDeps, a: OwnRecordArgs): Promise<FieldFetcherAnswer | null> {
   if (!deps.receiptReader) return null;

@@ -509,8 +509,21 @@ export function docDifferenceKey(row: Pick<DocAdminListing, 'ipoId' | 'tableName
 
 /** The queue reads `documentType` (admin-queue-service documentFields), so the listing stores that key. */
 export function docDifferenceEvidence(
-  row: Pick<DocAdminListing, 'outcome' | 'documentType' | 'mark' | 'storedSource'>
+  row: Pick<DocAdminListing, 'outcome' | 'documentType' | 'mark' | 'storedSource'> &
+    Partial<Pick<DocAdminListing, 'failedCheck' | 'documentValue' | 'storedValue'>>
 ): Record<string, unknown> {
+  if (row.outcome === 'FAILED_VALIDATION') {
+    return {
+      origin: 'OD161_DOCUMENT_VALUE_FAILED_VALIDATION',
+      reasonCode: 'FAILED_VALIDATION',
+      rule: 'OD-161',
+      documentType: row.documentType,
+      check: row.failedCheck ?? null,
+      documentValue: row.documentValue ?? null,
+      storedValue: row.storedValue ?? null,
+      storedSource: row.storedSource,
+    };
+  }
   return {
     origin: row.outcome === 'REPLACED' ? 'OD161_DOCUMENT_REPLACED_WEBSITE_VALUE' : 'OD161_DOCUMENT_DIFFERENCE_KEPT',
     rule: 'OD-161',
