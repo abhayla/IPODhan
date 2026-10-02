@@ -1596,7 +1596,13 @@ async function checkM() {
     SELECT i.company_name, d.id::text AS document_id, d.type::text AS doc_type,
            (SELECT count(*) FROM promoters p WHERE p.ipo_id = d.ipo_id)::int AS promoter_rows,
            (SELECT count(*) FROM peer_companies pc WHERE pc.ipo_id = d.ipo_id)::int AS peer_rows,
-           coalesce(s.evidence::text, '') AS e6_evidence
+           coalesce(s.evidence::text, '') AS e6_evidence,
+           -- Item 46 (OD-165, OD-158): the cover STATES the issuer has no identifiable promoter
+           -- (NSE); the persister records it as an open NOT_PRINTED promoters row.
+           EXISTS (SELECT 1 FROM field_extraction_failures fef
+                    WHERE fef.ipo_id = d.ipo_id AND fef.table_name = 'promoters'
+                      AND fef.rule_id = 'NOT_PRINTED' AND fef.resolved_at IS NULL
+                      AND fef.cause LIKE '%: promoters_issuer_states_no_identifiable_promoter') AS promoters_stated_none
       FROM documents d
       JOIN ipos i ON i.id = d.ipo_id
       LEFT JOIN ipo_pipeline_steps s ON s.ipo_id = d.ipo_id AND s.step_id = 'E6'
@@ -1610,7 +1616,7 @@ async function checkM() {
     .flatMap((r) => {
       const out = [];
       const tag = `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)})`;
-      if (r.promoter_rows === 0) out.push(`${tag}: 0 promoters`);
+      if (r.promoter_rows === 0 && r.promoters_stated_none !== true) out.push(`${tag}: 0 promoters`);
       if (r.peer_rows === 0 && !/peer_comparison_issuer_states_no_listed_peers/.test(r.e6_evidence)) {
         const why = (r.e6_evidence.match(/"peerReason":"([^"]+)"/) || [])[1] || 'no E6 reason';
         out.push(`${tag}: 0 peers (${why})`);
@@ -1620,7 +1626,7 @@ async function checkM() {
   for (const v of yieldMisses)
     notify('prospectus_promoters_peers_yield', 'P2', v, 'A completed RHP/DRHP extraction left its IPO with no promoters or no peers', v);
   record('prospectus_promoters_peers_yield',
-    `every COMPLETED RHP/DRHP extracted since ${PROMOTER_PEER_WIRING_MERGED_AT} leaves its IPO with >=1 promoter row and >=1 peer row, or a stated no-listed-peers reason (${yieldRows.length} document(s) in the population)`,
+    `every COMPLETED RHP/DRHP extracted since ${PROMOTER_PEER_WIRING_MERGED_AT} leaves its IPO with >=1 promoter row (or a cover-stated no-identifiable-promoter NOT_PRINTED row) and >=1 peer row (or a stated no-listed-peers reason) (${yieldRows.length} document(s) in the population)`,
     yieldRows.length === 0
       ? 'UNVERIFIABLE'
       : (yieldMisses.length === 0 ? 'PASS' : 'FAIL'),

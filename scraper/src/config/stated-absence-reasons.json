@@ -30,6 +30,11 @@
       "reason": "no_fresh_issue_pure_offer_for_sale",
       "emittedBy": "scraper/scripts/objects_of_offer.py (objects_of_offer)",
       "printedStatement": "the OBJECTS OF THE OFFER chapter says the company will not receive any proceeds and has no Fresh Issue (a pure offer for sale)"
+    },
+    {
+      "reason": "promoters_issuer_states_no_identifiable_promoter",
+      "emittedBy": "scraper/scripts/extract_filing.py NO_IDENTIFIABLE_PROMOTER (promoter_names, promoter_name)",
+      "printedStatement": "our company does not have an identifiable promoter (offer document cover)"
     }
   ]
 }

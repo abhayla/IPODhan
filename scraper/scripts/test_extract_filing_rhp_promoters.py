@@ -113,3 +113,40 @@ def test_hyphenated_or_mixed_case_dash_line_is_not_a_statement(line):
     # dash form, like the ARE/IS form, is read only off an upper-case cover line.
     from extract_filing import read_cover_promoters
     assert read_cover_promoters([(0, line)]) == ([], None)
+
+
+# Item 46 (OD-165, OD-158): a cover that STATES "OUR COMPANY DOES NOT HAVE AN
+# IDENTIFIABLE PROMOTER" is a stated absence, not a miss. Real text: NSE RHP
+# pages 0-2 (tests/fixtures/cover-block/nse-rhp-cover-no-identifiable-promoter.txt).
+COVER_BLOCK = os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures", "cover-block")
+
+
+def load_text_pages(name):
+    with open(os.path.join(COVER_BLOCK, name), encoding="utf-8") as handle:
+        raw = handle.read()
+    out = []
+    for chunk in raw.split("<<<PAGE "):
+        if chunk.strip():
+            head, _, body = chunk.partition(">>>\n")
+            out.append((int(head), body))
+    return out
+
+
+def test_a_cover_stating_no_identifiable_promoter_is_a_stated_absence():
+    out = run(load_text_pages("nse-rhp-cover-no-identifiable-promoter.txt"), "RHP", "nse", "MAINBOARD")
+    for name in ("promoter_names", "promoter_name"):
+        field = out["fields"][name]
+        assert field["value"] is None
+        assert field["check"]["detail"] == "promoters_issuer_states_no_identifiable_promoter"
+        assert field["state"] == "STATED_NOT_PRINTED"
+        assert field["page"] == 0
+
+
+def test_the_no_identifiable_promoter_sentence_in_body_prose_is_not_a_cover_statement():
+    # Only the cover counts: the same sentence deep in the body (NSE p287) never
+    # turns a cover miss into a stated absence.
+    pages = [(0, "RED HERRING PROSPECTUS\nSome Company Limited")] + [(i, "") for i in range(1, 9)] + \
+        [(9, "Our Company does not have any identifiable promoter as on the date of this Red Herring Prospectus.")]
+    field = run(pages, "RHP", "synthetic", "MAINBOARD")["fields"]["promoter_names"]
+    assert field["check"]["detail"] == "our_promoters_statement_not_on_cover"
+    assert field["state"] == "MISSED"

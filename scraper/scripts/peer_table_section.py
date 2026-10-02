@@ -29,8 +29,12 @@ import re
 # The words between "comparison" and "with" vary ("of accounting ratios", "of
 # key accounting ratios"). Bounded rather than open so it cannot swallow half a
 # paragraph on its way to a later "with listed industry peers".
+# Item 46 (OD-165): "peer" is singular when the issuer names ONE listed peer -
+# NSE RHP p138, "6. Comparison of Accounting Ratios with listed industry peer"
+# (BSE Limited). The plural-only pattern reported that document as having only
+# the KPI table.
 _PEER_HEADING = re.compile(
-    r"comparison(?:\s+\S+){0,4}?\s+with\s+(?:the\s+)?listed\s+industry\s+peers",
+    r"comparison(?:\s+\S+){0,4}?\s+with\s+(?:the\s+)?listed\s+industry\s+peers?\b",
     re.I,
 )
 

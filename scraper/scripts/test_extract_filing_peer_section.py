@@ -41,6 +41,8 @@ CASES = [
     ("prasolchem-peer-table.txt", "6", "Comparison of Accounting Ratios", "Aarti Industries"),
     ("kanohar-peer-table.txt", "8", "key accounting ratios", "Hitachi Energy"),
     ("glasswall-peer-table.txt", "VI", "accounting ratios with listed industry peers", "Innovator"),
+    # Item 46: NSE RHP p138 prints the SINGULAR "listed industry peer" (one peer, BSE Limited).
+    ("nse-rhp-peer-table.txt", "6", "Accounting Ratios with listed industry peer", "BSE Limited"),
 ]
 
 
@@ -144,3 +146,26 @@ def test_text_with_no_such_section_returns_nothing_rather_than_guessing():
 
 def test_an_empty_document_does_not_raise():
     assert find_peer_table_section([]) == (None, [])
+
+
+def test_a_single_listed_peer_is_read_with_its_footnote_references_dropped():
+    # Item 46: NSE RHP p138 prints "BSE Limited(1) ... 54.28(2) 60.61(3) 45.00%(4)
+    # 163.60(5)"; each "(n)" is a footnote reference, never part of the name or
+    # the figure (glued to a figure, the persister cannot parse it and stores null).
+    import json
+    from peer_companies import extract_peer_companies
+    with open(os.path.join(FIXTURES, "nse-rhp-peer-table.txt"), encoding="utf-8") as handle:
+        text = handle.read().split(">>>\n", 1)[1]
+    with open(os.path.join(FIXTURES, "nse-rhp-peer-cells.json"), encoding="utf-8") as handle:
+        cells = json.load(handle)
+    found, reason = extract_peer_companies([(138, text)], lambda _i: cells, issuer_name=None)
+    assert reason is None
+    (peer,) = found["peers"]
+    assert peer["name"] == "BSE Limited"
+    assert (peer["pe"], peer["eps_basic"], peer["ronw_pct"], peer["nav"]) == ("54.28", "60.61", "45.00%", "163.60")
+    assert found["issuer"]["ronw_pct"] == "33.21%"
+
+
+def test_a_bracketed_negative_figure_is_not_taken_for_a_footnote():
+    from peer_companies import drop_footnote_refs
+    assert drop_footnote_refs({"name": "X Ltd", "eps_basic": "(4.20)", "pe": "(2)"}) ==         {"name": "X Ltd", "eps_basic": "(4.20)", "pe": "(2)"}

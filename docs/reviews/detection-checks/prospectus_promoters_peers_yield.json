@@ -2,7 +2,7 @@
   "id": "prospectus_promoters_peers_yield",
   "findingClass": "a completed RHP/DRHP extraction leaves its IPO with no promoters or no listed peers, and nothing names why - every prospectus prints both, so an empty child table after a completed read is a reader that failed in silence",
   "round7Findings": [],
-  "failThreshold": "any COMPLETED RHP/DRHP document extracted on or after the wiring date whose IPO has 0 promoters rows, or 0 peer_companies rows without the E6 step evidence peerReason peer_comparison_issuer_states_no_listed_peers; each offender is named with its document id and the extractor's own peer reason",
+  "failThreshold": "any COMPLETED RHP/DRHP document extracted on or after the wiring date whose IPO has 0 promoters rows and no open NOT_PRINTED promoters row whose cause is the cover-stated promoters_issuer_states_no_identifiable_promoter (item 46, OD-165), or 0 peer_companies rows without the E6 step evidence peerReason peer_comparison_issuer_states_no_listed_peers; each offender is named with its document id and the extractor's own peer reason",
   "severity": "P2",
   "unverifiableWhen": "no RHP/DRHP has completed extraction since the wiring date - the population is empty, which is a statement about the corpus and not about the pipeline",
   "section": "checks",
