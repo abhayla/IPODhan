@@ -150,7 +150,7 @@ const FS_NA = ['INVITS','REITS','TENDER','BUYBACK'];
 // the loop below (not split out) so field order in the generated manifest is unchanged.
 const REVENUE_CAPABILITY = {
   DOC: { capable: true, reason: 'the RHP prints the full restated 3-5 year revenue series' },
-  CHITTORGARH: { capable: true, reason: "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this" },
+  CHITTORGARH: { capable: false, reason: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); restated table prints Total Income, not revenue from operations; evidence docs/design/probes/od167-recheck.out.json" },
   NSE: { capable: false, reason: "§2.3.5: NSE's API returns bidding and demand data only — no financial fields" },
   BSE: { capable: false, reason: 'no BSE financials endpoint carries a restated series' },
 };
@@ -370,12 +370,12 @@ const WEB_OK = new Set(['ipos','ipo_details','financial_data','peer_companies','
 // financial_statements.basis, lot_multiple). Spec-label keys: BSE, NSE, CG.
 export const OD167_NOT_PRINTED = {
   'documents.filing_date': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no filing-date key, only the Prospectus_GID file URL; evidence docs/design/probes/od167-recheck.out.json" },
-  'ipo_details.exchanges': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json", NSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail labels (34 to 54) include no exchange list; SME pages are empty; evidence docs/design/probes/od167-recheck.out.json" },
-  'ipos.listing_exchanges': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json", NSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail labels (34 to 54) include no exchange list; SME pages are empty; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.exchanges': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipos.listing_exchanges': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no exchange key; evidence docs/design/probes/od167-recheck.out.json" },
   'ipo_details.fresh_issue': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no fresh-issue split; evidence docs/design/probes/od167-recheck.out.json" },
   'ipo_details.ofs_issue': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has only Issue_Size_No_of_shares, no OFS split; evidence docs/design/probes/od167-recheck.out.json" },
   'ipos.segment': { BSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO detail has no segment key; evidence docs/design/probes/od167-recheck.out.json" },
-  'ipo_details.bid_windows': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO page prints only IPO Open/Close dates; evidence docs/design/probes/od167-recheck.out.json", NSE: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); ipo-detail prints only Issue Period; evidence docs/design/probes/od167-recheck.out.json" },
+  'ipo_details.bid_windows': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); IPO page prints only IPO Open/Close dates; evidence docs/design/probes/od167-recheck.out.json" },
   'ipo_details.ipo_market_timings': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no market-timings label on the IPO page; evidence docs/design/probes/od167-recheck.out.json" },
   'ipo_details.tick_size': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no Tick label on the IPO page; evidence docs/design/probes/od167-recheck.out.json" },
   'ipo_details.sponsor_banks': { CG: "OD-167 (2026-10-02): not printed on any of 3 re-checked IPOs (mainboard, SME, closed/listed); no sponsor-bank label on the IPO page (the only mention is a use-of-proceeds phrase); evidence docs/design/probes/od167-recheck.out.json" },

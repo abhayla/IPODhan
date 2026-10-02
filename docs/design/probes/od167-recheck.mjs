@@ -110,14 +110,14 @@ function record(source, pick, url, r, tests) {
   const common = { source, ipo: pick.slug, ipo_class: pick.cls, segment: pick.segment, status: pick.status, url, fetched_at: nowStamp() };
   if (!r.ok || !tests) { rows.push({ ...common, pair: '*', printed: null, snippet: `fetch failed: ${r.error || 'HTTP ' + r.status}` }); return; }
   for (const [pair, v] of Object.entries(tests)) {
-    if (pair === '_obs') rows.push({ ...common, pair: '_observation', printed: null, snippet: JSON.stringify(v) });
+    if (pair === '_obs') rows.push({ ...common, pair: '_observation', kind: 'observation', note: 'outside this re-check; recorded for item 43 mapping', ...v });
     else rows.push({ ...common, pair, printed: v.printed, snippet: v.snippet, ...(v.issueInfoEmpty ? { issueInfoEmpty: true } : {}) });
   }
 }
 for (const p of picks.BSE) { const url = `https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=${p.key}`; const r = await get('BSE', p, url, { Referer: 'https://www.bseindia.com/' }); record('BSE', p, url, r, r.ok ? testBSE(r.body) : null); }
 for (const p of picks.CHITTORGARH) { const url = `https://www.chittorgarh.com/ipo/${p.slug}-ipo/${p.key}/`; const r = await get('CHITTORGARH', p, url, {}); record('CHITTORGARH', p, url, r, r.ok ? testCG(r.body) : null); }
 const jar = { value: '' };
-const prime = await fetchWithRetry('https://www.nseindia.com/', { cookieJar: jar, spacingMs: 15_000 }); fetchLog.push({ source: 'NSE', what: 'cookie prime', status: prime.status }); await sleep(GAP);
+const prime = await fetchWithRetry('https://www.nseindia.com/', { cookieJar: jar, spacingMs: 15_000 }); fetchLog.push({ source: 'NSE', what: 'cookie prime (homepage)', url: 'https://www.nseindia.com/', status: prime.status, fetched_at: nowStamp() }); await sleep(GAP);
 for (const p of picks.NSE) { const url = `https://www.nseindia.com/api/ipo-detail?symbol=${encodeURIComponent(p.key)}`; const r = await get('NSE', p, url, { Referer: 'https://www.nseindia.com/market-data/all-upcoming-issues-ipo' }, jar); record('NSE', p, url, r, r.ok ? testNSE(r.body) : null); }
 
 // ---- verdict per pair ----
@@ -127,7 +127,8 @@ const failedSources = new Set(rows.filter((r) => r.pair === '*').map((r) => r.so
 const verdicts = Object.entries(pairs).map(([k, rs]) => {
   const anyFail = rs.some((x) => x.printed === null) || failedSources.has(rs[0].source);
   const anyPrinted = rs.some((x) => x.printed === true);
-  const verdict = anyFail ? 'INCOMPLETE (not removed)' : anyPrinted ? 'PRINTED on re-check: map instead' : 'NOT PRINTED on all re-checked IPOs: remove';
+  const smeEmpty = rs.some((x) => x.segment === 'SME' && x.ipo_class === 'SME' && x.issueInfoEmpty);
+  const verdict = smeEmpty ? 'PARKED: SME re-check returned empty data (not removed; re-check when an NSE SME detail page serves data)' : anyFail ? 'INCOMPLETE (not removed)' : anyPrinted ? 'PRINTED on re-check: map instead' : 'NOT PRINTED on all re-checked IPOs: remove';
   return { pair: k, verdict, ipos: rs.map((x) => `${x.ipo}:${x.printed}`) };
 });
 saveOutput('od167-recheck', { probe: 'od167-recheck', spec: 'OD-167', generated_at: nowStamp(), picks, fetch_log: fetchLog, verdicts, rows });

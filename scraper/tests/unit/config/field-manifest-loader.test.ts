@@ -57,10 +57,8 @@ describe('loadFieldManifest', () => {
     // S0a retired Moneycontrol from every authored rank in the spec (MC_SERVES is empty); S0b's
     // generator reproduces that correction rather than the stale 3-source row item 2 hand-wrote —
     // see scripts/generate-field-manifest.mjs's header note and the S0b PR's 10-row diff.
-    expect(manifest.fields['financial_statements.revenue'].rank.MAINBOARD).toEqual([
-      'DOC',
-      'CHITTORGARH',
-    ]);
+    // OD-167 (2026-10-02): CHITTORGARH removed from revenue (its page prints Total Income only).
+    expect(manifest.fields['financial_statements.revenue'].rank.MAINBOARD).toEqual(['DOC']);
   });
 
   it('throws, naming the field AND the source, when rank[] names a source with capability.capable: false', () => {

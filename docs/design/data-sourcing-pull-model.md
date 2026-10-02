@@ -4485,9 +4485,9 @@ reading the document would not have shown. The current state:
 <!-- generated:source-depth — regenerate with `node docs/design/generate-appendix-a.mjs --write`. Hand-editing these numbers is what D2/D21 exist to catch: this table said three-sources 97 / two 22 / one 71 for the whole of this session while the spec's own STATS().depth returned 50/72/68 (Moneycontrol's retirement moved fields between buckets and nobody regenerated the count that describes it). -->
 | | Fields |
 |---|---:|
-| Three sources | **41** |
-| Two sources, reason stated (§A.3) | 78 |
-| One source, reason stated (§A.3) | 71 |
+| Three sources | **43** |
+| Two sources, reason stated (§A.3) | 77 |
+| One source, reason stated (§A.3) | 70 |
 | No source — computed (class C) or written by our own pipeline (class I) | 50 |
 | **Total** | **240** |
 <!-- end-source-depth -->
@@ -4655,7 +4655,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 14 | `ipos.price_range_min` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 15 | `ipos.price_range_max` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 16 | `ipos.last_scraped_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 17 | `ipos.listing_exchanges` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A15 | OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union. **OD-167:** BSE, NSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
+| 17 | `ipos.listing_exchanges` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A15 | OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union. **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 18 | `ipos.face_value` | D | DOC | BSE | NSE | DOC · BSE · CG | DOC · NSE · CG | A2 |  |
 | 19 | `ipos.allotment_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 20 | `ipos.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source |
@@ -4679,7 +4679,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 38 | `ipo_details.basis_of_allotment_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 39 | `ipo_details.initiation_of_refunds_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 40 | `ipo_details.credit_of_shares_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 41 | `ipo_details.exchanges` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A15 |  **OD-167:** BSE, NSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
+| 41 | `ipo_details.exchanges` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A15 |  **OD-167:** BSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 42 | `ipo_details.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 43 | `ipo_details.last_verified_at` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 44 | `ipo_details.compliance_officer` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
@@ -4690,7 +4690,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 49 | `ipo_details.lot_multiple` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A3 |  |
 | 50 | `ipo_details.allocation_pct` | D | DOC | — | — | DOC · — · — | DOC · — · — | A13 | no rank 2: observed absent 2026-09-09 - an earlier draft matched "Anchor Allocation Report" and mistook a document link for the allocation percentages |
 | 51 | `ipo_details.pre_ipo_placement` | D | DOC | — | — | DOC · — · — | DOC · — · — | D6 | no rank 2: disclosure exists only in the filing; stored as a boolean today, but a pre-IPO placement reduces the fresh issue and should carry an amount — issue-size fields are provisional until sourced from a PROSPECTUS |
-| 52 | `ipo_details.bid_windows` | D | DOC | — | — | DOC · — · — | DOC · — · — | B8 | clock windows, not dates — deliberately NOT in E-1 **OD-167:** CG, NSE removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
+| 52 | `ipo_details.bid_windows` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | B8 | clock windows, not dates — deliberately NOT in E-1 **OD-167:** CG removed, not printed on 3 re-checked IPOs (docs/design/probes/od167-recheck.out.json). |
 | 53 | `ipo_details.promoter_shares_held` | D | DOC | — | — | DOC · — · — | DOC · — · — | D2 | no rank 2: capital-structure table only |
 | 54 | `ipo_details.sebi_regulation_cited` | D | DOC | — | — | DOC · — · — | DOC · — · — | A12 | no rank 2: printed only on the advertisement |
 | 55 | `ipo_details.promoter_group_transactions_since_drhp` | D | DOC | — | — | DOC · — · — | DOC · — · — | D7 | no rank 2: disclosure exists only in the filing |
