@@ -2774,7 +2774,7 @@ test('(listed_source_never_asked) a settled row whose answers omit a listed sour
   assert.equal(r.status, 'FAIL');
   assert.match(r.labels[0], /ipos\.company_website CHITTORGARH NEVER_ASKED/);
   const unread = evaluateListedSourceNeverAsked([nRow({ cause: 'rank1:DOC:NOT_AVAILABLE_YET', answers: null })]);
-  assert.equal(unread.status, 'PASS');
+  assert.equal(unread.status, 'UNVERIFIABLE');
   assert.equal(unread.unresolved, 1);
 });
 
@@ -2800,4 +2800,43 @@ test('(item 37) the audit wires all five checks and the detection-check JSONs si
     const json = JSON.parse(readFileSync(new URL(`../../docs/reviews/detection-checks/${id}.json`, import.meta.url), 'utf8'));
     assert.equal(json.section, 'checks', id);
   }
+});
+
+// ---- fix round 1 (PR #1457 review): unresolved rows never PASS; boundaries pinned.
+const SYN_MANIFEST = { fields: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`ipos.f${i}`, {
+  documentType: 'RHP', rank: { MAINBOARD: ['DOC', 'NSE'] }, capability: { DOC: { capable: true } } }])) };
+const synDoc = (n) => ({ slug: 's', documentId: 'abcdefgh', type: 'RHP', receiptFields: Array.from({ length: n }, (_, i) => ['ipos', `f${i}`]) });
+
+test('(doc_yield_per_document) boundary: exactly at the 10% floor PASSes, just below FAILs', () => {
+  assert.equal(expectedFieldsForDocType(SYN_MANIFEST, 'RHP').size, 10);
+  assert.equal(evaluateDocYieldPerDocument([synDoc(1)], SYN_MANIFEST).status, 'PASS');
+  const below = evaluateDocYieldPerDocument([synDoc(0)], SYN_MANIFEST);
+  assert.equal(below.status, 'FAIL');
+  assert.match(below.detail, /all 1 judged documents below the 10% floor; expected until items 38-40 land \(#1454\)/);
+});
+
+test('(ocr_amount_magnitude) an OCR receipt with no comparator is UNVERIFIABLE, never PASS', () => {
+  const r = evaluateOcrAmountMagnitude([oRow('1785')], []);
+  assert.equal(r.status, 'UNVERIFIABLE');
+  assert.equal(r.unresolved, 1);
+  const onlyBad = evaluateOcrAmountMagnitude([oRow('1785')], [{ ...oRow('n/a'), via: 'TEXT receipt' }]);
+  assert.equal(onlyBad.status, 'UNVERIFIABLE');
+  assert.equal(evaluateOcrAmountMagnitude([oRow('1785')], [], 0).unresolved, 1);
+  assert.equal(evaluateOcrAmountMagnitude([], [], 1).status, 'UNVERIFIABLE');
+});
+
+test('(ocr_amount_magnitude) boundaries: exactly 10x and 10^1.0199 FAIL; 10^1.0201 and 1x PASS; k=0 never flagged', () => {
+  const run = (ratio) => evaluateOcrAmountMagnitude([oRow(String(100 * ratio))], [{ ...oRow('100'), via: 'TEXT receipt' }]).status;
+  assert.equal(run(10), 'FAIL');
+  assert.equal(run(10 ** 1.0199), 'FAIL');
+  assert.equal(run(10 ** 1.0201), 'PASS');
+  assert.equal(run(1), 'PASS');
+  assert.equal(run(10 ** 0.01), 'PASS');
+});
+
+test('(ocr_amount_magnitude) receipt and field_sources keys are both camelCase and match; a snake_case key does not', () => {
+  const ok = evaluateOcrAmountMagnitude([oRow('1.785', { fieldName: 'priceRangeMax' })], [{ ...oRow('1785', { fieldName: 'priceRangeMax' }), via: 'CHITTORGARH' }]);
+  assert.equal(ok.status, 'FAIL');
+  const drift = evaluateOcrAmountMagnitude([oRow('1.785', { fieldName: 'priceRangeMax' })], [{ ...oRow('1785', { fieldName: 'price_range_max' }), via: 'CHITTORGARH' }]);
+  assert.equal(drift.status, 'UNVERIFIABLE');
 });

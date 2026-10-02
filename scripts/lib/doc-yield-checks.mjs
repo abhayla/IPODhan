@@ -9,6 +9,8 @@ export const OFFER_DOC_TYPES = Object.freeze(['RHP', 'DRHP', 'PROSPECTUS']);
 // Floor share of the fields a document type gives. Today's staging median is 3 receipts of ~100
 // expected (F-224), so 0.10 flags every thin read; raise it as items 38-40 land (a ratchet).
 export const DOC_YIELD_FLOOR_SHARE = 0.10;
+// OCR magnitude window: |log10(ocr/other)| within 0.02 of a whole number k >= 1 (about 5% either side).
+export const OCR_MAGNITUDE_WINDOW_LOG10 = 0.02;
 
 export const toSnake = (name) => String(name).replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
 const fieldKey = (table, field) => `${table}.${toSnake(field)}`;
@@ -52,7 +54,9 @@ export function evaluateDocYieldPerDocument(docs, manifest, floorShare = DOC_YIE
   return {
     status: verdict(offenders, unresolved), unresolved, offenders,
     labels: offenders.map((o) => `${o.slug} ${o.type} ${String(o.id).slice(0, 8)} ${o.delivered}/${o.expected}`),
-    detail: `${offenders.length} of ${docs.length} COMPLETED offer document(s) below ${Math.round(floorShare * 100)}% of the fields their type gives`
+    detail: (offenders.length > 0 && offenders.length === docs.length - unresolved && docs.length > unresolved
+      ? `all ${offenders.length} judged documents below the ${Math.round(floorShare * 100)}% floor; expected until items 38-40 land (#1454)`
+      : `${offenders.length} of ${docs.length} COMPLETED offer document(s) below ${Math.round(floorShare * 100)}% of the fields their type gives`)
       + (unresolved ? `; ${unresolved} unresolvable (unknown type or no expected fields)` : ''),
   };
 }
@@ -171,7 +175,7 @@ export function evaluateListedSourceNeverAsked(rows, baselineGaps = []) {
     bySource.set(src, (bySource.get(src) ?? 0) + 1);
   }
   return {
-    status: list.length ? 'FAIL' : 'PASS', unresolved: unread, offenders: list,
+    status: verdict(list, unread), unresolved: unread, offenders: list,
     labels: list.map(([k, s]) => `${k}=${s.size} IPO(s) [${[...s].slice(0, 2).join(', ')}]${known.has(k) ? ' (baseline #884)' : ''}`),
     detail: `${list.length} source/field pair(s) listed but never asked or unmapped; by source ${[...bySource.entries()].map(([k, n]) => `${k}=${n}`).join(' ')}`
       + (unread ? `; ${unread} unsettled row(s) with no recorded answers (unread, not clean)` : ''),
@@ -181,9 +185,11 @@ export function evaluateListedSourceNeverAsked(rows, baselineGaps = []) {
 // ---- 5. ocr_amount_magnitude ------------------------------------------------------------------
 // ocr: [{slug, tableName, fieldName, rowKey, value}] OCR/MIXED receipts of 'keep'-unit MONEY fields;
 // comparisons: [{slug, tableName, fieldName, rowKey, value, via}] text receipts / exchange or website
-// stored values. FAIL when max/min is within 5% (in log10) of 10^k, k >= 1. Unparsable or non-positive
-// OCR amounts are skipped and counted (unresolved).
-export function evaluateOcrAmountMagnitude(ocr, comparisons) {
+// stored values. FAIL when |log10(ocr/other)| is within OCR_MAGNITUDE_WINDOW_LOG10 (0.02, about 5%) of a
+// whole k >= 1. B4(c): an OCR amount that is unparsable, has no comparator, or whose only comparators are
+// unparsable could not be judged and is counted in `unresolved` (UNVERIFIABLE when nothing else fails).
+// `extraUnresolved`: pairs the collector could not read (unknown table/column), counted by the caller.
+export function evaluateOcrAmountMagnitude(ocr, comparisons, extraUnresolved = 0) {
   const idx = new Map();
   for (const c of comparisons) {
     const k = `${c.slug}|${c.tableName}|${c.rowKey ?? ''}|${c.fieldName}`;
@@ -191,19 +197,23 @@ export function evaluateOcrAmountMagnitude(ocr, comparisons) {
     idx.get(k).push(c);
   }
   const found = [];
-  let unresolved = 0;
+  let unresolved = extraUnresolved;
+  let noComparator = 0;
   for (const o of ocr) {
     const a = Number(String(o.value).replace(/,/g, ''));
     if (!Number.isFinite(a) || a <= 0) { unresolved++; continue; }
+    let usable = 0;
     for (const c of idx.get(`${o.slug}|${o.tableName}|${o.rowKey ?? ''}|${o.fieldName}`) ?? []) {
       const b = Number(String(c.value).replace(/,/g, ''));
       if (!Number.isFinite(b) || b <= 0) continue;
+      usable++;
       const l = Math.log10(a / b);
       const k = Math.round(Math.abs(l));
-      if (k >= 1 && Math.abs(Math.abs(l) - k) < 0.05) {
+      if (k >= 1 && Math.abs(Math.abs(l) - k) < OCR_MAGNITUDE_WINDOW_LOG10) {
         found.push({ slug: o.slug, field: `${o.tableName}.${o.fieldName}`, ocr: o.value, other: c.value, via: c.via, factor: `10^${l > 0 ? k : -k}` });
       }
     }
+    if (usable === 0) { unresolved++; noComparator++; }
   }
   const seen = new Set();
   const offenders = found.filter((o) => {
@@ -216,7 +226,7 @@ export function evaluateOcrAmountMagnitude(ocr, comparisons) {
     status: verdict(offenders, unresolved), unresolved, offenders,
     labels: offenders.map((o) => `${o.slug} ${o.field} OCR=${o.ocr} vs ${o.via}=${o.other} (${o.factor})`),
     detail: `${offenders.length} OCR amount(s) off by a power of ten against a text or exchange value (of ${ocr.length} OCR receipts)`
-      + (unresolved ? `; ${unresolved} unparsable OCR value(s)` : ''),
+      + (unresolved ? `; ${unresolved} OCR receipt(s)/pair(s) could not be judged (${noComparator} with no usable comparator; rest unparsable or unreadable table/column)` : ''),
   };
 }
 
@@ -294,11 +304,12 @@ export async function runOcrAmountMagnitude(q, manifest) {
     const c = await q(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, [t]);
     cols.set(t, new Set(c.map((x) => x.column_name)));
   }
+  let unreadable = 0;
   const pairs = new Map();
   for (const r of ocr) pairs.set(`${r.tableName}|${r.fieldName}`, { tableName: r.tableName, fieldName: r.fieldName });
   for (const { tableName, fieldName } of pairs.values()) {
     const col = toSnake(fieldName);
-    if (!cols.get(tableName)?.has(col)) continue;
+    if (!cols.get(tableName)?.has(col)) { unreadable++; continue; }
     const joinOn = tableName === 'ipos' ? 'x.id = i.id' : 'x.ipo_id = i.id';
     const stored = await q(
       `SELECT i.slug, fs.source::text AS via, x."${col}"::text AS value
@@ -309,5 +320,5 @@ export async function runOcrAmountMagnitude(q, manifest) {
     );
     for (const s of stored) comparisons.push({ slug: s.slug, tableName, fieldName, rowKey: '', value: s.value, via: s.via });
   }
-  return evaluateOcrAmountMagnitude(ocr, comparisons);
+  return evaluateOcrAmountMagnitude(ocr, comparisons, unreadable);
 }

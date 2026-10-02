@@ -827,9 +827,9 @@
       "id": "ocr_amount_magnitude",
       "findingClass": "An OCR amount off by a power of ten against a text or exchange value for the same IPO field.",
       "round7Findings": [],
-      "failThreshold": "FAIL per IPO and field when an OCR-marked amount differs from the text or exchange value by a ratio of 10, 100 or 1000 (within 1%). Reported by IPO, field, both values and sources.",
+      "failThreshold": "FAIL per IPO and field when an OCR-marked amount differs from the text or exchange value by a ratio of 10, 100 or 1000 (within 0.02 in log10, about 5%). Reported by IPO, field, both values and sources.",
       "severity": "P1",
-      "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+      "unverifiableWhen": "An OCR/MIXED receipt has no usable comparator (no text receipt or exchange/website stored value), its amount is unparsable, or its table/column cannot be read; also when the staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
       "note": "Implemented in scripts/audit-detection-floor.mjs (record('ocr_amount_magnitude') via scripts/lib/doc-yield-checks.mjs); OD-164 spec 2.5.6, build item 37. Unit fixtures (FAIL + PASS) in scripts/tests/audit-detection-floor.test.mjs.",
       "owner": "document-yield plan (OD-164), spec 7.1 item 37",
       "auditScript": "scripts/audit-detection-floor.mjs"
