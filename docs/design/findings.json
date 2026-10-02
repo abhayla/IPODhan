@@ -2247,6 +2247,24 @@
       "title": "NSE keeps serving ipo-detail after an IPO leaves its boards, and corrects values there",
       "detail": "Measured 2026-10-03 01:28 IST, read-only, one NSE session: RUNWALENTR (Runwal Enterprises, CLOSED 29-Sep-2026) is absent from /api/ipo-current-issue (VNL, NITYAS, EVENTIONS) and /api/all-upcoming-issues (VNL, NITYAS, SMCG04, RKFAL), while /api/ipo-detail?symbol=RUNWALENTR still serves issueInfo.dataList with 'Price Range' = 'Rs. 290 to Rs. 305 per Equity Share', 'Issue Period' 25-Sep-2026 to 29-Sep-2026, 'Bid Lot' 49 (fixtures scraper/tests/fixtures/nse/*.live-2026-10-03.json). Staging stored price_range_max 302 from NSE (ipo_source_keys NSE attrs priceMax 302 bound 2026-09-24; BSE key 290/305; field_sources previous value 305 from CHITTORGARH). The walk's NSE fetcher read only the boards, so every later NSE ask for an off-board IPO answered NOT_AVAILABLE_YET or, when the board scrape failed, CHECK_FAILED 'NSE board empty'. Staging 2026-10-02 20:12Z (docs/design/probes/nse-detail-fallback-population.out.json): 139 NSE-ranked plan rows CHECK_FAILED 'NSE board empty' across CLOSED 19 / LISTED 1 / OPEN 5 / UPCOMING 1 IPOs; of 185 CLOSED/LISTED IPOs with NSE plan rows only 19 carry an ACTIVE NSE_ISSUE key (the identity the ipo-detail read needs; the rest have none or a RELEASED key). Fix #1486: the fetcher reads ipo-detail by the ACTIVE key when the IPO is off the boards. Open: the 166 keyless CLOSED/LISTED IPOs still cannot be re-read from NSE; the board scrape failing for OPEN IPOs on staging (source=browser) is a separate defect.",
       "phase1": false
+    },
+    {
+      "id": "F-233",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "§2.5.6 item 5; Appendix A rows 56-81 (financial_data); OD-99 writer capability; item 43",
+      "title": "The field-plan walk cannot write financial_data: an IPO-level answer is refused MISSING_ROW_KEY, so a website value never reaches the page",
+      "detail": "Measured 2026-10-03 from code on main 557e368e8 (item 43 round 2): financial_data is one row per IPO (schema.ts financialData.ipoId unique), but it is in neither SINGLETON_ROW_CHILD_TABLES (consolidated-writer-capability.ts: ipo_details, anchor_investors) nor CHILD_ROW_TABLES (packages/shared child-row-field-writer.ts). A walk write for (financial_data, row_key '') is refused by data-consolidation-orchestrator.ts (rowKey === '' on a non-singleton table -> MISSING_ROW_KEY, a structural skip parked WRITER_CANNOT_ACCEPT), and DOC_READABLE_TABLES is [ipos, ipo_details], so DOC does not answer it either. Effect: the 21 Chittorgarh financial_data pairs mapped in item 43 round 2 (e.g. Runwal Enterprises net_worth 768.20, market_cap 4507.61, promoter holding 95.16 / 84.6) are read and recorded as answers but are not written; the staging NSE field table of 2026-10-02 lists 20 financial_data columns empty. The rule is settled by the spec: OD-73 (the published value is the highest-ranked SUPPLIED answer) with Appendix A ranks (DOC above CHITTORGARH for every one of these fields) means a Chittorgarh answer may fill an EMPTY financial_data field or be recorded as a witness, and never replaces a DOC-supplied value. The remaining gap is technical only: the walk writer has no row key for financial_data (add it as a one-row-per-IPO table honouring OD-73), not a decision.",
+      "phase1": false
+    },
+    {
+      "id": "F-234",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "Appendix A row 72 financial_data.market_cap; scraper/scripts/backfill-financials-chittorgarh-detail.ts",
+      "title": "The Chittorgarh financial backfill stores the PRE-IPO market cap; spec row 72 defines market_cap as post-issue shares x cap",
+      "detail": "Measured 2026-10-03 on live Chittorgarh detail pages: the valuation table prints 'Market Cap at Offer Price' with a Pre IPO and a Post IPO cell (Runwal Enterprises 4,007.44 Cr / 4,507.61 Cr; Vishal Nirmiti 435.60 / 580.60; Dove Soft 211.55 / 270.69). extractFinancialsFromDetailHtml (chittorgarh-detail-fields.ts, used only by the backfill script) reads the Pre IPO cell, while Appendix A row 72 says market_cap = post-issue shares x cap. The item 43 round 2 walk reader takes the Post IPO cell. Rows written by past backfill runs are unmeasured (needs a read of financial_data.market_cap against each IPO's CG page).",
+      "phase1": false
     }
   ],
   "false_assertions": [

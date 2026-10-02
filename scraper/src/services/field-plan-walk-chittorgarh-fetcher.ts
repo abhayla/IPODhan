@@ -6,14 +6,11 @@
  * `chittorgarh-scraper-orchestrator*.ts` uses — is called at most once per
  * cycle via the memoised state below, never per field.
  *
- * CAPABILITY: `ChittorgarhIPO` (the mapped shape) carries `issueSize` only —
- * no fresh/OFS split, no financial series (that lives behind the SEPARATE
- * detail-page scrape in `chittorgarh-detail-fields.ts`, which this slice does
- * not call — ruling 33 is whole-IPO per source, and the list scrape is
- * Chittorgarh's whole-IPO call here). So `financial_statements.revenue` and
- * every `ipo_details.*` field in this manifest slice answer NOT_PRINTED from
- * Chittorgarh for now, named explicitly in the PR body rather than silently
- * guessed at.
+ * CAPABILITY: the list row (`ChittorgarhIPO`) serves the list fields; the IPO's
+ * own detail page (one memoised GET per IPO per cycle) serves the detail fields
+ * below, including `financial_data` and the `ipo_details` timetable dates (item
+ * 43 round 2). A pair with no mapping answers CHECK_FAILED transient (a code gap,
+ * re-askable), never NOT_PRINTED.
  */
 
 import type { FieldFetcher, FieldFetcherAnswer } from './field-plan-walk.js';
@@ -24,10 +21,16 @@ import { extractSectorFromDetailHtml, fetchChittorgarhDetailHtml } from '../scra
 import {
   extractAllotmentDateFromDetailHtml,
   extractFaceValueDecimalFromDetailHtml,
-  extractIsinFromDetailHtml,
   extractLotSizeFromDetailHtml,
   extractRegistrarFromDetailHtml,
 } from '../scrapers/chittorgarh-detail-fields.js';
+import {
+  readChittorgarhAnchorBidDate,
+  readChittorgarhFinancialData,
+  readChittorgarhIsin,
+  readChittorgarhTimetableDate,
+  type DetailRead,
+} from '../scrapers/chittorgarh-detail-financials.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
 // `plan.fieldName` is the manifest's snake_case key; `ChittorgarhIPO`'s
 // fields are camelCase.
@@ -63,17 +66,77 @@ const CHITTORGARH_DETAIL_EXTRACTORS: ReadonlyMap<string, (html: string) => strin
   string,
   (html: string) => string | number | null
 >([
-  ['ipos.isin', extractIsinFromDetailHtml],
   ['ipos.allotmentDate', extractAllotmentDateFromDetailHtml],
   ['ipos.faceValue', extractFaceValueDecimalFromDetailHtml],
   ['ipos.lotSize', extractLotSizeFromDetailHtml],
   ['ipos.registrar', extractRegistrarFromDetailHtml],
 ]);
 
+// Item 43 round 2 (OD-164(e)): detail-page pairs read fail-closed (chittorgarh-detail-financials.ts),
+// each proven on real pages fetched 2026-10-02/03 (Runwal mainboard listed, Vishal Nirmiti mainboard
+// open, Dove Soft SME). A read answers a value, `absent` (not printed for this IPO, OD-60) or
+// `refused` with its reason (two different values, unreadable unit, out of bounds).
+// financial_data: money columns in crore converted once from the table's own unit line; FY slots by
+// the printed period label; market_cap is the POST IPO column (Appendix A row 72); roe falls back to
+// RoNW when no ROE row is printed (OD-167). Not mapped: revenue_fy* (F-230: CG prints Total Income,
+// not revenue) and eps (restated basic EPS; CG prints only pre/post-IPO EPS).
+const CHITTORGARH_FINANCIAL_DATA_FIELDS: readonly string[] = [
+  'totalIncomeFy2022',
+  'totalIncomeFy2023',
+  'totalIncomeFy2024',
+  'profitFy2022',
+  'profitFy2023',
+  'profitFy2024',
+  'ebitdaFy2022',
+  'ebitdaFy2023',
+  'ebitdaFy2024',
+  'netWorth',
+  'reservesAndSurplus',
+  'totalAssets',
+  'totalBorrowing',
+  'roe',
+  'ronw',
+  'debtToEquity',
+  'preIpoEps',
+  'postIpoEps',
+  'marketCap',
+  'promoterHoldingPreIssue',
+  'promoterHoldingPostIssue',
+];
+
+/** Single-entry memo: one parse of a detail page serves every financial_data field of that IPO. */
+let lastFinancialParse: { html: string; reads: Map<string, DetailRead> } | null = null;
+function financialRead(html: string, column: string): DetailRead {
+  if (lastFinancialParse?.html !== html) lastFinancialParse = { html, reads: readChittorgarhFinancialData(html) };
+  return lastFinancialParse.reads.get(column) ?? { absent: true };
+}
+
+const CHITTORGARH_DETAIL_READS: ReadonlyMap<string, (html: string) => DetailRead> = new Map<
+  string,
+  (html: string) => DetailRead
+>([
+  ...CHITTORGARH_FINANCIAL_DATA_FIELDS.map(
+    (column) => [`financial_data.${column}`, (html: string) => financialRead(html, column)] as const
+  ),
+  ['ipo_details.basisOfAllotmentDate', (html) => readChittorgarhTimetableDate(html, 'Tentative Allotment')],
+  ['ipo_details.initiationOfRefundsDate', (html) => readChittorgarhTimetableDate(html, 'Initiation of Refunds Description')],
+  ['ipo_details.creditOfSharesDate', (html) => readChittorgarhTimetableDate(html, 'Credit of Shares to Demat Description')],
+  ['ipo_details.faceValue', (html) => absentIfNull(extractFaceValueDecimalFromDetailHtml(html))],
+  // ISIN (ipos and ipo_details): INE + 9 with a valid check digit, else refused (review round 1).
+  ['ipos.isin', readChittorgarhIsin],
+  ['ipo_details.isin', readChittorgarhIsin],
+  ['anchor_investors.bidDate', readChittorgarhAnchorBidDate],
+]);
+
+function absentIfNull(v: string | number | null): DetailRead {
+  return v === null || v === '' ? { absent: true } : { value: v };
+}
+
 export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
   ...CHITTORGARH_LIST_FIELDS,
   'ipos.sector',
   ...CHITTORGARH_DETAIL_EXTRACTORS.keys(),
+  ...CHITTORGARH_DETAIL_READS.keys(),
 ]);
 
 /** CG "Listing at" -> the stored `ipos.listing_exchanges` array; an unread board stays absent. */
@@ -250,6 +313,26 @@ export function buildChittorgarhFetcher(
         return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: face value ${value} not in {1,2,5,10}` };
       }
       return { outcome: 'SUPPLIED', value };
+    }
+
+    const detailRead = CHITTORGARH_DETAIL_READS.get(key);
+    if (detailRead) {
+      if (!row.verifierUrl) return { outcome: 'NOT_AVAILABLE_YET' };
+      let html: string;
+      try {
+        html = await state.getDetailHtml(row.verifierUrl, deps.fetchDetailHtml ?? fetchChittorgarhDetailHtml);
+      } catch (error) {
+        return {
+          outcome: 'CHECK_FAILED',
+          reason: error instanceof Error ? error.message : String(error),
+          transient: true,
+        };
+      }
+      const read = detailRead(html);
+      if ('refused' in read) return { outcome: 'CHECK_FAILED', reason: `FAILED_VALIDATION: ${read.refused}` };
+      if ('absent' in read) return { outcome: 'NOT_AVAILABLE_YET' };
+      // A provenance note (e.g. OD-167 "RoNW used for ROE") travels as the answer's cause.
+      return { outcome: 'SUPPLIED', value: read.value, ...(read.note ? { cause: read.note } : {}) };
     }
 
     if (camelFieldName === 'sector') {

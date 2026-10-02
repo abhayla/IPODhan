@@ -136,7 +136,11 @@ function suppliedRankAnswer(
       ...(typeof answer.rowCount === 'number' ? { rowCount: answer.rowCount } : {}),
     };
   }
-  return rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType });
+  return rankAnswer(rank, source, 'SUPPLIED', {
+    value: answer.value,
+    docType: answer.documentType,
+    ...(answer.cause ? { cause: answer.cause } : {}),
+  });
 }
 
 /** The stored shape of one answer (plan row or witness): credited answers carry their marker, never a value. */
@@ -262,6 +266,8 @@ export type FieldFetcherAnswer =
        * for the admin ONLY when the write is accepted (a refused write replaced nothing).
        */
       adminListing?: DocAdminListing;
+      /** A provenance remark recorded as the answer's cause (e.g. OD-167 "RoNW used for ROE"). */
+      cause?: string;
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
