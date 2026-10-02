@@ -91,7 +91,7 @@ import { IDENTIFIER_HELD_RULE } from './identifier-refusal.js';
  * `writeWitnessVerdict`); a field with no stored value has no field_sources row (#684), so its
  * answers go onto its plan row instead (OD-137, `planRowAnswers`).
  */
-interface RankAnswer {
+export interface RankAnswer {
   rank: number;
   source: string;
   outcome: WitnessOutcome;
@@ -948,6 +948,59 @@ export async function walkFieldPlanForIPO(
 }
 
 /**
+ * Ask every rank the field's policy lists ONCE, with the existing fetchers, and return each answer
+ * in OD-103 shape (outcome + cause; a credited answer keeps its marker and a null value). Writes
+ * nothing. Shared by the admin-held read (§2.4 clarification) and the OD-163(b) answers-only round
+ * (field-plan-answers-round.ts). A missing fetcher or a throwing one is a FAILED answer with its
+ * cause, never SUPPLIED (fail closed). Returns null when the IPO row cannot be read.
+ */
+export async function askEveryListedRank(
+  ipoId: string,
+  plan: { tableName: string; rowKey?: string | null; fieldName: string; ipoId?: string },
+  deps: FieldPlanWalkDeps,
+  resolveIpoType: () => Promise<ReturnType<typeof resolveIpoTypeKey> | null>,
+  context: FieldFetcherContext = {}
+): Promise<{ policy: FieldSourcePolicy; answers: RankAnswer[] } | null> {
+  const resolution = await resolvePolicyForPlan(plan, deps, resolveIpoType);
+  if (resolution.outcome === 'IPO_ROW_NOT_FOUND') return null;
+  const policy = resolution.policy;
+  const answers: RankAnswer[] = [];
+  for (const [i, source] of policy.ranks.entries()) {
+    if (!source) continue;
+    const rank = i + 1;
+    const fetcher = deps.sourceFetchers[source];
+    if (!fetcher) {
+      answers.push(
+        rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:NO_FETCHER_REGISTERED ${fieldPlanGapToken('NO_FETCHER')}` })
+      );
+      continue;
+    }
+    let answer: FieldFetcherAnswer;
+    try {
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, context);
+    } catch (error) {
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:THROWN:${causeOf(error)}` }));
+      continue;
+    }
+    if (answer.outcome === 'SUPPLIED') {
+      answers.push(suppliedRankAnswer(rank, source, answer));
+    } else if (answer.outcome === 'CHECK_FAILED') {
+      answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: `rank${rank}:${source}:CHECK_FAILED:${answer.reason}` }));
+    } else if (answer.outcome === 'NOT_PRINTED' || answer.outcome === 'NOT_AVAILABLE_YET') {
+      answers.push(rankAnswer(rank, source, answer.outcome));
+    } else {
+      // B4(c) fail closed: an answer this code cannot classify is FAILED with its cause, never SUPPLIED.
+      const unknown = (answer as { outcome?: unknown })?.outcome;
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:UNCLASSIFIED_ANSWER:${String(unknown)}` }));
+    }
+  }
+  return { policy, answers };
+}
+
+/** The ipo-type resolver the walk uses, memoized per IPO (exported for the answers-only round). */
+export const ipoTypeResolverFor = makeIpoTypeResolver;
+
+/**
  * §2.4 clarification ("'skip' ... means 'never WRITE', not 'never read'"), §9.2 items 9 and 19,
  * OD-103, OD-106: ask every ranked source of an admin-held field ONCE, as `attemptOneField` would
  * at this read, and write NOTHING -- no value, no plan state, no evidence. Each answer is a
@@ -965,35 +1018,9 @@ async function readHeldField(
   deps: FieldPlanWalkDeps,
   resolveIpoType: () => Promise<ReturnType<typeof resolveIpoTypeKey> | null>
 ): Promise<false | 'READ' | 'HOLD_RELEASED'> {
-  const resolution = await resolvePolicyForPlan(plan, deps, resolveIpoType);
-  if (resolution.outcome === 'IPO_ROW_NOT_FOUND') return false;
-  const policy = resolution.policy;
-  const answers: RankAnswer[] = [];
-  for (const [i, source] of policy.ranks.entries()) {
-    if (!source) continue;
-    const rank = i + 1;
-    const fetcher = deps.sourceFetchers[source];
-    if (!fetcher) {
-      answers.push(
-        rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:NO_FETCHER_REGISTERED ${fieldPlanGapToken('NO_FETCHER')}` })
-      );
-      continue;
-    }
-    let answer: FieldFetcherAnswer;
-    try {
-      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, { held: true });
-    } catch (error) {
-      answers.push(rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:THROWN:${causeOf(error)}` }));
-      continue;
-    }
-    if (answer.outcome === 'SUPPLIED') {
-      answers.push(suppliedRankAnswer(rank, source, answer));
-    } else if (answer.outcome === 'CHECK_FAILED') {
-      answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: `rank${rank}:${source}:CHECK_FAILED:${answer.reason}` }));
-    } else {
-      answers.push(rankAnswer(rank, source, answer.outcome));
-    }
-  }
+  const asked = await askEveryListedRank(ipoId, plan, deps, resolveIpoType, { held: true });
+  if (asked === null) return false;
+  const { policy, answers } = asked;
 
   let witnessesStored: boolean | 'not-attempted' = 'not-attempted';
   try {
@@ -1125,7 +1152,7 @@ export function mergeHeldWitnesses(
 }
 
 /** The witness shape of a pass's answers (rank order), independent of the verdict-writer flag. */
-function witnessShape(answers: readonly RankAnswer[]): Witness[] {
+export function witnessShape(answers: readonly RankAnswer[]): Witness[] {
   return answers.map(storedAnswerShape);
 }
 

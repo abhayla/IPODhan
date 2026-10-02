@@ -2757,6 +2757,23 @@ test('(witness_missing_on_stored_value) ADMIN rows and single-source fields are 
   assert.equal(evaluateWitnessMissing([wRow({ fieldName: 'unknownField' })], W_MANIFEST).status, 'UNVERIFIABLE');
 });
 
+test('(witness_missing_on_stored_value) an all-FAILED witness set is NOT coverage: named by identity, never PASS (#1468 MINOR-2)', () => {
+  const failedOnly = wRow({ witnesses: [{ source: 'NSE', outcome: 'FAILED', cause: 'THROWN:down' }, { source: 'BSE', outcome: 'FAILED' }] });
+  const r = evaluateWitnessMissing([failedOnly], W_MANIFEST);
+  assert.equal(r.offenders.length, 0);
+  assert.equal(r.allFailed.length, 1);
+  assert.equal(r.status, 'UNVERIFIABLE');
+  assert.match(r.labels.join(' '), /all answers FAILED \(asked, not witnessed\) 1: national-stock-exchange-of-india-ltd ipos\.priceRangeMax/);
+  assert.match(r.detail, /1 more have only FAILED answers/);
+  // One real answer among the failures is a witness: covered.
+  const mixed = wRow({ witnesses: [{ source: 'NSE', outcome: 'FAILED' }, { source: 'BSE', outcome: 'NOT_PRINTED' }] });
+  assert.equal(evaluateWitnessMissing([mixed], W_MANIFEST).status, 'PASS');
+  // A missing witness still FAILs, with the all-FAILED set reported beside it.
+  const both = evaluateWitnessMissing([wRow(), failedOnly], W_MANIFEST);
+  assert.equal(both.status, 'FAIL');
+  assert.equal(both.allFailed.length, 1);
+});
+
 const nRow = (o = {}) => ({ slug: 'national-stock-exchange-of-india-ltd', tableName: 'ipos', fieldName: 'company_website', state: 'CHECK_FAILED',
   rank2Source: 'CHITTORGARH', rank3Source: null, cause: '[gap-key:x] rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field [gap:NO_MAPPING]', answers: null, ...o });
 

@@ -1238,7 +1238,7 @@
       "round7Findings": [],
       "failThreshold": "FAIL per IPO and field when field_sources.witnesses holds no answer for a listed source other than the winner. Reported by IPO, table, field and writer.",
       "severity": "P1",
-      "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32).",
+      "unverifiableWhen": "The staging database or the document_field_receipts rows cannot be read, or the document file was purged (OD-32). Also UNVERIFIABLE (never PASS) when a stored value's only recorded answers are all FAILED: the sources were asked but none witnessed it; those rows are named by IPO and field (#1468 round 1).",
       "note": "Implemented in scripts/audit-detection-floor.mjs (record('witness_missing_on_stored_value') via scripts/lib/doc-yield-checks.mjs); OD-164 spec 2.5.6, build item 37. Unit fixtures (FAIL + PASS) in scripts/tests/audit-detection-floor.test.mjs.",
       "owner": "document-yield plan (OD-164), spec 7.1 item 37",
       "auditScript": "scripts/audit-detection-floor.mjs"

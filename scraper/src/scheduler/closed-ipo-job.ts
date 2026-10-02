@@ -46,6 +46,8 @@ export interface ClosedIpoCandidate {
   id: string;
   closeDate: Date | string | null;
   status: string;
+  /** Selected ONLY for its OD-163(b) answers-only round: run that; no walk, no resourcing row. */
+  answersOnly?: boolean;
 }
 
 export interface ClosedIpoJobDeps {
@@ -72,6 +74,17 @@ export interface ClosedIpoJobDeps {
    * IPO walked -- a walk without its snapshot is exactly what F-31 forbids.
    */
   snapshotFieldSources: (ipoIds: string[]) => Promise<{ path: string; rows: number }>;
+  /**
+   * Item 42 (OD-163(b)): run the answers-only round for an `answersOnly` pick. Absent = no such pick
+   * is selected (production passes it only while ENABLE_VERDICT_WRITER is on).
+   */
+  runAnswersRound?: (ipoId: string) => Promise<{
+    roundStamped: boolean;
+    stoppedAtDeadline: boolean;
+    asked: number;
+    recorded: number;
+    skipReason?: string;
+  }>;
   now?: Date;
   cap?: number;
 }
@@ -81,6 +94,8 @@ export interface ClosedIpoJobSummary {
   attempted: number;
   outcomes: Record<ClosedIpoOutcome, number>;
   skippedCycleLockHeld: boolean;
+  /** Item 42: picks that ran only the answers-only round (never counted in `attempted`/`outcomes`). */
+  answersRoundOnly: number;
   /** Where the F-31 snapshot for this run was written; null when nothing was selected. */
   snapshot: { path: string; rows: number } | null;
 }
@@ -150,63 +165,84 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * nothing interpolates this string into a query.
  */
 export const CLOSED_IPO_CANDIDATES_SQL = `
-  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
+  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status, NOT c.due AS "answersOnly"
     FROM ipos i
     LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+    CROSS JOIN LATERAL (
+      SELECT coalesce((
+        r.ipo_id IS NULL
+        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
+        OR (
+          r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
+          AND (
+            (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
+            OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
+            OR EXISTS (
+              SELECT 1 FROM document_fetch_state d
+               WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
+            )
+          )
+        )
+      ), false) AS due
+    ) c
    WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
      AND i.close_date < CURRENT_DATE
      AND i.hidden_at IS NULL
      AND (
-       r.ipo_id IS NULL
-       OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
-       OR (
-         r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
-         AND (
-           (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
-           OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
-           OR EXISTS (
-             SELECT 1 FROM document_fetch_state d
-              WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
-           )
-         )
-       )
+       c.due
+       OR ($2 AND upper(i.status::text) = 'LISTED' AND i.answers_round_at IS NULL)
      )
-   ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
-   LIMIT $2
+   ORDER BY (r.ipo_id IS NOT NULL), (NOT c.due), i.close_date DESC, i.id
+   LIMIT $3
 `;
 
 /**
- * The executed selection (§6.1 rules 1-4 + §6.2 retry + OD-81 events), bound
- * parameters only. Exported (with the builder) so the integration test runs THIS
- * query against ipodhan_test and the unit test renders THIS template.
+ * The executed selection (§6.1 rules 1-4 + §6.2 retry + OD-81 events + OD-163(b) answers round),
+ * bound parameters only. Exported (with the builder) so the integration test runs THIS query against
+ * ipodhan_test and the unit test renders THIS template.
+ *
+ * Item 42 (OD-163(b), #1468 round 1 MAJOR-1): a LISTED IPO whose answers-only round never completed
+ * (`answers_round_at IS NULL`) is selected even when no re-pick rule makes it due. Without this, a
+ * LISTED IPO already DONE, or PARTIAL and not re-eligible (237 of 304 LISTED on staging, 2026-10-02),
+ * never gets the round, and a round cut by the walk budget is never resumed. Such a pick
+ * (`answersOnly`) is the LOWEST priority: it sorts after every never-walked IPO and every due re-pick,
+ * inside the same `cap`, so it never displaces one. It runs ONLY the answers round (no walk, no
+ * closed_ipo_resourcing write). `answersRound` false (no round runner: the verdict writer is off, so
+ * the round could only skip) selects none of them: a pick that can never stamp must not take a slot.
  */
-export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number) {
+export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number, answersRound = false) {
   // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
   // internal string today, but a query built by string-replacement is the
   // wrong shape regardless of who supplies the value.
   return sql`
-  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
+  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status, NOT c.due AS "answersOnly"
     FROM ipos i
     LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+    CROSS JOIN LATERAL (
+      SELECT coalesce((
+        r.ipo_id IS NULL
+        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})
+        OR (
+          r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
+          AND (
+            (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
+            OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
+            OR EXISTS (
+              SELECT 1 FROM document_fetch_state d
+               WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
+            )
+          )
+        )
+      ), false) AS due
+    ) c
    WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
      AND i.close_date < CURRENT_DATE
      AND i.hidden_at IS NULL
      AND (
-       r.ipo_id IS NULL
-       OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})
-       OR (
-         r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
-         AND (
-           (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
-           OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
-           OR EXISTS (
-             SELECT 1 FROM document_fetch_state d
-              WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
-           )
-         )
-       )
+       c.due
+       OR (${answersRound} AND upper(i.status::text) = 'LISTED' AND i.answers_round_at IS NULL)
      )
-   ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
+   ORDER BY (r.ipo_id IS NOT NULL), (NOT c.due), i.close_date DESC, i.id
    LIMIT ${cap}
 `;
 }
@@ -214,9 +250,10 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
 export async function selectClosedIpoCandidates(
   db: Pick<NodePgDatabase<typeof schema>, 'execute'>,
   resourcedAtVersion: string,
-  cap: number
+  cap: number,
+  answersRound = false
 ): Promise<ClosedIpoCandidate[]> {
-  const result = await db.execute(closedIpoCandidatesQuery(resourcedAtVersion, cap));
+  const result = await db.execute(closedIpoCandidatesQuery(resourcedAtVersion, cap, answersRound));
   return (result.rows ?? result) as unknown as ClosedIpoCandidate[];
 }
 
@@ -226,6 +263,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
     attempted: 0,
     outcomes: { DONE: 0, PARTIAL: 0, FAILED: 0 },
     skippedCycleLockHeld: false,
+    answersRoundOnly: 0,
     snapshot: null,
   };
 
@@ -241,7 +279,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
   const cap = deps.cap ?? CLOSED_IPO_JOB_DEFAULT_CAP;
   const now = deps.now ?? new Date();
 
-  const candidates = await selectClosedIpoCandidates(deps.db, deps.resourcedAtVersion, cap);
+  const candidates = await selectClosedIpoCandidates(deps.db, deps.resourcedAtVersion, cap, Boolean(deps.runAnswersRound));
   summary.candidatesConsidered = candidates.length;
 
   if (candidates.length > 0) {
@@ -261,6 +299,24 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
   }
 
   for (const candidate of candidates) {
+    if (candidate.answersOnly) {
+      // OD-163(b): no walk and no closed_ipo_resourcing write -- the outcome row stays the walk's
+      // fact. The round's own stamp (`ipos.answers_round_at`) is the record: a round stopped at its
+      // deadline leaves it NULL, so the IPO is picked again on a later night (lowest priority).
+      summary.answersRoundOnly += 1;
+      try {
+        const r = deps.runAnswersRound
+          ? await deps.runAnswersRound(candidate.id)
+          : { roundStamped: false, stoppedAtDeadline: false, asked: 0, recorded: 0, skipReason: 'no runAnswersRound dep' };
+        logger.info({ ipoId: candidate.id, ...r }, 'closed-IPO job: answers-only round pick (OD-163(b))');
+      } catch (error) {
+        logger.warn(
+          { ipoId: candidate.id, error: error instanceof Error ? error.message : String(error) },
+          'closed-IPO job: answers-only round pick FAILED (non-fatal); no value changed, picked again next night'
+        );
+      }
+      continue;
+    }
     let outcome: ClosedIpoOutcome;
     let causeClass: ClosedIpoCauseClass | undefined;
     let causeDetail: string | undefined;

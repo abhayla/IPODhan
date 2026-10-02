@@ -1,0 +1,18 @@
+{
+  "measuredAt": "2026-10-02T16:04:28.149Z",
+  "database": "ipodhan_staging",
+  "listedByOutcome": [
+    {
+      "outcome": "(never walked)",
+      "n": 67
+    },
+    {
+      "outcome": "PARTIAL",
+      "n": 237
+    }
+  ],
+  "listedTotal": 304,
+  "listedSelectable": 304,
+  "answersRoundAtColumnPresent": false,
+  "nightsToDrainAt10": 31
+}

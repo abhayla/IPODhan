@@ -412,6 +412,11 @@ export const ipos = pgTable(
     // does not fire and the IPO is listed for the admin (a clear missed, never added).
     postponedAt: timestamp('postponed_at'),
 
+    // OD-163(b) (item 42): when this IPO's ONE answers-only round finished (UTC). NULL = the round has
+    // not finished, so the field walk may still run it; set = never run again for this IPO. Stored
+    // values written after this time without other-source answers are covered by OD-163(a).
+    answersRoundAt: timestamp('answers_round_at'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
