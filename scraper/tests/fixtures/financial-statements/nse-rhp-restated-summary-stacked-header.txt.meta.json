@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1789108351258.pdf",
+  "sourceSha256": "4e566b15fef416efa0c24ad9ec3d35f4a93aab95f5997bdd26c66925e1af4cc5",
+  "capturedAt": "2026-10-03",
+  "ipoId": "national-stock-exchange-of-india-ltd",
+  "company": "National Stock Exchange of India Limited",
+  "source": "RHP (staging documents 3cb0ba27, 668 pages), text layer by pdfplumber page.extract_text() - the same call the extractor makes; the PDF is not committed",
+  "note": "Pages 87-88: 'Summary of Restated Consolidated Statement of Profit and Loss' (Rs in million) whose column header is STACKED - 'June 30, June 30, March 31, March 31, March 31,' on one line and '2026 2025 2026 2025 2024' on the next (two interim stub columns, three fiscal years). Page 418: MD&A prose comparing Fiscal 2026 with Fiscal 2025. Before item 46 round 2 the reader read the stacked header as one year (2026), dropped page 87 and took fiscal years [2025, 2024] from the page-418 prose."
+}

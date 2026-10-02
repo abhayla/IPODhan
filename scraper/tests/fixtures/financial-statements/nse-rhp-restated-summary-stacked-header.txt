@@ -1,0 +1,161 @@
+<<<PAGE 87>>>
+SUMMARY OF RESTATED CONSOLIDATED STATEMENT OF PROFIT AND LOSS
+(₹ in million, unless stated otherwise)
+Particulars For the period/year ended
+June 30, June 30, March 31, March 31, March 31,
+2026 2025 2026 2025 2024
+C ontinuing Operations
+Income
+Revenue from operations 45,604.10 40,322.38 166,013.09 171,406.78 147,800.11
+Other income 6,917.64 7,662.12 21,120.61 20,361.53 15,720.51
+T otal income 52,521.74 47,984.50 187,133.70 191,768.31 163,520.62
+Expenses
+Employee benefits expenses 2,425.91 1,976.21 7,899.75 6,721.40 4,603.99
+Regulatory fees 1,883.40 1,698.62 7,963.50 9,626.45 9,805.73
+Depreciation and amortisation expenses 1,625.51 1,501.38 6,235.14 5,465.86 4,395.51
+Other expenses 5,785.52 5,350.15 37,900.64 26,249.21 17,282.62
+Total expenses (excluding contribution to Core 11,720.34 10,526.36 59,999.03 48,062.92 36,087.85
+S ettlement Guarantee Fund (Core SGF))
+Profit before Share of profits of associates accounted 40,801.40 37,458.14 127,134.67 143,705.39 127,432.77
+for using equity method, Contribution to Core SGF,
+Exceptional items and Tax
+Share of profits of associates accounted for using equity 257.54 301.80 1,081.88 1,288.56 1,005.40
+m ethod
+Profit before Contribution to Core SGF, Exceptional 41,058.94 37,759.94 128,216.55 144,993.95 128,438.17
+i tems and Tax
+L ess: Contribution to Core SGF 50.00 - 5.76 2,340.89 17,409.72
+P rofit before Exceptional items and Tax 41,008.94 37,759.94 128,210.79 142,653.06 111,028.45
+Add/(Less): Exceptional items
+Profit on sale of investment in associates 202.69 - 12,009.41 12,094.72 814.35
+I mpact of new Labour Code 483.21 - (1,264.41) - -
+Profit before tax for the period/year from continuing 41,694.84 37,759.94 138,955.79 154,747.78 111,842.80
+o perations
+Less: Income Tax expense
+Current tax 9,544.79 9,392.98 37,429.33 39,389.92 26,261.60
+Deferred tax expense / (benefit) 931.21 248.82 (268.83) (699.62) 1,516.40
+T otal tax expenses 10,476.00 9,641.80 37,160.50 38,690.30 27,778.00
+P rofit for the period/year from continuing operations 31,218.84 28,118.14 101,795.29 116,057.48 84,064.80
+Discontinued Operations
+Profit / (Loss) from discontinued operations before tax (10.52) 1,142.60 1,297.40 7,332.67 (795.83)
+Tax expense of discontinued operations 7.48 22.21 72.08 1,513.26 211.56
+P rofit / (Loss) from discontinued operations (18.00) 1,120.39 1,225.32 5,819.41 (1,007.39)
+Profit for the period/year (A) 31,200.84 29,238.53 103,020.61 121,876.89 83,057.41
+Other comprehensive income
+Items that will be reclassified to profit or loss
+Changes in fair value of FVOCI debt instruments 112.33 277.17 (96.59) 408.29 208.20
+Changes in foreign currency translation reserve (1.98) (1.38) 402.08 85.68 24.36
+Changes in foreign currency translation reserve - 0.02 0.02 0.61 0.93
+pertaining to discontinued operations
+Income tax relating to items that will be reclassified to
+profit or loss
+Changes in fair value of FVOCI debt instruments (28.31) (69.80) 24.31 (102.76) (52.42)
+Items that will not be reclassified to profit or loss
+Remeasurements of post-employment benefit (338.60) (92.57) 116.22 (59.89) (32.31)
+obligations
+Remeasurements of post-employment benefit (3.04) 0.90 2.98 (25.61) (37.60)
+obligations pertaining to discontinued operations
+82
+<<<PAGE 88>>>
+(₹ in million, unless stated otherwise)
+Particulars For the period/year ended
+June 30, June 30, March 31, March 31, March 31,
+2026 2025 2026 2025 2024
+Share of other comprehensive income of associates 9.57 (2.24) 45.71 26.88 (30.00)
+accounted for using the equity method
+Changes in fair value of FVOCI equity instruments 95.98 476.67 266.42 145.07 (71.20)
+Income tax relating to items that will not be reclassified
+to profit or loss
+Remeasurements of post-employment benefit 84.63 22.71 (30.02) 14.16 7.40
+obligations
+Remeasurements of post-employment benefit - (0.23) (0.52) 6.43 9.50
+obligations pertaining to discontinued operations
+C hanges in fair value of FVOCI equity instruments (13.72) (68.17) (40.29) (70.96) 29.39
+Total other comprehensive income for the (83.14) 543.08 690.32 427.90 56.25
+p eriod/year, net of taxes (B)
+Total comprehensive income for the period/year 31,117.70 29,781.61 103,710.93 122,304.79 83,113.66
+( A+B)
+Profit/(Loss) is attributable to:
+Owners of National Stock Exchange of India Limited 31,200.84 29,238.53 103,020.61 121,879.42 83,056.61
+N on-Controlling Interests - - - (2.53) 0.80
+Profit/(Loss) is attributable to owners of National
+Stock Exchange of India Limited arises from:
+Continuing Operations 31,218.84 28,118.14 101,795.29 116,057.48 84,064.80
+Discontinued Operations (18.00) 1,120.39 1,225.32 5,821.94 (1,008.19)
+Other comprehensive income is attributable to:
+Owners of National Stock Exchange of India Limited (83.14) 543.08 690.32 428.04 56.55
+N on-Controlling Interests - - - (0.14) (0.30)
+Total comprehensive income is attributable to:
+Owners of National Stock Exchange of India Limited 31,117.70 29,781.61 103,710.93 122,307.46 83,113.16
+Non-Controlling Interests - - - (2.67) 0.50
+Total comprehensive income attributable to owners
+of National Stock Exchange of India Limited arises
+from
+Continuing Operations 31,138.74 28,660.53 102,483.13 116,504.02 84,148.22
+D iscontinued Operations (21.04) 1,121.08 1,227.80 5,803.44 (1,035.06)
+Earnings per equity share for profit from continuing
+operations attributable to owners of National Stock
+Exchange of India Limited (Face Value ₹ 1/- each)
+B asic and Diluted (₹) 12.61* 11.36* 41.13 46.89 33.97
+Earnings per equity share for profit / (loss) from
+discontinued operations attributable to owners of
+National Stock Exchange of India Limited (Face
+Value ₹ 1/- each)
+B asic and Diluted (₹) (0.00)* 0.45* 0.49 2.35 (0.41)
+Earnings per equity share for profit from continuing
+and discontinued operations attributable to owners of
+National Stock Exchange of India Limited (Face
+Value ₹ 1/- each)
+Basic and Diluted (₹) 12.61* 11.81* 41.62 49.24 33.56
+* Not annualised
+83
+<<<PAGE 418>>>
+• Clearing & Settlement Charges: Increased by 55.82% to ₹1,250.84 million in Fiscal 2026 from ₹802.76 million in
+Fiscal 2025, primarily due to increase in trading volumes cleared on the other clearing corporation, other than by NCL
+and NSEICC.
+• Technology expenses: Our technology related expenses increased in Fiscal 2026, primarily due to an increase in the
+following other expenses:
+- Repairs and maintenance (to computers, trading & telecommunication systems): Increased by 72.70% to
+₹3,153.41 million in Fiscal 2026 from ₹1,825.94 million in Fiscal 2025, primarily due to an increase in annual
+maintenance costs for hardware and software deployed for our operations largely driven by segregation of our
+technology related infrastructure across the group. Further there was a change in accounting treatment of the fees
+paid to NSEIT on account of NSEIT ceasing to be a subsidiary of our Company pursuant to its divestment under
+the share purchase agreement dated January 31, 2025.
+- IT Vendor Resources Expenses: Increased by 15.59% to ₹3,505.27 million in Fiscal 2026 from ₹3,032.56 million
+in Fiscal 2025, primarily due to an increase in outsourcing services for IT infrastructure maintenance.
+- IT management and consultancy charges: Increased by 21.25% to ₹1,294.87 million in Fiscal 2026 from
+₹1,067.96 million in Fiscal 2025, primarily attributable to technology centre of excellence applications going live
+for NCL and increased colocation rack management charges.
+- Software expenses: Increased by 27.31% to ₹3,625.38 million in Fiscal 2026 from ₹2,847.75 million in Fiscal
+2025, primarily on account of higher costs incurred for additional software licences that we licensed from third
+parties for our growing operations; and
+- Lease line charges: Increased by 11.56% to ₹800.74 million in Fiscal 2026 from ₹717.79 million in Fiscal 2025.
+Contribution to Core SGF
+Our contribution to Core SGF decreased by 99.75% to ₹5.76 million in Fiscal 2026 from ₹2,340.89 million in Fiscal 2025,
+primarily because, our Board approved discontinuation of the voluntary contribution to Core SGF with effect from January 1,
+2025, as we had achieved the required contribution under the regulations. Accordingly, during Fiscal 2026, our Company
+contributed a lower amount towards Core SGF compared to Fiscal 2025.
+Exceptional items
+Our profit on the sale of investment in associates, reported as exceptional items, was ₹12,009.41 million during Fiscal 2026,
+arising from the sale of a 9% stake in National Securities Depository Limited through an offer for sale, pursuant to the
+requirement under the SEBI (Depositories and Participants) Regulations, 2018 to reduce our shareholding from 24% to 15%.
+In comparison, the profit on the sale of investment in associates was ₹12,094.72 million in Fiscal 2025, which comprised a
+gain of ₹11,549.28 million from the divestment of the entire 20.34% stake held by NSE Investments in Protean eGov
+Technologies Limited and a gain of ₹545.44 million from the divestment of a 4.21% stake held by NSE Investments in Power
+Exchange India Limited. We also incurred one-time expenses of ₹1,264.41 million during Fiscal 2026 on account of an
+incremental provision for gratuity (past service cost) arising from the notification of the new Labour Code on November 21,
+2025, which we reported as an exceptional item in our restated consolidated statement of profit and loss.
+Tax expenses
+Our total tax expenses decreased by 3.95% to ₹37,160.50 million in Fiscal 2026 from ₹38,690.30 million in Fiscal 2025,
+primarily due to reduction in profit before tax from Continuing Operations. The effective tax rate in Fiscal 2026 was 26.74%
+compared to 25.00% in Fiscal 2025.
+Profit for the year from Continuing Operations
+For the foregoing reasons, our profit for the year from Continuing Operations decreased by 12.29% to ₹101,795.29 million in
+Fiscal 2026 from ₹116,057.48 million in Fiscal 2025.
+Fiscal 2025 compared to Fiscal 2024
+Income
+Our total income increased by 17.27% to ₹191,768.31 million in Fiscal 2025 from ₹163,520.62 million in Fiscal 2024, primarily
+due to increase in transaction charges, Data Feed & Terminal services, Clearing & Settlement Services and other operating
+income.
+Revenue from operations
+• Revenue from contracts with customers
+413

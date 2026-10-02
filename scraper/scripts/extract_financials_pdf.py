@@ -174,7 +174,11 @@ OTHER_METRICS = [
     # The line-start anchor tried in round 2 excluded that legitimate row along
     # with the prose false-positive it was meant to stop; _is_clean_data_row
     # below is the real discriminator (label followed only by data, not words).
-    (re.compile(r"net\s*worth", re.I), "netWorth"),
+    # Item 46 round 2: "Return on Net Worth (in %)(2) 9.33* 9.25* 33.21 45.14
+    # 37.60" (NSE RHP p401) is a clean-looking row of PERCENTAGES and was read
+    # as net worth in Rs million. A return/ratio/percent row is never the
+    # amount, whatever its shape.
+    (re.compile(r"^(?!.*(?:\breturn\b|\bRoNW\b|%)).*?net\s*worth", re.I), "netWorth"),
 ]
 
 # ---------------------------------------------------------------- item 8b ---
@@ -440,6 +444,15 @@ def _parse_pnl_page(text):
     # the page ("... as required for FY 2018-19") must never inject a phantom
     # column into a table it has nothing to do with.
     window = lines[max(0, data_start - 8):data_start]
+    stacked = _stacked_header_columns(window)
+    if stacked == "UNRESOLVED":
+        # Item 46 round 2 (OD-165, fail closed): a stacked header whose period
+        # line and year line do not pair column for column is not guessed at.
+        return None
+    if stacked is not None:
+        column_fy = stacked
+        annual_years = [y for y in column_fy if y is not None]
+        return _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table)
     year_header = None
     for i in range(len(window) - 1, -1, -1):
         candidate = window[i]
@@ -457,14 +470,78 @@ def _parse_pnl_page(text):
 
     interim = _count_interim_columns(header)
     column_fy = ([None] * interim) + annual_years
+    return _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table)
+
+
+# Item 46 round 2 (OD-165, §5.6 C): a mainboard restated summary often STACKS its
+# column header - the period ends on one line ("June 30, June 30, March 31,
+# March 31, March 31,") and their years on the next ("2026 2025 2026 2025 2024").
+# Read as one string only the last "March 31,\n2026" joins, so the table read as
+# a single 2026 column and was dropped (NSE RHP p87). The two lines are paired
+# column for column: a March 31 period is that fiscal year; any other period end
+# (a June / September / December stub) is an interim column, read and dropped.
+_MONTHS = (r"January|February|March|April|May|June|July|August|September|October|"
+           r"November|December")
+_PERIOD_END = re.compile(r"(?:\b(%s)\s+(\d{1,2}),?|\b(\d{1,2})\s+(%s)\b)" % (_MONTHS, _MONTHS), re.I)
+_YEARS_ONLY_LINE = re.compile(r"^\s*(?:20\d{2}\s*){2,}$")
+
+
+# Item 46 round 2: pdfplumber splits the initial capital off some row labels on
+# real mainboard pages ("T otal income", "P rofit for the period", NSE RHP p87),
+# so "total\s+income" missed the row. Only the label is rejoined, only a single
+# capital followed by a lowercase word; the figures are untouched.
+_SPLIT_INITIAL = re.compile(r"^(\s*[A-Z]) (?=[a-z]{2,}\b)")
+
+
+def _rejoin_split_initial(line):
+    return _SPLIT_INITIAL.sub(lambda m: m.group(1), line)
+
+
+def _stacked_header_columns(window):
+    """column_fy for a stacked period/year header in `window`, None when the
+    window has no stacked header, or "UNRESOLVED" when it has one whose two
+    lines do not pair (a count mismatch, a period line carrying a year of its
+    own, or a fiscal year named twice) - never a guessed column map."""
+    for i in range(len(window) - 1, 0, -1):
+        if not _YEARS_ONLY_LINE.match(window[i]):
+            continue
+        periods = list(_PERIOD_END.finditer(window[i - 1]))
+        if not periods:
+            continue
+        years = [int(y) for y in re.findall(r"20\d{2}", window[i])]
+        if len(periods) != len(years) or re.search(r"20\d{2}", window[i - 1]):
+            return "UNRESOLVED"
+        column_fy = []
+        for m, year in zip(periods, years):
+            month = (m.group(1) or m.group(4)).lower()
+            day = int(m.group(2) or m.group(3))
+            column_fy.append(year if (month == "march" and day == 31) else None)
+        annual = [y for y in column_fy if y is not None]
+        if not annual or len(set(annual)) != len(annual):
+            return "UNRESOLVED"
+        return column_fy
+    return None
+
+
+_SEGMENT_PROFIT = re.compile(r"\b(?:dis)?continu(?:ing|ed)\s+operations", re.I)
+
+
+def _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table):
     align = _align_factory(column_fy, annual_years)
 
     metrics = {}
-    for ln in lines:
+    for raw_ln in lines:
+        ln = _rejoin_split_initial(raw_ln)
         for rx, key in PNL_METRICS:
             if key in metrics:
                 continue
             if rx.search(ln):
+                if key == "profit" and _SEGMENT_PROFIT.search(ln):
+                    # Item 46 round 2: a statement with discontinued operations
+                    # prints "Profit for the period/year from continuing
+                    # operations" ABOVE the total "Profit for the period/year
+                    # (A)" (NSE RHP p87); the segment line is not the PAT.
+                    break
                 mapped = align(ln)
                 if mapped:
                     metrics[key] = mapped
