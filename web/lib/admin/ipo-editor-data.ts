@@ -143,7 +143,9 @@ export function buildWitnesses(args: {
         status: status === 'value' && !hasValue ? 'abstained' : status,
         value: hasValue ? w.value : null,
         cause: credited
-          ? `the document supplied ${typeof w.rowCount === 'number' ? `${w.rowCount} stored row(s)` : 'stored rows'} (no single value)`
+          ? w.credited === 'DOCUMENT_VALUE_STORED'
+            ? 'the document prints the value already stored (credited, nothing written)'
+            : `the document supplied ${typeof w.rowCount === 'number' ? `${w.rowCount} stored row(s)` : 'stored rows'} (no single value)`
           : typeof w.cause === 'string'
             ? w.cause
             : null,

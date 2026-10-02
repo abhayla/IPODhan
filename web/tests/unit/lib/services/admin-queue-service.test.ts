@@ -224,3 +224,24 @@ describe('population (c) derived rules', () => {
     expect(items.map((i) => i.fieldName)).toContain('lotEconomics');
   });
 });
+
+describe('OD-161 document listing in the queue (PR #1463 fix round)', () => {
+  it('shows the document type from evidence.documentType', () => {
+    const items = buildQueueItems(
+      [conflict({ field_name: 'lotSize', document_id: 'doc-1', evidence: { rule: 'OD-161', origin: 'OD161_DOCUMENT_DIFFERENCE_KEPT', documentType: 'RHP' } } as Partial<ConflictRow>)],
+      [],
+      []
+    );
+    expect(items[0].document).toMatchObject({ id: 'doc-1', type: 'RHP', origin: 'OD161_DOCUMENT_DIFFERENCE_KEPT' });
+  });
+
+  it('a FAILED_VALIDATION listing shows reason FAILED_VALIDATION (OD-62, OD-63)', () => {
+    const items = buildQueueItems(
+      [conflict({ field_name: 'lotSize', document_id: 'doc-1', evidence: { rule: 'OD-161', reasonCode: 'FAILED_VALIDATION', check: 'lot rule', documentType: 'RHP' } } as Partial<ConflictRow>)],
+      [],
+      []
+    );
+    expect(items[0].reason).toBe('FAILED_VALIDATION');
+    expect(items[0].reasons).toEqual(['FAILED_VALIDATION']);
+  });
+});

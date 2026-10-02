@@ -78,6 +78,12 @@ function holdKey(ipoId: string, holdTable: string, fieldName: string): string {
   return `${ipoId}|${holdTable}|${fieldName}`;
 }
 
+/** OD-161 + OD-62/OD-63: a document value that failed the field's checks is listed under FAILED_VALIDATION. */
+function reasonOfConflictRow(r: ConflictRow, ruleFilter: RuleFilter | null): string {
+  const e = (r.evidence ?? {}) as Record<string, unknown>;
+  return ruleFilter === null && e.reasonCode === FAILED_VALIDATION ? FAILED_VALIDATION : reasonForConflict(ruleFilter);
+}
+
 export function conflictToItem(r: ConflictRow, family?: string): QueueItem {
   const ruleFilter = ruleFilterFor({
     family,
@@ -96,8 +102,8 @@ export function conflictToItem(r: ConflictRow, family?: string): QueueItem {
     fieldName: r.field_name,
     rowKey: r.row_key ?? '',
     ruleFilter,
-    reason: reasonForConflict(ruleFilter),
-    reasons: [reasonForConflict(ruleFilter)],
+    reason: reasonOfConflictRow(r, ruleFilter),
+    reasons: [reasonOfConflictRow(r, ruleFilter)],
     sources: [
       { source: r.source1, value: r.value1 },
       { source: r.source2, value: r.value2 },
@@ -575,7 +581,7 @@ function itemFromRow(
     const c = conflictById.get(id);
     if (!c) return { item: null, flagMiss: false };
     const ruleFilter = r.cat === 'disagreement' ? null : (r.cat as RuleFilter);
-    const reason = reasonForConflict(ruleFilter);
+    const reason = reasonOfConflictRow(c, ruleFilter);
     return {
       item: {
         id,
