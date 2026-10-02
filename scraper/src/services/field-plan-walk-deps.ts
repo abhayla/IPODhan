@@ -507,6 +507,19 @@ export function docDifferenceKey(row: Pick<DocAdminListing, 'ipoId' | 'tableName
     .digest('hex');
 }
 
+/** The queue reads `documentType` (admin-queue-service documentFields), so the listing stores that key. */
+export function docDifferenceEvidence(
+  row: Pick<DocAdminListing, 'outcome' | 'documentType' | 'mark' | 'storedSource'>
+): Record<string, unknown> {
+  return {
+    origin: row.outcome === 'REPLACED' ? 'OD161_DOCUMENT_REPLACED_WEBSITE_VALUE' : 'OD161_DOCUMENT_DIFFERENCE_KEPT',
+    rule: 'OD-161',
+    documentType: row.documentType,
+    ocr: row.mark,
+    storedSource: row.storedSource,
+  };
+}
+
 export function makeDocDifferenceListing(): (row: DocAdminListing) => Promise<void> {
   return async (row) => {
     await db
@@ -524,13 +537,7 @@ export function makeDocDifferenceListing(): (row: DocAdminListing) => Promise<vo
         resolutionReason: null,
         documentId: row.documentId,
         suggestionKey: docDifferenceKey(row),
-        evidence: {
-          origin: row.outcome === 'REPLACED' ? 'OD161_DOCUMENT_REPLACED_WEBSITE_VALUE' : 'OD161_DOCUMENT_DIFFERENCE_KEPT',
-          rule: 'OD-161',
-          docType: row.documentType,
-          ocr: row.mark,
-          storedSource: row.storedSource,
-        },
+        evidence: docDifferenceEvidence(row),
       })
       .onConflictDoNothing({ target: dataConflicts.suggestionKey });
   };

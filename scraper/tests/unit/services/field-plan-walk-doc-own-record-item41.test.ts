@@ -239,3 +239,12 @@ describe('#1459 point 2 -- computeVerdict never counts a credited answer as a vo
     expect(r.witnesses[1]).toMatchObject({ credited: 'DOCUMENT_VALUE_STORED' });
   });
 });
+
+// Fix round (PR #1463 review): the admin queue reads evidence.documentType, so the OD-161 listing must store that key.
+describe('OD-161 listing evidence', () => {
+  it('stores documentType (the key the admin queue reads), the rule and the origin', async () => {
+    const { docDifferenceEvidence } = await import('../../../src/services/field-plan-walk-deps.js');
+    const e = docDifferenceEvidence({ outcome: 'REPLACED', documentType: 'RHP', mark: 'TEXT', storedSource: 'NSE' } as never);
+    expect(e).toMatchObject({ documentType: 'RHP', rule: 'OD-161', origin: 'OD161_DOCUMENT_REPLACED_WEBSITE_VALUE', storedSource: 'NSE' });
+  });
+});
