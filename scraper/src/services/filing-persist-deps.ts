@@ -51,7 +51,7 @@ import type {
 /** ipo_details has no repository - this is the single write path for it. */
 export function makeIpoDetailsWriter(): IpoDetailsWriter {
   return {
-    async upsert(ipoId, values) {
+    async upsert(ipoId, values, opts) {
       // §9.2 item 19: the conflict-update never replaces an admin-held ipo_details field; the hold
       // is re-read under the ipos row lock inside this transaction (field-hold.ts).
       await db.transaction(async (tx) => {
@@ -64,6 +64,9 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
             target: schema.ipoDetails.ipoId,
             set: { ...patch, updatedAt: new Date() } as never,
           });
+        // OD-166 (PR #1460 round 1): a listing tied to what was written joins THIS transaction,
+        // with the columns the hold re-read let through, so a rolled-back write lists nothing.
+        if (opts?.afterWriteInTx) await opts.afterWriteInTx(tx, patch as Record<string, unknown>);
       });
     },
     async insertIfMissing(ipoId, values) {
@@ -194,27 +197,28 @@ export function buildFilingPersistDeps(
     // OD-166: a kept value the admin should look at goes to the admin queue (data_conflicts, §9.4),
     // one row per (document, field, value) ever, the suggestion_key dedupe every document listing uses.
     adminListing: {
-      async listForAdmin(row) {
+      async listForAdmin(row, tx) {
+        const exec = (tx ?? db) as typeof db;
         const suggestionKey = createHash('sha256')
           .update(`${row.rule}|${row.documentId}|${row.tableName}|${row.fieldName}|${row.value}`)
           .digest('hex');
-        await db
+        await exec
           .insert(schema.dataConflicts)
           .values({
             ipoId: row.ipoId,
             tableName: row.tableName,
             rowKey: '',
             fieldName: row.fieldName,
-            source1: 'DRHP',
+            source1: row.source,
             value1: row.value,
-            source2: 'DRHP',
+            source2: row.source,
             value2: row.value,
             severity: 'INFO',
             resolutionReason: null,
             documentId: row.documentId,
             suggestionKey,
             evidence: { origin: `${row.rule}_KEPT_FOR_REVIEW`, rule: row.rule, ...row.detail },
-          } as never)
+          })
           .onConflictDoNothing({ target: schema.dataConflicts.suggestionKey });
       },
     },

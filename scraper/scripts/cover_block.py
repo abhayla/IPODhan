@@ -81,6 +81,18 @@ GI_BLOCK_END = re.compile(r"^\s*(?:Statutory|Legal|Banker|Syndicate|Self|Sponsor
 DEF_MBRLM_ROW = re.compile(r"^\s*[“\"]?(?:M-BRLMs?|Marketing\s+(?:Book\s+Running\s+)?Lead\s+Managers?)[”\"]?\s+(.*\bbook\s+running\s+lead\s+manager\b.*)$", re.I)
 DEF_ROW = re.compile(r"^\s*[“\"](Registrar\s+to\s+the\s+(?:Offer|Issue)|Book\s+Running\s+Lead\s+Managers?|BRLMs?)[”\"]", re.I)
 DEF_NEXT_ROW = re.compile(r"^\s*[“\"][A-Z]")
+# A footnote under a Definitions row starts its line with the marker the row's names carry
+# ("*Morgan Stanley India Company Private Limited and ICICI Securities Limited are associates of
+# MS Strategic (Mauritius) Limited ..." on the NSE RHP p.11): the row has ended.
+DEF_FOOTNOTE_LINE = re.compile(r"^\s*[*#$†‡]")
+# The row's sentence ends at a firm suffix in ANY case and style ("Limited." / "Ltd." / "Pvt. Ltd." /
+# "LLP." / "Limited)." / "Limited*."), followed by the end of the text or by what starts a new
+# sentence (a capital, a marker, a quote) - never by "," or a lower-case word ("Ltd., SBI ..." and
+# "Pvt. Ltd. and ..." are inside the list).
+_SUFFIX_WORD = r"\b(?:limited|ltd|llp)"
+DEF_ROW_END = re.compile(r"(?i:" + _SUFFIX_WORD + r")" + _MARK + r"*\)?\s*\.(?=\s*(?:$|[*#$†‡A-Z(“\"]))")
+DEF_ROW_END_AT_EOT = re.compile(r"(?i:" + _SUFFIX_WORD + r")\.?" + _MARK + r"*\)?\s*$")
+DEF_TAIL_OK = re.compile(r"^[\s*#$†‡.,;)]*$")
 DEF_TERM_TAIL = re.compile(r"^\s*(?:or\s+)?[“\"][^”\"]{1,40}[”\"]\s*")
 
 CO_PROSE = re.compile(r"Contact\s+person\s*:\s*((?:(?:Mr|Ms|Mrs|Smt|Shri|Dr)\.?\s+)?[A-Z][A-Za-z.'\- ]{2,60}?)\s*[,(]\s*(?:the\s+)?Company\s+Secretary", re.I)
@@ -123,8 +135,11 @@ def check_indian_phone(phone):
         return answer_states.missed("no phone")
     first = re.split(r"\s*/\s*", phone)[0]
     digits = re.sub(r"\D", "", first)
-    if re.match(r"^\s*\+?\s*91(?:[\s\-–(]|$)", first):
-        digits = digits[2:]          # a printed country code: the national part must follow
+    if re.match(r"^\s*\+?\s*91(?:[\s\-–(]|$)", first) or (
+            re.match(r"^\s*\+\s*91", first) and len(digits) == 12):
+        digits = digits[2:]          # a printed country code (+91, separated or not): the national part must follow
+    if re.fullmatch(r"1800\d{6,7}", digits) and len(phone) <= 50:
+        return (True, phone)         # a toll-free number: 1800 then 6-7 digits (1800 309 4001)
     if len(digits) == 11 and digits.startswith("0"):
         digits = digits[1:]          # trunk prefix
     if len(digits) == 10 and len(phone) <= 50:
@@ -190,6 +205,14 @@ def _firm_line(line):
     rest = line[m.end():]
     two = bool(FIRM_AT_START.match(rest.lstrip("* ")))
     return _clean_firm(name), two
+
+
+def _record_pages(emit, name, cands):
+    """OD-97: every place a kept value was read from, so its TEXT / OCR / MIXED mark covers each
+    agreeing page (ocr_pages.annotate_fields, ocr-value-mark.ts), not only the first."""
+    rec = emit.fields.get(name)
+    if rec is not None and rec.get("value") is not None:
+        rec["pages"] = sorted({p for _v, p in cands if p is not None})
 
 
 def _agree(cands, canon):
@@ -266,25 +289,39 @@ def _definition_rows(page_texts):
                 continue
             body = [line[m.end():]]
             for nxt in lines[k + 1:k + 14]:
-                if DEF_NEXT_ROW.match(nxt):
+                if DEF_NEXT_ROW.match(nxt) or DEF_FOOTNOTE_LINE.match(nxt):
                     break
                 body.append(nxt)
             blob = " ".join(DEF_TERM_TAIL.sub("", b) for b in body)
             blob = DEF_TERM_TAIL.sub("", blob)
             blob = re.sub(r"\s+", " ", blob)
             blob = re.sub(r"\((?:formerly|earlier)[^)]*\)", " ", blob, flags=re.I)
-            # the row ends at its sentence: "...Limited." / "...Limited)." / "...LLP."
-            blob = re.split(r"(?:(?<=Limited)|(?<=LIMITED)|(?<=ed\))|(?<=LLP))\*?\.(?:\s|$)", blob)[0]
+            # the row ends at its sentence: a firm suffix in any case and style, then a full stop
+            # (or the end of the row's text, when a footnote line or the next row closed it)
+            end = DEF_ROW_END.search(blob)
+            ended = end is not None or DEF_ROW_END_AT_EOT.search(blob.strip()) is not None
+            if end is not None:
+                blob = blob[:end.end()]
             term = m.group(1).lower()
-            names = [_clean_firm(f) for f in FIRM_ANYWHERE.findall(
-                re.sub(r"^.*?(?:namely|being|viz\.?|i\.e\.?)\s*,?\s*", "", blob, flags=re.I))]
-            names = [re.sub(r"^(?:and|&)\s+", "", n) for n in names]
+            listed = re.sub(r"^.*?(?:namely|being|viz\.?|i\.e\.?)\s*,?\s*", "", blob, flags=re.I)
+            found = list(FIRM_ANYWHERE.finditer(listed))
+            names = [re.sub(r"^(?:and|&)\s+", "", _clean_firm(f.group(1))) for f in found]
             if not names:
                 continue
             if term.startswith("registrar") and "registrar" not in out:
                 out["registrar"] = (names[0], idx)
-            elif not term.startswith("registrar") and "brlm" not in out:
-                out["brlm"] = (names, idx)
+            elif not term.startswith("registrar") and "brlm" not in out and "brlm_fail" not in out:
+                # B4(c) fail closed: a row whose sentence never ended ran into whatever follows it;
+                # words after the last firm are a name the pattern could not read; a name twice is
+                # the row reading text that is not the list (the NSE footnote repeats two BRLMs).
+                if not ended:
+                    out["brlm_fail"] = ("lead_managers_row_overrun", idx)
+                elif not DEF_TAIL_OK.match(listed[found[-1].end():]):
+                    out["brlm_fail"] = ("lead_managers_row_unparsed_tail", idx)
+                elif len({_canon_firm(n) for n in names}) != len(names):
+                    out["brlm_fail"] = ("lead_managers_duplicate_in_row", idx)
+                else:
+                    out["brlm"] = (names, idx)
     # An M-BRLM row extends the BRLM row's list; alone it is not the whole list (fail closed).
     if "brlm" in out and marketing:
         names, idx = out["brlm"]
@@ -344,13 +381,23 @@ def read_cover_block(page_texts, emit):
     if "brlm" in defs:
         cands.append(defs["brlm"])
     value, page, why = _agree(cands, _canon_firm)
-    if value is None:
+    # A second count: the cover's BRLM block prints one SEBI INM number per BRLM where it prints
+    # them at all. A list whose length disagrees with it read something that is not the list.
+    cover_inms = set(r.replace(" ", "") for r in SEBI_INM.findall(" ".join(cover_brlm["lines"] or [])))
+    if "brlm_fail" in defs:
+        value = None
+        emit.null("lead_managers", defs["brlm_fail"][0], page=defs["brlm_fail"][1])
+    elif value is not None and cover_inms and len(cover_inms) != len(value):
+        value = None
+        emit.null("lead_managers", "lead_managers_count_disagrees", page=cover_brlm["page"])
+    elif value is None:
         reason = ("lead_managers_sources_disagree" if why == "sources_disagree" else
                   "lead_managers_block_unresolved" if cover_brlm["unresolved"] else
                   "lead_managers_not_found")
         emit.null("lead_managers", reason, page=cover_brlm["page"] if why != "sources_disagree" else None)
     else:
         emit.put("lead_managers", value, page, "lead_manager_names_are_companies", check_firm_names(value))
+        _record_pages(emit, "lead_managers", cands)
 
     # One BRLM: its INM number is unambiguous (two or more cannot be paired in
     # text order, measured on the NSE RHP's two-column block).
@@ -377,6 +424,7 @@ def read_cover_block(page_texts, emit):
                   else "registrar_block_unresolved" if cover_reg["unresolved"] else "registrar_not_found")
     else:
         emit.put("registrar_name", rname, rpage, "registrar_name_is_a_company", check_firm_names([rname]))
+        _record_pages(emit, "registrar_name", cands)
 
     # Contact lines: from the block whose name agreed (GI first, then the cover).
     contact_src = None
@@ -481,13 +529,13 @@ def _issuer_contacts(page_texts, emit):
                 if pm:
                     persons.append((pm.group(1).strip(), idx))
     site, spage, why = _agree(sites, lambda s: re.sub(r"^https?://", "", s.lower()).rstrip("/"))
-    _emit_or_null(emit, "company_website", site, spage, why, "website_has_host", check_website)
+    _emit_or_null(emit, "company_website", site, spage, why, "website_has_host", check_website, sites)
     co, cpage, why = _agree(persons, _canon_person)
     if co is not None:
         co = HONORIFIC.sub("", co).strip()
-    _emit_or_null(emit, "compliance_officer", co, cpage, why, "person_name", check_person)
+    _emit_or_null(emit, "compliance_officer", co, cpage, why, "person_name", check_person, persons)
     email, epage, why = _agree(emails, str.lower)
-    _emit_or_null(emit, "compliance_officer_email", email, epage, why, "email_form", check_email)
+    _emit_or_null(emit, "compliance_officer_email", email, epage, why, "email_form", check_email, emails)
     if email and site:
         # Row 46 asks for the email domain to match the website. Measured on the
         # NSE RHP: nse_ipo@nse.co.in vs www.nseindia.com - a true value fails it,
@@ -497,11 +545,12 @@ def _issuer_contacts(page_texts, emit):
         emit.fields["compliance_officer_email"]["cross_check"] = {
             "name": "email_domain_matches_website", "passed": dom == host or dom.endswith("." + host) or host.endswith("." + dom)}
     phone, ppage, why = _agree(phones, lambda p: re.sub(r"\D", "", p)[-10:])
-    _emit_or_null(emit, "compliance_officer_phone", phone, ppage, why, "indian_phone_form", check_indian_phone)
+    _emit_or_null(emit, "compliance_officer_phone", phone, ppage, why, "indian_phone_form", check_indian_phone, phones)
 
 
-def _emit_or_null(emit, name, value, page, why, check_name, check):
+def _emit_or_null(emit, name, value, page, why, check_name, check, cands=()):
     if value is None:
         emit.null(name, "%s_%s" % (name, why))
     else:
         emit.put(name, value, page, check_name, check(value))
+        _record_pages(emit, name, cands)

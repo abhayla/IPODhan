@@ -238,3 +238,115 @@ def test_two_or_more_brlms_get_no_inm_pairing():
     # number with a name by text order is a guess, so 2+ BRLMs emit no lead_manager_sebi_reg.
     fields = read("nse-mainboard-rhp")
     assert "lead_manager_sebi_reg" not in fields
+
+
+# ---- Tier A round 1 (PR #1460) MAJOR-1: the Definitions row must stop at ANY firm suffix ---- #
+def _nse_with(old, new, count=1):
+    pages = load("nse-mainboard-rhp")
+    out, hits = [], 0
+    for i, t in pages:
+        hits += t.count(old)
+        out.append((i, t.replace(old, new, count)))
+    assert hits >= 1, "mutation did not apply: %r" % old
+    return out
+
+
+def _brlm(pages):
+    emit = Emitter("x")
+    cover_block.read_cover_block(pages, emit)
+    return emit.fields["lead_managers"]
+
+
+SELLING_SHAREHOLDERS = ("MS Strategic (Mauritius) Limited", "ICICI Lombard General Insurance Company Limited")
+
+
+@pytest.mark.parametrize("suffix", ["Ltd.", "Ltd", "Pvt. Ltd.", "LTD.", "Private Limited", "limited."])
+def test_a_brlm_list_ending_in_any_suffix_never_overruns_into_the_footnote(suffix):
+    # the reviewer's mutation: "...and 360 ONE WAM Limited." printed as "...360 ONE WAM Ltd." made
+    # the row run into the footnote and read 26 names incl. two selling shareholders.
+    rec = _brlm(_nse_with("and 360 ONE WAM Limited.", "and 360 ONE WAM " + suffix))
+    got = rec["value"]
+    if got is None:
+        assert rec["state"] == answer_states.MISSED, rec
+        return
+    assert rec["state"] == answer_states.VALUE
+    assert len(got) == 20, got
+    assert not any(s in got for s in SELLING_SHAREHOLDERS), got
+    assert got[18] == "360 ONE WAM " + suffix.rstrip(".") or got[18].startswith("360 ONE WAM"), got
+    assert got[:18] == NSE_BRLMS[:18]
+    assert got[19] == "SBI Capital Markets Limited"
+
+
+def test_the_ltd_mutation_reads_the_right_list():
+    rec = _brlm(_nse_with("and 360 ONE WAM Limited.", "and 360 ONE WAM Ltd."))
+    assert rec["state"] == answer_states.VALUE, rec
+    assert rec["value"] == NSE_BRLMS[:18] + ["360 ONE WAM Ltd.", "SBI Capital Markets Limited"]
+
+
+def test_a_row_with_no_sentence_end_fails_closed_as_an_overrun():
+    # no full stop after the last firm and the footnote marker gone: the row has no end
+    rec = _brlm(_nse_with("and 360 ONE WAM Limited.\n*Morgan", "and 360 ONE WAM Limited and\nMorgan"))
+    assert rec["value"] is None and rec["state"] == answer_states.MISSED, rec
+    assert rec["check"]["detail"] == "lead_managers_row_overrun"
+
+
+def test_a_duplicate_name_in_the_row_fails_closed():
+    rec = _brlm(_nse_with("HDFC Bank Limited, ICICI", "HDFC Bank Limited, Axis Capital Limited, ICICI"))
+    assert rec["value"] is None and rec["state"] == answer_states.MISSED, rec
+    assert rec["check"]["detail"] == "lead_managers_duplicate_in_row"
+
+
+def test_a_footnote_line_ends_the_row_even_without_a_full_stop():
+    rec = _brlm(_nse_with("and 360 ONE WAM Limited.\n*Morgan", "and 360 ONE WAM Limited\n*Morgan"))
+    assert rec["state"] == answer_states.VALUE, rec
+    assert rec["value"] == NSE_BRLMS
+
+
+def test_a_count_that_disagrees_with_the_cover_inm_numbers_fails_closed():
+    # the cover BRLM block printing three INM numbers is a second count; 20 names disagree with it
+    pages = load("nse-mainboard-rhp")
+    brlm, _r = cover_block._cover_tables(pages)
+    page = brlm["page"]
+    first = brlm["lines"][0]
+    pages = [(i, t.replace(first, first + " INM000008704 INM000010361 INM000011179", 1) if i == page else t)
+             for i, t in pages]
+    rec = _brlm(pages)
+    assert rec["value"] is None and rec["state"] == answer_states.MISSED, rec
+    assert rec["check"]["detail"] == "lead_managers_count_disagrees"
+
+
+# ---- MINOR: phone forms the check refused although they are Indian numbers ---- #
+@pytest.mark.parametrize("phone", ["+919823877359", "1800 309 4001", "1800-209-0444", "+91 9823877359"])
+def test_real_indian_phone_forms_pass(phone):
+    assert cover_block.check_indian_phone(phone)[0] is True
+
+
+@pytest.mark.parametrize("phone", ["+91 22 2659 81", "12345", "1800 30", "+9198238773591234", "919823877359123"])
+def test_non_phones_are_still_refused(phone):
+    assert isinstance(cover_block.check_indian_phone(phone), answer_states.Refused)
+
+
+# ---- MINOR: the OCR mark covers every agreeing place, not only the first ---- #
+def test_every_agreeing_page_is_recorded_and_an_ocr_one_makes_the_value_mixed():
+    import ocr_pages
+    fields = read("nse-mainboard-rhp")
+    rec = fields["registrar_name"]
+    assert len(rec["pages"]) >= 2, rec
+    text_page, other = rec["page"], [p for p in rec["pages"] if p != rec["page"]][0]
+    ocr_pages.annotate_fields(fields, {other: 0.95})
+    assert rec["value"] == "MUFG Intime India Private Limited"
+    assert rec["source_text"] == "MIXED"
+    fields = read("nse-mainboard-rhp")
+    ocr_pages.annotate_fields(fields, {p: 0.95 for p in fields["registrar_name"]["pages"]})
+    assert fields["registrar_name"]["source_text"] == "OCR"
+    fields = read("nse-mainboard-rhp")
+    ocr_pages.annotate_fields(fields, {})
+    assert fields["registrar_name"]["source_text"] == "TEXT"
+    assert text_page in fields["registrar_name"]["pages"]
+
+
+def test_a_ltd_sentence_end_mid_line_cuts_the_row_before_the_footnote():
+    # the footnote run onto the same line, no marker: only the sentence end can stop the row
+    rec = _brlm(_nse_with("and 360 ONE WAM Limited.\n*Morgan", "and 360 ONE WAM Ltd. Morgan"))
+    assert rec["state"] == answer_states.VALUE, rec
+    assert rec["value"] == NSE_BRLMS[:18] + ["360 ONE WAM Ltd.", "SBI Capital Markets Limited"]

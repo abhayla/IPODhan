@@ -84,7 +84,18 @@ function makeDeps(stored: { leadManagers?: string[]; registrar?: string } = {}) 
     peerCompanies: { replaceForIpo: vi.fn(async () => []) },
     financialData: { upsert: vi.fn(async (r: unknown) => r) },
     fieldSources: { findByField: vi.fn(async () => null), trackFieldUpdate: vi.fn(async () => ({})) },
-    ipoDetailsWriter: { upsert: vi.fn(async () => undefined) },
+    // The real writer runs `afterWriteInTx` inside its transaction with the columns it wrote.
+    ipoDetailsWriter: {
+      upsert: vi.fn(
+        async (
+          _id: string,
+          values: Record<string, unknown>,
+          opts?: { afterWriteInTx?: (tx: unknown, w: Record<string, unknown>) => Promise<void> }
+        ) => {
+          await opts?.afterWriteInTx?.('tx-1', values);
+        }
+      ),
+    },
   } as unknown as FilingPersisterDeps;
   return { deps, replaceForIpo };
 }
@@ -97,8 +108,8 @@ function intermediaryRows(replaceForIpo: ReturnType<typeof vi.fn>): Array<Record
 describe('filing-persister — item 39 cover block', () => {
   beforeEach(() => upsertIPOMock.mockClear());
 
-  it('an RHP writes ipos.lead_managers and ipos.registrar with a receipt each (OD-162)', async () => {
-    const h = makeDeps({ leadManagers: ['Some Other Capital Limited'], registrar: 'Old Registry Limited' });
+  it('an EMPTY column: an RHP writes ipos.lead_managers and ipos.registrar with a receipt each (OD-162)', async () => {
+    const h = makeDeps();
     const summary = await persistFilingExtraction(IPO_ID, extraction('RHP', RKFAL_FIELDS), { docType: 'RHP', apply: true }, h.deps);
 
     expect(upsertIPOMock).toHaveBeenCalledTimes(1);
@@ -118,6 +129,109 @@ describe('filing-persister — item 39 cover block', () => {
     expect(reg?.name).toBe(REGISTRAR);
     expect(reg?.email).toBe('investor@cameoindia.com');
     expect(reg?.phone).toBe('+91 44 2846 0390');
+  });
+
+  // ---- PR #1460 round 1, MAJOR-3 (OD-161 / OD-162 / OD-73): the persister never replaces a
+  // stored value; it files the receipt and the walk's OD-161 path decides from it. MAJOR-2: the
+  // BRLM / REGISTRAR rows (row 114) follow what ipos.lead_managers / ipos.registrar HOLD. ------ //
+  const receiptOf = (summary: Awaited<ReturnType<typeof persistFilingExtraction>>, f: string) =>
+    summary.receipt_fields?.find((r) => r.tableName === 'ipos' && r.fieldName === f);
+  const scrapedOf = () => (upsertIPOMock.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
+  const rowsOf = (h: ReturnType<typeof makeDeps>) =>
+    (h.replaceForIpo.mock.calls[0]?.[1] ?? []) as Array<Record<string, unknown>>;
+  const holdOn = (h: ReturnType<typeof makeDeps>, table: string, cols: string[]) => {
+    (h.deps as unknown as Record<string, unknown>).protectionFilter = vi.fn(
+      async (_id: string, t: string, data: Record<string, unknown>) => {
+        const filtered = { ...data };
+        if (t === table) for (const c of cols) delete filtered[c];
+        return { filtered };
+      }
+    );
+  };
+
+  it('a DIFFERENT stored value (a website wrote it): receipt only, the column is unchanged', async () => {
+    const h = makeDeps({ leadManagers: ['Some Other Capital Limited'], registrar: 'Old Registry Limited' });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction('RHP', { ...RKFAL_FIELDS, lead_manager_sebi_reg: value('INM000012838') }),
+      { docType: 'RHP', apply: true },
+      h.deps
+    );
+    expect(scrapedOf()).not.toHaveProperty('leadManagers');
+    // the document's INM number belongs to ITS BRLM, never to the stored one
+    expect(rowsOf(h).find((r) => r.role === 'BRLM')?.sebiRegNo).toBeNull();
+    expect(scrapedOf()).not.toHaveProperty('registrar');
+    expect(summary.ipos_fields ?? []).not.toContain('leadManagers');
+    expect(receiptOf(summary, 'leadManagers')?.value).toContain(BRLM);
+    expect(receiptOf(summary, 'registrar')?.value).toBe(REGISTRAR);
+    const rows = rowsOf(h);
+    expect(rows.filter((r) => r.role === 'BRLM').map((r) => r.name)).toEqual(['Some Other Capital Limited']);
+    const reg = rows.find((r) => r.role === 'REGISTRAR');
+    expect(reg?.name).toBe('Old Registry Limited');
+    expect(reg?.email).toBeNull();
+  });
+
+  it('an IDENTICAL stored value: receipt only, no write and no re-stamp (OD-73)', async () => {
+    const h = makeDeps({ leadManagers: [BRLM], registrar: REGISTRAR });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction('RHP', { ...RKFAL_FIELDS, lead_manager_sebi_reg: value('INM000012838') }),
+      { docType: 'RHP', apply: true },
+      h.deps
+    );
+    expect(scrapedOf()).not.toHaveProperty('leadManagers');
+    expect(scrapedOf()).not.toHaveProperty('registrar');
+    expect(receiptOf(summary, 'leadManagers')).toBeDefined();
+    expect(receiptOf(summary, 'registrar')).toBeDefined();
+    // the document agrees with the stored value, so its own INM number and contact lines still file
+    const rows = rowsOf(h);
+    expect(rows.find((r) => r.role === 'BRLM')?.sebiRegNo).toBe('INM000012838');
+    expect(rows.find((r) => r.role === 'REGISTRAR')?.email).toBe('investor@cameoindia.com');
+  });
+
+  it('an ADMIN hold (section 2.7) on an empty column: not written, and no row is built from the document', async () => {
+    const h = makeDeps({ leadManagers: [] });
+    holdOn(h, 'ipos', ['leadManagers', 'registrar']);
+    const summary = await persistFilingExtraction(IPO_ID, extraction('RHP', RKFAL_FIELDS), { docType: 'RHP', apply: true }, h.deps);
+    expect(scrapedOf()).not.toHaveProperty('leadManagers');
+    expect(scrapedOf()).not.toHaveProperty('registrar');
+    expect(receiptOf(summary, 'leadManagers')).toBeDefined();
+    expect(rowsOf(h).filter((r) => r.role === 'BRLM')).toEqual([]);
+    expect(rowsOf(h).filter((r) => r.role === 'REGISTRAR')).toEqual([]);
+  });
+
+  it('an ADMIN value already stored is untouched, and the rows keep it', async () => {
+    const h = makeDeps({ leadManagers: ['Admin Chosen Capital Limited'], registrar: 'Admin Registry Limited' });
+    holdOn(h, 'ipos', ['leadManagers', 'registrar']);
+    await persistFilingExtraction(IPO_ID, extraction('RHP', RKFAL_FIELDS), { docType: 'RHP', apply: true }, h.deps);
+    expect(scrapedOf()).not.toHaveProperty('leadManagers');
+    const rows = rowsOf(h);
+    expect(rows.filter((r) => r.role === 'BRLM').map((r) => r.name)).toEqual(['Admin Chosen Capital Limited']);
+    expect(rows.find((r) => r.role === 'REGISTRAR')?.name).toBe('Admin Registry Limited');
+  });
+
+  it('an OCR-only document value over a stored value: not written, the rows keep the stored value', async () => {
+    const h = makeDeps({ leadManagers: ['Stored Capital Limited'], registrar: 'Stored Registry Limited' });
+    const ocrExtraction = { ...extraction('RHP', RKFAL_FIELDS), ocr_pages: [0] } as FilingExtraction;
+    const summary = await persistFilingExtraction(IPO_ID, ocrExtraction, { docType: 'RHP', apply: true }, h.deps);
+    expect(receiptOf(summary, 'leadManagers')?.sourceText).toBe('OCR');
+    expect(scrapedOf()).not.toHaveProperty('leadManagers');
+    const rows = rowsOf(h);
+    expect(rows.filter((r) => r.role === 'BRLM').map((r) => r.name)).toEqual(['Stored Capital Limited']);
+    expect(rows.find((r) => r.role === 'REGISTRAR')?.phone).toBeNull();
+  });
+
+  it('a value read from a text page AND an OCR page is marked MIXED on its receipt (OD-97 (a))', async () => {
+    const h = makeDeps();
+    const f = { ...RKFAL_FIELDS, lead_managers: { ...(value([BRLM], 0) as object), pages: [0, 5] } as unknown as Field };
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      { ...extraction('RHP', f), ocr_pages: [5] } as FilingExtraction,
+      { docType: 'RHP', apply: true },
+      h.deps
+    );
+    expect(receiptOf(summary, 'leadManagers')?.sourceText).toBe('MIXED');
+    expect(receiptOf(summary, 'registrar')?.sourceText).toBe('TEXT');
   });
 
   it('a PRICE_BAND_AD carrying the same fields writes neither column and leaves no receipt (OD-96)', async () => {
@@ -213,5 +327,43 @@ describe('filing-persister — item 39 cover block', () => {
     (h.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
     await persistFilingExtraction(IPO_ID, extraction('PRICE_BAND_AD', nseEmail(false)), { docType: 'PRICE_BAND_AD', apply: true, documentId: 'doc-1' }, h.deps);
     expect(listForAdmin).not.toHaveBeenCalled();
+  });
+
+  it('OD-166: an admin-held compliance email is not written and therefore not listed', async () => {
+    const h = makeDeps();
+    const listForAdmin = vi.fn(async () => undefined);
+    (h.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    holdOn(h, 'ipo_details', ['complianceOfficerEmail']);
+    const f = { ...nseEmail(false), compliance_officer: value('Prajakta Powle', 2) };
+    await persistFilingExtraction(IPO_ID, extraction('RHP', f), { docType: 'RHP', apply: true, documentId: 'doc-1' }, h.deps);
+    const writer = (h.deps as unknown as { ipoDetailsWriter: { upsert: ReturnType<typeof vi.fn> } }).ipoDetailsWriter;
+    // the other column is written; no listing hook rides on that write
+    expect(writer.upsert).toHaveBeenCalledTimes(1);
+    expect(writer.upsert.mock.calls[0][2]).toBeUndefined();
+    expect(listForAdmin).not.toHaveBeenCalled();
+  });
+
+  it('OD-166: an email the writer\'s own hold re-read drops inside the transaction is not listed', async () => {
+    const h = makeDeps();
+    const listForAdmin = vi.fn(async () => undefined);
+    (h.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    (h.deps as unknown as Record<string, unknown>).ipoDetailsWriter = {
+      upsert: vi.fn(async (_id: string, values: Record<string, unknown>, opts?: { afterWriteInTx?: (tx: unknown, w: Record<string, unknown>) => Promise<void> }) => {
+        const { complianceOfficerEmail: _held, ...written } = values;
+        await opts?.afterWriteInTx?.('tx-1', written);
+      }),
+    };
+    await persistFilingExtraction(IPO_ID, extraction('RHP', nseEmail(false)), { docType: 'RHP', apply: true, documentId: 'doc-1' }, h.deps);
+    expect(listForAdmin).not.toHaveBeenCalled();
+  });
+
+  it('OD-166: the listing runs inside the ipo_details write transaction, under the document source', async () => {
+    const h = makeDeps();
+    const listForAdmin = vi.fn(async () => undefined);
+    (h.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    await persistFilingExtraction(IPO_ID, extraction('RHP', nseEmail(false)), { docType: 'RHP', apply: true, documentId: 'doc-1' }, h.deps);
+    expect(listForAdmin).toHaveBeenCalledTimes(1);
+    expect((listForAdmin.mock.calls[0] as unknown[])[1]).toBe('tx-1');
+    expect(listForAdmin.mock.calls[0][0]).toMatchObject({ source: 'DRHP' });
   });
 });

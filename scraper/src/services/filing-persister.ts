@@ -85,6 +85,8 @@ export interface ExtractedField {
   /** OD-97: set by ocr_pages.annotate_fields on a value read off an OCR'd page. */
   source_text?: string | null;
   ocr_confidence?: number | null;
+  /** PR #1460: every agreeing place the cover reader read this value from (OD-97 mark covers each). */
+  pages?: number[] | null;
   /** A recorded, not enforced, second check (OD-166: email domain vs company website). */
   cross_check?: { name?: string; passed?: boolean } | null;
 }
@@ -94,15 +96,18 @@ export interface ExtractedField {
  * same way every document suggestion is (`data_conflicts`, spec §9.4), never refused.
  */
 export interface AdminListingWriter {
+  /** `tx`: the ipo_details write transaction the listing joins (PR #1460 round 1). */
   listForAdmin(row: {
     ipoId: string;
     documentId: string;
+    /** The document's own source label (scraperSourceForDocType), filed as source1 / source2. */
+    source: ReturnType<typeof scraperSourceForDocType>;
     tableName: string;
     fieldName: string;
     value: string;
     rule: string;
     detail: Record<string, unknown>;
-  }): Promise<void>;
+  }, tx?: unknown): Promise<void>;
 }
 
 export interface FilingExtraction {
@@ -139,7 +144,15 @@ export interface PersistFilingOptions {
 
 /** The one ipo_details write this module needs, narrowed so tests can mock it. */
 export interface IpoDetailsWriter {
-  upsert(ipoId: string, values: Record<string, unknown>): Promise<void>;
+  /**
+   * `afterWriteInTx` runs INSIDE the write transaction, after the row is written, with the
+   * columns actually written (the hold re-read may drop some); skipped for a hidden IPO.
+   */
+  upsert(
+    ipoId: string,
+    values: Record<string, unknown>,
+    opts?: { afterWriteInTx?: (tx: unknown, written: Record<string, unknown>) => Promise<void> }
+  ): Promise<void>;
   /**
    * W-151 round 2: create the identity row ONLY when the IPO has none
    * (INSERT ... ON CONFLICT DO NOTHING). Returns true when a row was created.
@@ -1729,6 +1742,27 @@ export async function persistFilingExtraction(
   // W-147: drop any headline column a price band advertisement already owns,
   // BEFORE the admin-protection gate and the write.
   for (const [col, v] of Object.entries(iposCandidate)) receiptFields.push(receipt('ipos', col, v));
+  // PR #1460 round 1 MAJOR-3 (OD-161, OD-162, OD-73, B8 one decision point): for the cover block's
+  // two `ipos` columns the persister writes ONLY an empty column. The receipt above is always
+  // filed; an identical stored value is credited by it with no write and no re-stamp (OD-73), and
+  // a different stored value (a website's, or ADMIN's) is left for the walk's OD-161 path, which
+  // decides from the receipt (text-only replace, OCR/MIXED to the admin list).
+  for (const col of ['leadManagers', 'registrar'] as const) {
+    if (!(col in iposCandidate)) continue;
+    const stored = (existing as unknown as Record<string, unknown>)[col];
+    const storedEmpty =
+      stored === null ||
+      stored === undefined ||
+      (Array.isArray(stored) ? stored.length === 0 : String(stored).trim() === '');
+    if (storedEmpty) continue;
+    const same = normalizeReceiptValue(stored) === normalizeReceiptValue(iposCandidate[col]);
+    delete iposCandidate[col];
+    skippedLowerPriority.push(
+      same
+        ? `ipos.${col} (equal to the stored value: credited by the receipt, not re-written, OD-73)`
+        : `ipos.${col} (differs from the stored value: receipt filed, the walk decides under OD-161)`
+    );
+  }
   await dropOcrOutranked('ipos', iposCandidate, existing as unknown as Record<string, unknown>);
   await dropOutranked('ipos', iposCandidate, [
     'issueSize',
@@ -1880,36 +1914,6 @@ export async function persistFilingExtraction(
   mark('complianceOfficer', str(extraction, mappedField('ipo_details', 'complianceOfficer')));
   mark('complianceOfficerPhone', str(extraction, mappedField('ipo_details', 'complianceOfficerPhone')));
   mark('complianceOfficerEmail', str(extraction, mappedField('ipo_details', 'complianceOfficerEmail')));
-  // OD-166 (row 46): an email whose domain differs from the company website is KEPT (written
-  // above) and listed for the admin, never refused. Only a document allowed to answer the field
-  // (OD-96) lists it; nothing is listed on a dry run.
-  const coEmailKey = mappedField('ipo_details', 'complianceOfficerEmail');
-  const coEmail = str(extraction, coEmailKey);
-  if (
-    apply &&
-    coEmail &&
-    options.documentId &&
-    extraction.fields[coEmailKey]?.cross_check?.passed === false &&
-    documentMayWriteField('ipo_details', 'complianceOfficerEmail', options.docType)
-  ) {
-    if (deps.adminListing) {
-      await deps.adminListing.listForAdmin({
-        ipoId,
-        documentId: options.documentId,
-        tableName: 'ipo_details',
-        fieldName: 'complianceOfficerEmail',
-        value: coEmail,
-        rule: 'OD-166',
-        detail: {
-          check: 'email_domain_matches_website',
-          website: str(extraction, 'company_website'),
-          page: extraction.fields[coEmailKey]?.page ?? null,
-        },
-      });
-    } else {
-      skippedNoColumn.push('ipo_details.complianceOfficerEmail: OD-166 admin listing not wired (no adminListing dep)');
-    }
-  }
   mark('companyDescription', description);
   if (faceValue !== null) mark('faceValue', faceValue.toString());
   const lotMultiple = num(extraction, mappedField('ipo_details', 'lotMultiple'));
@@ -2148,7 +2152,52 @@ export async function persistFilingExtraction(
         }
       }
       if (Object.keys(detailsPayload).length > 0) {
-        await deps.ipoDetailsWriter.upsert(ipoId, { ...detailsPayload, dataSource: source });
+        // OD-166 (row 46): an email whose domain differs from the company website is KEPT and
+        // listed for the admin, never refused. The listing runs INSIDE the ipo_details write
+        // transaction and only when the email is actually written there (after the admin gate,
+        // the consolidation and the hold re-read), so a held or dropped email is never listed
+        // and a rolled-back write leaves no listing (PR #1460 round 1 MINOR).
+        const coEmailKey = mappedField('ipo_details', 'complianceOfficerEmail');
+        const coEmail = str(extraction, coEmailKey);
+        const documentId = options.documentId ?? null;
+        const listsEmail =
+          coEmail !== null &&
+          documentId !== null &&
+          extraction.fields[coEmailKey]?.cross_check?.passed === false &&
+          documentMayWriteField('ipo_details', 'complianceOfficerEmail', options.docType) &&
+          detailsPayload.complianceOfficerEmail === coEmail;
+        const adminListing = deps.adminListing;
+        if (listsEmail && !adminListing) {
+          skippedNoColumn.push('ipo_details.complianceOfficerEmail: OD-166 admin listing not wired (no adminListing dep)');
+        }
+        const afterWriteInTx =
+          listsEmail && adminListing && coEmail !== null && documentId !== null
+            ? async (tx: unknown, written: Record<string, unknown>) => {
+                if (written.complianceOfficerEmail !== coEmail) return;
+                await adminListing.listForAdmin(
+                  {
+                    ipoId,
+                    documentId,
+                    source,
+                    tableName: 'ipo_details',
+                    fieldName: 'complianceOfficerEmail',
+                    value: coEmail,
+                    rule: 'OD-166',
+                    detail: {
+                      check: 'email_domain_matches_website',
+                      website: str(extraction, 'company_website'),
+                      page: extraction.fields[coEmailKey]?.page ?? null,
+                    },
+                  },
+                  tx
+                );
+              }
+            : undefined;
+        await deps.ipoDetailsWriter.upsert(
+          ipoId,
+          { ...detailsPayload, dataSource: source },
+          afterWriteInTx ? { afterWriteInTx } : undefined
+        );
         for (const col of Object.keys(detailsPayload)) await trackField('ipo_details', col);
       }
     }
@@ -2957,11 +3006,17 @@ export async function persistFilingExtraction(
     extraction,
     'brlm_track_record'
   );
-  // Item 39 (row 114): the BRLM rows reconcile with ipos.lead_managers. A document that read its
-  // own BRLMs files THOSE (and, for a single BRLM, its INM number); otherwise the stored list.
+  // Item 39 (row 114): the BRLM rows reconcile with ipos.lead_managers, so they are built from the
+  // value the column HOLDS after this run: the one written above (iposWritable, after the admin
+  // gate, OD-96 and OD-97), else the stored one (PR #1460 round 1 MAJOR-2). The document's own INM
+  // number (one BRLM) and the registrar's contact lines are filed only when the document's read IS
+  // that value - never pinned onto a list another source or the admin chose.
   const docBrlms = coverLeadManagers(extraction);
-  const brlmNames = (docBrlms ?? existing.leadManagers ?? []).filter((n): n is string => !!n);
-  const soleBrlmReg = docBrlms && docBrlms.length === 1 ? str(extraction, 'lead_manager_sebi_reg') : null;
+  const heldBrlms = (iposWritable.leadManagers as string[] | undefined) ?? existing.leadManagers ?? [];
+  const brlmNames = heldBrlms.filter((n): n is string => !!n);
+  const docBrlmsHeld =
+    docBrlms !== null && normalizeReceiptValue(docBrlms) === normalizeReceiptValue(brlmNames);
+  const soleBrlmReg = docBrlmsHeld && brlmNames.length === 1 ? str(extraction, 'lead_manager_sebi_reg') : null;
   // Item 1 slice s1 (row-key prep, F-74): built without `normalizedName`
   // here — every entry (the initial map, and each subsequent push below)
   // carries only a bare `name`; `normalizedName` is derived once, uniformly,
@@ -2984,11 +3039,11 @@ export async function persistFilingExtraction(
   }));
   const registrarReg = str(extraction, 'registrar_sebi_reg');
   const docRegistrarName = coverRegistrar(extraction);
-  const registrarName = docRegistrarName ?? existing.registrar;
+  const registrarName = (iposWritable.registrar as string | undefined) ?? existing.registrar;
   if (registrarName) {
     // Item 39: the contact lines belong to the registrar the document named; they are filed
-    // only on that row, never on a stored name from another source.
-    const own = docRegistrarName !== null;
+    // only when the column holds that name, never on a stored name from another source.
+    const own = docRegistrarName !== null && docRegistrarName.trim() === String(registrarName).trim();
     intermediaries.push({
       ipoId,
       role: 'REGISTRAR',

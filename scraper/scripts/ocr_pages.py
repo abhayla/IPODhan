@@ -654,6 +654,29 @@ def annotate_fields(fields, page_confidence, floor=CONFIDENCE_FLOOR):
     value is dropped with reason `ocr_low_confidence` — never a guess.
     """
     for name, field in (fields or {}).items():
+        # PR #1460 round 1: a value read from SEVERAL agreeing places (the cover reader's
+        # `pages`) carries every one. All text -> TEXT; all OCR -> OCR (floor applies); some of
+        # each -> MIXED (OD-97 (a)), and a text page agreeing keeps the value whatever the OCR
+        # confidence, because the text read alone supports it.
+        pages = field.get("pages")
+        if isinstance(pages, list) and len(pages) > 1 and field.get("value") is not None:
+            ocr = [p for p in pages if p in page_confidence]
+            if not ocr:
+                field.setdefault("source_text", "TEXT")
+                continue
+            conf = min(page_confidence[p] for p in ocr)
+            field["ocr_confidence"] = round(conf, 4)
+            if len(ocr) < len(pages):
+                field["source_text"] = "MIXED"
+                continue
+            field["source_text"] = "OCR"
+            if conf < floor:
+                field["value"] = None
+                field["check"] = {"name": "ocr_confidence_floor", "passed": False,
+                                  "detail": "ocr_low_confidence: %.4f < %.2f" % (conf, floor)}
+                field["state"] = "LOW_CONFIDENCE_OCR"
+                field.pop("refused_value", None)
+            continue
         page = field.get("page")
         if page is None:
             # #1420 round 3: a refusal carries no `page` (no value was kept) but
