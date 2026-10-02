@@ -27,7 +27,7 @@ import {
   transformCurrentIssueSubscription,
 } from './nse-subscription-parser.js';
 import { notifyOwner } from '../services/owner-notify.js';
-import { parseDdMmmYyyy, MONTH_ABBR_TO_NUM } from '../utils/date-string-parsing.js';
+import { parseDdMmmYyyy, parseDdMmYyyy, parseIsoDatePrefix, MONTH_ABBR_TO_NUM } from '../utils/date-string-parsing.js';
 import { istDateIso } from '../scheduler/due-step-cycle.js';
 
 const BASE_URL = 'https://www.nseindia.com';
@@ -359,16 +359,12 @@ export function parseNSEDate(dateStr: string | null | undefined): string | undef
       return ddMmmIso;
     }
 
-    // Handle DD/MM/YYYY format
-    if (cleaned.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-      const [day, month, year] = cleaned.split('/');
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-
-    // Try direct parsing
-    const date = new Date(cleaned);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+    // DD/MM/YYYY and ISO shapes: string arithmetic. No Date-constructor fallback (#1467): a
+    // free-text date parses at LOCAL midnight and toISOString() then returns the previous day
+    // under Asia/Kolkata. Anything unrecognised is absent, never shifted.
+    const numeric = parseDdMmYyyy(cleaned) ?? parseIsoDatePrefix(cleaned);
+    if (numeric) {
+      return numeric;
     }
 
     logger.warn({ rawValue: dateStr }, '[NSE] parseNSEDate: unparseable date left absent (#963)');

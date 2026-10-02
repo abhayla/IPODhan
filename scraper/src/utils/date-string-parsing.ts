@@ -34,7 +34,44 @@ export function parseDdMmmYyyy(dateStr: string): string | null {
 
   const [, dayRaw, mon, year] = match;
   const month = MONTH_ABBR_TO_NUM[mon.toLowerCase()];
-  return month ? `${year}-${month}-${dayRaw.padStart(2, '0')}` : null;
+  if (!month || !isRealCalendarDay(Number(year), Number(month), Number(dayRaw))) return null;
+  return `${year}-${month}-${dayRaw.padStart(2, '0')}`;
+}
+
+/** True when y-m-d is a real calendar day (rejects 31-Feb, month 13, day 0). Pure arithmetic, no TZ. */
+export function isRealCalendarDay(y: number, m: number, d: number): boolean {
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return false;
+  if (m < 1 || m > 12 || d < 1) return false;
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+  return d <= dim;
+}
+
+/**
+ * Parse numeric "DD-MM-YYYY" / "DD/MM/YYYY" to "YYYY-MM-DD" by string arithmetic (TZ-invariant).
+ * null for any other shape or an impossible calendar day. Never today, never a Date round-trip (#1467).
+ */
+export function parseDdMmYyyy(dateStr: string): string | null {
+  const match = dateStr.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (!match) return null;
+  const [, d, m, y] = match;
+  if (!isRealCalendarDay(Number(y), Number(m), Number(d))) return null;
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+/**
+ * Parse an ISO date or zone-less ISO datetime ("2026-09-30", "2026-09-30T00:00:00", the BSE API
+ * Start_Dt shape) to its calendar day WITHOUT any timezone conversion. A "Z" suffix is accepted only
+ * on exact midnight; any other zoned instant is null (it cannot be read as a market date without a
+ * conversion this helper refuses to guess).
+ */
+export function parseIsoDatePrefix(dateStr: string): string | null {
+  const match = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z)?)?$/);
+  if (!match) return null;
+  const [, y, m, d, hh, mm, ss, z] = match;
+  if (!isRealCalendarDay(Number(y), Number(m), Number(d))) return null;
+  if (z && !(hh === '00' && mm === '00' && (ss ?? '00') === '00')) return null;
+  return `${y}-${m}-${d}`;
 }
 
 /**

@@ -1,0 +1,165 @@
+{
+ "database": "ipodhan_staging",
+ "measuredAt": "2026-10-02T18:55:22.790Z",
+ "fields": {
+  "openDate": {
+   "fieldSourceRows": 358,
+   "bseWinning": 52,
+   "bseWinningEqualsWriteDay": 1,
+   "todayFallbackSuspects": [],
+   "bseOneDayEarly": [],
+   "bseEqualsWriteDayAll": [
+    {
+     "slug": "jai-mata-glass-ltd",
+     "status": "CLOSED",
+     "stored": "2026-08-21",
+     "writtenIst": "2026-08-21",
+     "witnesses": []
+    }
+   ],
+   "bseDisagreesAny": [],
+   "todayFallbackSuspectCount": 0,
+   "bseOneDayEarlyCount": 0
+  },
+  "closeDate": {
+   "fieldSourceRows": 358,
+   "bseWinning": 53,
+   "bseWinningEqualsWriteDay": 8,
+   "todayFallbackSuspects": [],
+   "bseOneDayEarly": [],
+   "bseEqualsWriteDayAll": [
+    {
+     "slug": "minolta-finance-ltd",
+     "status": "CLOSED",
+     "stored": "2026-08-20",
+     "writtenIst": "2026-08-20",
+     "witnesses": []
+    },
+    {
+     "slug": "indel-money-ltd",
+     "status": "CLOSED",
+     "stored": "2026-08-20",
+     "writtenIst": "2026-08-20",
+     "witnesses": []
+    },
+    {
+     "slug": "colinz-laboratories-ltd",
+     "status": "CLOSED",
+     "stored": "2026-08-20",
+     "writtenIst": "2026-08-20",
+     "witnesses": []
+    },
+    {
+     "slug": "century-business-media-ltd",
+     "status": "LISTED",
+     "stored": "2026-09-16",
+     "writtenIst": "2026-09-16",
+     "witnesses": []
+    },
+    {
+     "slug": "om-galaxy-ltd",
+     "status": "LISTED",
+     "stored": "2026-09-15",
+     "writtenIst": "2026-09-15",
+     "witnesses": []
+    },
+    {
+     "slug": "shakti-polytarp-ltd",
+     "status": "LISTED",
+     "stored": "2026-09-17",
+     "writtenIst": "2026-09-17",
+     "witnesses": []
+    },
+    {
+     "slug": "vama-wovenfab-ltd",
+     "status": "LISTED",
+     "stored": "2026-09-17",
+     "writtenIst": "2026-09-17",
+     "witnesses": []
+    },
+    {
+     "slug": "raksan-transformers-ltd",
+     "status": "LISTED",
+     "stored": "2026-09-15",
+     "writtenIst": "2026-09-15",
+     "witnesses": []
+    }
+   ],
+   "bseDisagreesAny": [],
+   "todayFallbackSuspectCount": 0,
+   "bseOneDayEarlyCount": 0
+  },
+  "listingDate": {
+   "fieldSourceRows": 330,
+   "bseWinning": 7,
+   "bseWinningEqualsWriteDay": 0,
+   "todayFallbackSuspects": [],
+   "bseOneDayEarly": [],
+   "bseEqualsWriteDayAll": [],
+   "bseDisagreesAny": [],
+   "todayFallbackSuspectCount": 0,
+   "bseOneDayEarlyCount": 0
+  },
+  "allotmentDate": {
+   "fieldSourceRows": 247,
+   "bseWinning": 5,
+   "bseWinningEqualsWriteDay": 0,
+   "todayFallbackSuspects": [],
+   "bseOneDayEarly": [],
+   "bseEqualsWriteDayAll": [],
+   "bseDisagreesAny": [],
+   "todayFallbackSuspectCount": 0,
+   "bseOneDayEarlyCount": 0
+  },
+  "refundDate": {
+   "skipped": "column refund_date not on ipos"
+  },
+  "creditDate": {
+   "skipped": "column credit_date not on ipos"
+  }
+ },
+ "iposDateColumnsPresent": [
+  "open_date",
+  "close_date",
+  "listing_date",
+  "allotment_date"
+ ],
+ "witnessShapeSample": [
+  {
+   "field_name": "openDate",
+   "source": "CHITTORGARH",
+   "witnesses": [
+    {
+     "at": "2026-10-02T18:52:10.088Z",
+     "value": "2026-09-30",
+     "source": "BSE",
+     "outcome": "SUPPLIED"
+    },
+    {
+     "at": "2026-10-02T18:52:10.089Z",
+     "value": "2026-09-30",
+     "source": "CHITTORGARH",
+     "outcome": "SUPPLIED"
+    }
+   ]
+  },
+  {
+   "field_name": "openDate",
+   "source": "CHITTORGARH",
+   "witnesses": [
+    {
+     "at": "2026-10-02T18:52:07.601Z",
+     "value": "2026-09-30",
+     "source": "BSE",
+     "outcome": "SUPPLIED"
+    },
+    {
+     "at": "2026-10-02T18:52:07.602Z",
+     "value": "2026-09-30",
+     "source": "CHITTORGARH",
+     "outcome": "SUPPLIED"
+    }
+   ]
+  }
+ ]
+}

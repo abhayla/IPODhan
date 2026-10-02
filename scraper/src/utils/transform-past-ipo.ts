@@ -13,7 +13,7 @@
 import { z } from 'zod';
 import logger from './logger.js';
 import type { NSEPastIPOResponse } from '../scrapers/nse-api-client.js';
-import { parseDdMmmYyyy } from './date-string-parsing.js';
+import { parseDdMmmYyyy, parseDdMmYyyy, parseIsoDatePrefix } from './date-string-parsing.js';
 
 /**
  * Zod schema for validating transformed past IPO data (AC2)
@@ -110,35 +110,13 @@ export function parseDate(dateStr: string | null | undefined): string | null {
   try {
     const cleaned = dateStr.trim();
 
-    // Already in YYYY-MM-DD format
-    if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
-      const date = new Date(cleaned);
-      if (!isNaN(date.getTime())) {
-        return cleaned;
-      }
-    }
-
-    // Handle DD-MMM-YYYY format (e.g., "15-Jan-2024") — string arithmetic,
-    // TZ-invariant by construction (T-327, round-7 P1-1); NEVER
-    // `new Date(dateOnlyString).toISOString()`.
-    const ddMmmIso = parseDdMmmYyyy(cleaned);
-    if (ddMmmIso) {
-      return ddMmmIso;
-    }
-
-    // Handle DD/MM/YYYY format
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(cleaned)) {
-      const [day, month, year] = cleaned.split('/');
-      const date = new Date(`${year}-${month}-${day}`);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-      }
-    }
-
-    // Try direct parsing as fallback
-    const date = new Date(cleaned);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+    // ISO and numeric DD/MM/YYYY by string arithmetic; DD-MMM-YYYY via the shared helper.
+    // No Date-constructor fallback (#1467): free text parses at local midnight and
+    // toISOString() shifts it a day under Asia/Kolkata, so unknown shapes are null.
+    const parsed =
+      parseIsoDatePrefix(cleaned) ?? parseDdMmmYyyy(cleaned) ?? parseDdMmYyyy(cleaned);
+    if (parsed) {
+      return parsed;
     }
 
     logger.debug({ dateStr }, 'Could not parse date string (AC2)');

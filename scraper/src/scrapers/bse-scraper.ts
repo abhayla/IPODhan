@@ -28,8 +28,7 @@ import { launchBrowser, createPage, closeBrowser, navigateToUrl, waitForSelector
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
-import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
-import { istDateIso } from '../scheduler/due-step-cycle.js';
+import { parseDdMmmYyyy, parseDdMmYyyy, parseIsoDatePrefix } from '../utils/date-string-parsing.js';
 import { scrapeBSEIPODetails, type BSEDetailPageData } from './bse-detail-scraper.js';
 import {
   enrichRightsIssuesFromChittorgarh,
@@ -75,42 +74,22 @@ function extractStatus(issueStatus: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'L
 }
 
 /**
- * Parse date string from BSE format (DD-MM-YYYY) to ISO 8601
- * @param dateStr - Date string in BSE format
- * @returns ISO 8601 date string
+ * Parse a date string from the BSE table or API to "YYYY-MM-DD".
+ *
+ * Answer states (#1467): parsed -> the calendar day exactly as printed; empty input -> null
+ * (abstention, OD-60); unparseable -> null with a warn (the caller leaves the field not supplied,
+ * OD-62 FAILED_VALIDATION). NEVER today's date, and never the Date constructor + toISOString, which
+ * turns a local-midnight parse into the previous UTC day under Asia/Kolkata (F-223 / #1453).
+ * See .claude/rules/ist-timezone.md: a market date is never shifted by a timezone conversion.
  */
-function parseBSEDate(dateStr: string): string {
-  try {
-    // BSE format: "16-10-2025" (DD-MM-YYYY) or "06/Oct/2025"
-    const cleaned = dateStr.trim();
-
-    // Handle DD-MM-YYYY format (e.g., "16-10-2025")
-    if (cleaned.match(/^\d{2}-\d{2}-\d{4}$/)) {
-      const [day, month, year] = cleaned.split('-');
-      return `${year}-${month}-${day}`;
-    }
-
-    // Handle DD/MMM/YYYY format (e.g., "06/Oct/2025") — string arithmetic,
-    // TZ-invariant by construction (T-327, round-7 P1-1; same class as the
-    // NSE fix in nse-api-client.ts).
-    const ddMmmIso = parseDdMmmYyyy(cleaned);
-    if (ddMmmIso) {
-      return ddMmmIso;
-    }
-
-    // Fallback: try to parse with Date constructor
-    const date = new Date(cleaned);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
-    }
-
-    // If all parsing fails, return current date
-    logger.warn({ dateStr }, 'Failed to parse BSE date, using current date');
-    return istDateIso(new Date());
-  } catch (error) {
-    logger.error({ dateStr, error }, 'Error parsing BSE date');
-    return istDateIso(new Date());
-  }
+export function parseBSEDate(dateStr: string | null | undefined): string | null {
+  if (typeof dateStr !== 'string' || dateStr.trim() === '') return null;
+  const cleaned = dateStr.trim();
+  const iso =
+    parseIsoDatePrefix(cleaned) ?? parseDdMmYyyy(cleaned) ?? parseDdMmmYyyy(cleaned);
+  if (iso) return iso;
+  logger.warn({ dateStr }, 'BSE date unparseable, left absent (#1467)');
+  return null;
 }
 
 /**
@@ -316,8 +295,8 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           issueSize: 0, // BSE doesn't show issue size in main table, would need detail page
           priceRangeMin: priceRange.min,
           priceRangeMax: priceRange.max,
-          openDate: parseBSEDate(rawIPO.startDate),
-          closeDate: parseBSEDate(rawIPO.endDate),
+          openDate: parseBSEDate(rawIPO.startDate) ?? undefined,
+          closeDate: parseBSEDate(rawIPO.endDate) ?? undefined,
           listingExchange: 'BSE',
           segment: segment as 'MAINBOARD' | 'SME' | null | undefined,
           offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',

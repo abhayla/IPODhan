@@ -98,10 +98,6 @@ const INLINE_RISKY_CHAIN =
 // a file dropping out of this list (or its count decreasing) is fine; a
 // file gaining a NEW instance, or a file NOT in this list gaining one, fails.
 const BASELINE: Record<string, number> = {
-  'scrapers/bse-scraper.ts': 1,
-  'scrapers/nse-api-client.ts': 1,
-  'scrapers/nse-scraper.ts': 1,
-  'utils/transform-past-ipo.ts': 1,
   // services/normalization-engine.ts's one site moved with the value-equivalence code (A4, OD-59) to
   // packages/shared/src/utils/value-equivalence.ts — now covered below as 'shared/utils/value-equivalence.ts'.
   'utils/scraper-utils.ts': 1,

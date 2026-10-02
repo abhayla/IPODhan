@@ -196,12 +196,8 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
                 }
               }
 
-              // Fallback: try Date constructor
-              const date = new Date(cleaned);
-              if (!isNaN(date.getTime())) {
-                return date.toISOString().split('T')[0];
-              }
-
+              // No Date-constructor fallback (#1467): it parses at local midnight and
+              // toISOString() returns the previous day under Asia/Kolkata. Unknown = absent.
               return undefined;
             } catch (error) {
               return undefined;
