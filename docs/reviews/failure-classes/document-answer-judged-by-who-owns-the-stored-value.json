@@ -4,8 +4,8 @@
   "symptom": "Once a lower-ranked source owns the column, the higher-ranked source's real answer is reported as \"no provenance\" and never credited or compared; an equal value stays unrecorded and a different one is never reviewed.",
   "first_seen": "2026-10-02 (F-225) -- field-plan-walk-doc-fetcher.ts:333; staging: 4,769 plan rows on 77 IPOs refused NO_DOCUMENT_PROVENANCE; 149 document records on website-owned ipos columns (CHITTORGARH 113, BSE 46, NSE 11, ADMIN 4), 139 equal and 10 different.",
   "fix_prs": "none yet -- planned: spec 7.1 item 41 (OD-161)",
-  "detection_check": "planned doc_rank1_unanswered_with_offer_doc (notCoveredByThisManifest)",
-  "status": "unguarded -- no implemented check",
+  "detection_check": "doc_rank1_unanswered_with_offer_doc (scripts/audit-detection-floor.mjs)",
+  "status": "guarded -- detected by doc_rank1_unanswered_with_offer_doc; the class itself is not yet fixed (OD-164 items 38-46)",
   "spec_ref": [
     "§2.5"
   ]

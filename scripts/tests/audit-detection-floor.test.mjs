@@ -2691,3 +2691,152 @@ test('(p_plan_not_printed_over_failed_read) the stated-absence list fails closed
   fs.writeFileSync(bad, JSON.stringify({ reasons: [{ reason: "x') OR ('1'='1" }] }));
   assert.throws(() => readStatedAbsenceReasons(bad), /non-identifier/);
 });
+
+// ---- item 37 (OD-164, spec 2.5.6): the five document-yield / every-source checks. Each has a FAIL
+// fixture (the NSE shape measured on staging 2026-10-02) and a PASS fixture, run through the real
+// evaluators in scripts/lib/doc-yield-checks.mjs.
+import {
+  evaluateDocYieldPerDocument, evaluateDocRank1Unanswered, evaluateWitnessMissing,
+  evaluateListedSourceNeverAsked, evaluateOcrAmountMagnitude, expectedFieldsForDocType,
+} from '../lib/doc-yield-checks.mjs';
+
+const YIELD_MANIFEST = JSON.parse(readFileSync(new URL('../../scraper/config/field-manifest.json', import.meta.url), 'utf8'));
+
+test('(doc_yield_per_document) a thin RHP (NSE: 5 receipts) FAILs by identity; a full read PASSes', () => {
+  const expected = [...expectedFieldsForDocType(YIELD_MANIFEST, 'RHP')];
+  assert.ok(expected.length > 50, `expected fields for RHP: ${expected.length}`);
+  const thin = { slug: 'national-stock-exchange-of-india-ltd', documentId: '3cb0ba27-4ec8', type: 'RHP',
+    receiptFields: [['ipos', 'cin'], ['ipos', 'faceValue'], ['ipo_details', 'faceValue']] };
+  const full = { slug: 'full-ltd', documentId: 'aaaaaaaa-0000', type: 'RHP',
+    receiptFields: expected.slice(0, Math.ceil(expected.length * 0.5)).map((k) => k.split('.')) };
+  const bad = evaluateDocYieldPerDocument([thin, full], YIELD_MANIFEST);
+  assert.equal(bad.status, 'FAIL');
+  assert.equal(bad.offenders.length, 1);
+  assert.match(bad.labels[0], /national-stock-exchange-of-india-ltd RHP 3cb0ba27/);
+  assert.equal(evaluateDocYieldPerDocument([full], YIELD_MANIFEST).status, 'PASS');
+});
+
+test('(doc_yield_per_document) an unknown document type is UNVERIFIABLE, never PASS (B4c)', () => {
+  const r = evaluateDocYieldPerDocument([{ slug: 'x', documentId: 'id', type: 'MYSTERY', receiptFields: [] }], YIELD_MANIFEST);
+  assert.equal(r.status, 'UNVERIFIABLE');
+});
+
+const R1_MANIFEST = { fields: { 'ipo_details.compliance_officer': { documentType: 'RHP' }, 'ipo_details.odd': {} } };
+const r1Row = (o = {}) => ({ ipoId: 'i1', slug: 'national-stock-exchange-of-india-ltd', tableName: 'ipo_details', fieldName: 'compliance_officer', state: 'CHECK_FAILED', ...o });
+
+test('(doc_rank1_unanswered_with_offer_doc) an unanswered rank-1 DOC row with a COMPLETED family document FAILs by IPO; no document PASSes', () => {
+  const bad = evaluateDocRank1Unanswered([r1Row()], new Map([['i1', new Set(['RHP'])]]), R1_MANIFEST);
+  assert.equal(bad.status, 'FAIL');
+  assert.match(bad.labels[0], /^national-stock-exchange-of-india-ltd=1 \[ipo_details:1\]/);
+  assert.equal(evaluateDocRank1Unanswered([r1Row()], new Map([['i1', new Set(['CORRIGENDUM'])]]), R1_MANIFEST).status, 'PASS');
+  assert.equal(evaluateDocRank1Unanswered([r1Row()], new Map(), R1_MANIFEST).status, 'PASS');
+});
+
+test('(doc_rank1_unanswered_with_offer_doc) a field with no manifest documentType is UNVERIFIABLE, not PASS (B4c)', () => {
+  const r = evaluateDocRank1Unanswered([r1Row({ fieldName: 'odd' })], new Map([['i1', new Set(['RHP'])]]), R1_MANIFEST);
+  assert.equal(r.status, 'UNVERIFIABLE');
+});
+
+const W_MANIFEST = { fields: { 'ipos.price_range_max': { rank: { MAINBOARD: ['DOC', 'NSE', 'BSE'] } }, 'ipos.solo': { rank: { MAINBOARD: ['NSE'] } } } };
+const wRow = (o = {}) => ({ slug: 'national-stock-exchange-of-india-ltd', status: 'LISTED', tableName: 'ipos', fieldName: 'priceRangeMax', source: 'CHITTORGARH', updatedBy: 'SYSTEM', witnesses: null, ...o });
+
+test('(witness_missing_on_stored_value) null or empty witnesses FAIL by status/writer/IPO; recorded witnesses PASS', () => {
+  const bad = evaluateWitnessMissing([wRow(), wRow({ witnesses: [] })], W_MANIFEST);
+  assert.equal(bad.status, 'FAIL');
+  assert.equal(bad.offenders.length, 2);
+  assert.match(bad.labels.join(' '), /LISTED=2/);
+  assert.match(bad.labels.join(' '), /SYSTEM\/CHITTORGARH=2/);
+  assert.match(bad.labels.join(' '), /national-stock-exchange-of-india-ltd=2/);
+  const ok = evaluateWitnessMissing([wRow({ witnesses: [{ source: 'NSE', outcome: 'NOT_PRINTED' }] })], W_MANIFEST);
+  assert.equal(ok.status, 'PASS');
+});
+
+test('(witness_missing_on_stored_value) ADMIN rows and single-source fields are out of scope; an unlisted field is UNVERIFIABLE', () => {
+  assert.equal(evaluateWitnessMissing([wRow({ source: 'ADMIN' }), wRow({ fieldName: 'solo', source: 'NSE' })], W_MANIFEST).status, 'PASS');
+  assert.equal(evaluateWitnessMissing([wRow({ fieldName: 'unknownField' })], W_MANIFEST).status, 'UNVERIFIABLE');
+});
+
+const nRow = (o = {}) => ({ slug: 'national-stock-exchange-of-india-ltd', tableName: 'ipos', fieldName: 'company_website', state: 'CHECK_FAILED',
+  rank2Source: 'CHITTORGARH', rank3Source: null, cause: '[gap-key:x] rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field [gap:NO_MAPPING]', answers: null, ...o });
+
+test('(listed_source_never_asked) an unmapped listed source FAILs naming source.field and the baseline; asked sources PASS', () => {
+  const bad = evaluateListedSourceNeverAsked([nRow()], ['ipos.company_website CHITTORGARH NO_MAPPING']);
+  assert.equal(bad.status, 'FAIL');
+  assert.match(bad.labels[0], /ipos\.company_website CHITTORGARH NO_MAPPING=1 IPO\(s\) \[national-stock-exchange-of-india-ltd\] \(baseline #884\)/);
+  const asked = nRow({ cause: 'rank1:DOC:NOT_AVAILABLE_YET', answers: [{ source: 'CHITTORGARH', outcome: 'NOT_PRINTED' }] });
+  assert.equal(evaluateListedSourceNeverAsked([asked]).status, 'PASS');
+  assert.equal(evaluateListedSourceNeverAsked([nRow({ state: 'SUPPLIED', cause: null })]).status, 'PASS');
+});
+
+test('(listed_source_never_asked) a settled row whose answers omit a listed source FAILs; unread rows are counted, not clean', () => {
+  const omitted = nRow({ cause: 'rank1:DOC:NOT_AVAILABLE_YET', answers: [{ source: 'DOC', outcome: 'NOT_AVAILABLE_YET' }] });
+  const r = evaluateListedSourceNeverAsked([omitted]);
+  assert.equal(r.status, 'FAIL');
+  assert.match(r.labels[0], /ipos\.company_website CHITTORGARH NEVER_ASKED/);
+  const unread = evaluateListedSourceNeverAsked([nRow({ cause: 'rank1:DOC:NOT_AVAILABLE_YET', answers: null })]);
+  assert.equal(unread.status, 'UNVERIFIABLE');
+  assert.equal(unread.unresolved, 1);
+});
+
+const oRow = (value, o = {}) => ({ slug: 'national-stock-exchange-of-india-ltd', tableName: 'ipos', fieldName: 'priceRangeMax', rowKey: '', value, ...o });
+
+test('(ocr_amount_magnitude) NSE OCR 1.785 against website 1785 FAILs; an equal or non-power-of-ten value PASSes', () => {
+  const cmp = [{ ...oRow('1785'), via: 'CHITTORGARH' }];
+  const bad = evaluateOcrAmountMagnitude([oRow('1.785')], cmp);
+  assert.equal(bad.status, 'FAIL');
+  assert.match(bad.labels[0], /national-stock-exchange-of-india-ltd ipos\.priceRangeMax OCR=1\.785 vs CHITTORGARH=1785 \(10\^-3\)/);
+  assert.equal(evaluateOcrAmountMagnitude([oRow('1785')], cmp).status, 'PASS');
+  assert.equal(evaluateOcrAmountMagnitude([oRow('2400')], cmp).status, 'PASS');
+});
+
+test('(ocr_amount_magnitude) an unparsable OCR amount is UNVERIFIABLE, not PASS (B4c)', () => {
+  assert.equal(evaluateOcrAmountMagnitude([oRow('abc')], [{ ...oRow('1785'), via: 'TEXT receipt' }]).status, 'UNVERIFIABLE');
+});
+
+test('(item 37) the audit wires all five checks and the detection-check JSONs sit in section "checks"', () => {
+  const src = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  for (const id of ['doc_yield_per_document', 'doc_rank1_unanswered_with_offer_doc', 'witness_missing_on_stored_value', 'listed_source_never_asked', 'ocr_amount_magnitude']) {
+    assert.ok(src.includes(`'${id}'`), id);
+    const json = JSON.parse(readFileSync(new URL(`../../docs/reviews/detection-checks/${id}.json`, import.meta.url), 'utf8'));
+    assert.equal(json.section, 'checks', id);
+  }
+});
+
+// ---- fix round 1 (PR #1457 review): unresolved rows never PASS; boundaries pinned.
+const SYN_MANIFEST = { fields: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`ipos.f${i}`, {
+  documentType: 'RHP', rank: { MAINBOARD: ['DOC', 'NSE'] }, capability: { DOC: { capable: true } } }])) };
+const synDoc = (n) => ({ slug: 's', documentId: 'abcdefgh', type: 'RHP', receiptFields: Array.from({ length: n }, (_, i) => ['ipos', `f${i}`]) });
+
+test('(doc_yield_per_document) boundary: exactly at the 10% floor PASSes, just below FAILs', () => {
+  assert.equal(expectedFieldsForDocType(SYN_MANIFEST, 'RHP').size, 10);
+  assert.equal(evaluateDocYieldPerDocument([synDoc(1)], SYN_MANIFEST).status, 'PASS');
+  const below = evaluateDocYieldPerDocument([synDoc(0)], SYN_MANIFEST);
+  assert.equal(below.status, 'FAIL');
+  assert.match(below.detail, /all 1 judged documents below the 10% floor; expected until items 38-40 land \(#1454\)/);
+});
+
+test('(ocr_amount_magnitude) an OCR receipt with no comparator is UNVERIFIABLE, never PASS', () => {
+  const r = evaluateOcrAmountMagnitude([oRow('1785')], []);
+  assert.equal(r.status, 'UNVERIFIABLE');
+  assert.equal(r.unresolved, 1);
+  const onlyBad = evaluateOcrAmountMagnitude([oRow('1785')], [{ ...oRow('n/a'), via: 'TEXT receipt' }]);
+  assert.equal(onlyBad.status, 'UNVERIFIABLE');
+  assert.equal(evaluateOcrAmountMagnitude([oRow('1785')], [], 0).unresolved, 1);
+  assert.equal(evaluateOcrAmountMagnitude([], [], 1).status, 'UNVERIFIABLE');
+});
+
+test('(ocr_amount_magnitude) boundaries: exactly 10x and 10^1.0199 FAIL; 10^1.0201 and 1x PASS; k=0 never flagged', () => {
+  const run = (ratio) => evaluateOcrAmountMagnitude([oRow(String(100 * ratio))], [{ ...oRow('100'), via: 'TEXT receipt' }]).status;
+  assert.equal(run(10), 'FAIL');
+  assert.equal(run(10 ** 1.0199), 'FAIL');
+  assert.equal(run(10 ** 1.0201), 'PASS');
+  assert.equal(run(1), 'PASS');
+  assert.equal(run(10 ** 0.01), 'PASS');
+});
+
+test('(ocr_amount_magnitude) receipt and field_sources keys are both camelCase and match; a snake_case key does not', () => {
+  const ok = evaluateOcrAmountMagnitude([oRow('1.785', { fieldName: 'priceRangeMax' })], [{ ...oRow('1785', { fieldName: 'priceRangeMax' }), via: 'CHITTORGARH' }]);
+  assert.equal(ok.status, 'FAIL');
+  const drift = evaluateOcrAmountMagnitude([oRow('1.785', { fieldName: 'priceRangeMax' })], [{ ...oRow('1785', { fieldName: 'price_range_max' }), via: 'CHITTORGARH' }]);
+  assert.equal(drift.status, 'UNVERIFIABLE');
+});
