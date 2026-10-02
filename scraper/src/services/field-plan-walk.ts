@@ -491,7 +491,7 @@ export interface FieldPlanWalkOrchestrator {
     source: any,
     docType?: string,
     confidence?: number,
-    options?: { planRankWinnerFields?: readonly string[]; writeRow?: boolean }
+    options?: { planRankWinnerFields?: readonly string[]; writeRow?: boolean; keepUntrackedStoredValue?: boolean }
   ): Promise<any>;
 }
 
@@ -2273,7 +2273,14 @@ async function runWrite(
       writerSource as any,
       answer.documentType,
       undefined,
-      { ...(writeOptions ?? {}), writeRow: true }
+      // F-233 / OD-168: on financial_data (one row per IPO) an answer from below the plan's rank-1 source
+      // never replaces a stored value whose owner is unknown (no field_sources row) -- it may be the offer
+      // document's; a differing answer is listed for the admin. Other child tables keep the M-1 rule.
+      {
+        ...(writeOptions ?? {}),
+        writeRow: true,
+        keepUntrackedStoredValue: plan.tableName === 'financial_data' && source !== plan.rank1Source,
+      }
     );
     // A child-row call returns per-row outcomes; the one row we sent is the
     // only one that can answer for this field.
@@ -2304,7 +2311,8 @@ async function runWrite(
 /**
  * Item 38 (OD-161(a), OD-73, OD-76): an answer whose value is already stored by its own writer. The walk
  * credits it (SUPPLIED, chosen evidence, chosen_confirmed_at) and never calls the writer -- an IPO-level
- * child-table answer could not be written anyway (the writer refuses row_key '' with MISSING_ROW_KEY).
+ * answer on a multi-row child table could not be written anyway (the writer refuses row_key '' with
+ * MISSING_ROW_KEY; one-row-per-IPO tables such as financial_data take '' since F-233).
  */
 export function isCreditedAnswer(
   answer: FieldFetcherAnswer

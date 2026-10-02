@@ -1348,6 +1348,32 @@ describe('#1419: a child-row write is SUPPLIED only when the row itself landed',
     expect(repo.recorded[0].state).toBe('SUPPLIED');
   });
 
+  it('F-233 / OD-168: only a non-rank-1 answer on financial_data asks the writer to keep a stored value with no provenance row', async () => {
+    const rank1 = childOrch({});
+    await walkFieldPlanForIPO(IPO_ID, deps({ fieldPlanRepository: plan() as any, orchestrator: rank1 as any, sourceFetchers: { NSE: nse } as any }), openBudget());
+    expect(rank1.consolidatedUpsertChildRows.mock.calls[0][6]).toMatchObject({ keepUntrackedStoredValue: false });
+
+    const repo2 = makeRepo([planRow({ tableName: 'ipo_details', rowKey: '', fieldName: 'issue_type', rank1Source: 'DOC', rank2Source: 'NSE' })]);
+    const rank2 = childOrch({});
+    const docAbsent = vi.fn(async () => ({ outcome: 'NOT_AVAILABLE_YET' as const }));
+    await walkFieldPlanForIPO(
+      IPO_ID,
+      deps({ fieldPlanRepository: repo2 as any, orchestrator: rank2 as any, sourceFetchers: { DOC: docAbsent, NSE: nse } as any }),
+      openBudget()
+    );
+    // Narrowed to financial_data: another child table keeps the M-1 rule.
+    expect(rank2.consolidatedUpsertChildRows.mock.calls[0][6]).toMatchObject({ keepUntrackedStoredValue: false });
+
+    const repo3 = makeRepo([planRow({ tableName: 'financial_data', rowKey: '', fieldName: 'roe', rank1Source: 'DOC', rank2Source: 'NSE' })]);
+    const fd = childOrch({});
+    await walkFieldPlanForIPO(
+      IPO_ID,
+      deps({ fieldPlanRepository: repo3 as any, orchestrator: fd as any, sourceFetchers: { DOC: docAbsent, NSE: nse } as any }),
+      openBudget()
+    );
+    expect(fd.consolidatedUpsertChildRows.mock.calls[0][6]).toMatchObject({ keepUntrackedStoredValue: true });
+  });
+
   it('fails closed: no rowWrite reported -> not SUPPLIED', async () => {
     const repo = plan();
     const orch = childOrch({ rowWrite: undefined });

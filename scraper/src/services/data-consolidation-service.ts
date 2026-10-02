@@ -63,6 +63,7 @@ import type { FieldDocumentRef } from '../../config/document-field-order.mjs';
 import { OUTCOME_CODE, outcomeCategoryOf, outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import {
   SOURCE_CHANGED_OWN_VALUE,
+  UNTRACKED_STORED_VALUE_DIFFERS,
   isBehaviourConflict,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
@@ -213,6 +214,13 @@ export interface ConsolidateIPODataInput {
    * Only the field-plan walk sets it, and only after reading the open queue item.
    */
   planRankWinnerFields?: readonly string[];
+  /**
+   * F-233: a stored value with NO field_sources row has an unknown owner. When set, such a value is KEPT
+   * (an equal value is still confirmed) -- the field-plan walk sets it for an answer that is not the
+   * plan's rank-1 source, so a lower-ranked website answer never replaces a value that may have come
+   * from the offer document (OD-73, Appendix A). Unset = the M-1 untracked rule unchanged.
+   */
+  keepUntrackedStoredValue?: boolean;
   /**
    * Natural key of the row within `tableName`. `''` (the default) for every table with
    * exactly one row per IPO — `ipos`, `ipo_details`, `anchor_investors`, `financial_data`.
@@ -1746,6 +1754,7 @@ export class DataConsolidationService {
             // ipoType resolution above already uses.
             listingExchanges: storedExchanges ?? input.incomingData?.listingExchanges ?? null,
             planRankWins: input.planRankWinnerFields?.includes(fieldName) ?? false,
+            keepUntrackedStoredValue: input.keepUntrackedStoredValue ?? false,
           });
 
           result.fieldResults.push(fieldResult);
@@ -1864,6 +1873,8 @@ export class DataConsolidationService {
   private async consolidateField(params: {
     /** OD-144: see `ConsolidateIPODataInput.planRankWinnerFields`. */
     planRankWins?: boolean;
+    /** F-233: see `ConsolidateIPODataInput.keepUntrackedStoredValue`. */
+    keepUntrackedStoredValue?: boolean;
     /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
     incoming?: IncomingLineage;
     /** OD-131: collect provenance writes here instead of writing them (`deferProvenance`). */
@@ -2101,16 +2112,41 @@ export class DataConsolidationService {
         };
       }
 
-      if (!outranksUntrackedValue(fieldName, incomingSource, tableName, ipoType)) {
+      if (
+        !outranksUntrackedValue(fieldName, incomingSource, tableName, ipoType) ||
+        (params.keepUntrackedStoredValue && incomingSource !== 'ADMIN')
+      ) {
         logger.warn(
           { ipoId, tableName, fieldName, incomingSource, storedValue, incomingValue },
           'untracked_existing_value_kept: incoming source does not outrank an untracked stored value'
         );
+        // OD-168 (F-233): under the walk's financial_data rule the differing answer is listed for the admin
+        // (OD-73: a differing lower-ranked value goes to the conflicts list, OD-61), as an admin-only row
+        // under UNTRACKED_STORED_VALUE_DIFFERS (the stored side has no recorded source; see that constant).
+        // Nothing is resolved (resolved_source NULL) -- the admin decides.
+        const listForAdmin = params.keepUntrackedStoredValue === true && incomingSource !== 'ADMIN';
+        if (listForAdmin) {
+          await this.logConflict({
+            ipoId,
+            tableName,
+            rowKey,
+            fieldName,
+            existingValue: storedValue,
+            existingSource: incomingSource,
+            incomingValue,
+            incomingSource,
+            normalizedExisting: normalizedStored,
+            normalizedIncoming,
+            severity: 'INFO',
+            reason: UNTRACKED_STORED_VALUE_DIFFERS,
+            chosenSource: undefined as unknown as ScraperSource,
+          });
+        }
         return {
           fieldName,
           finalValue: storedValue,
           chosenSource: incomingSource,
-          hadConflict: false,
+          hadConflict: listForAdmin,
           rejectedSources: [
             {
               source: incomingSource,

@@ -30,7 +30,8 @@ export type ChildRowTable =
   | 'promoters'
   | 'anchor_investors'
   | 'ipo_intermediaries'
-  | 'peer_companies';
+  | 'peer_companies'
+  | 'financial_data';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -109,6 +110,13 @@ function buildSpecs(): Record<ChildRowTable, ChildRowSpec> {
     keyColumns: (rowKey) => nonEmpty(rowKey, 'headingHash'),
     requiredForInsert: ['seq', 'heading', 'stepId'],
   },
+  // F-233: one row per IPO (`financial_data.ipo_id` is UNIQUE), so the row key is '' and the IPO is the
+  // row's identity. Every value column is nullable, so an IPO with no row yet gets one on the first write.
+  financial_data: {
+    table: schema.financialData,
+    keyColumns: singleton,
+    requiredForInsert: [],
+  },
   };
 }
 
@@ -128,6 +136,7 @@ export const CHILD_ROW_TABLES: readonly ChildRowTable[] = [
   'anchor_investors',
   'ipo_intermediaries',
   'peer_companies',
+  'financial_data',
 ];
 
 export type ChildRowRefusal =
@@ -137,9 +146,17 @@ export type ChildRowRefusal =
   | 'CHILD_ROW_NOT_CREATABLE'
   | 'CHILD_FIELD_HELD'
   | 'NO_DECIDED_VALUE'
-  | 'IPO_ROW_MISSING';
+  | 'IPO_ROW_MISSING'
+  /** F-233 (fail closed): the key names more than one row (e.g. two rows for a one-row-per-IPO table). */
+  | 'CHILD_ROW_AMBIGUOUS';
 
-export type ChildRowProbe = { writable: true; exists: boolean } | { writable: false; reason: ChildRowRefusal; detail?: string };
+/**
+ * `existing`: the stored value of each asked field when the row exists (null = empty), so the consolidator
+ * sees a stored value even when it has no field_sources row (W-16b / M-1) and never takes it for empty.
+ */
+export type ChildRowProbe =
+  | { writable: true; exists: boolean; existing?: Record<string, unknown> }
+  | { writable: false; reason: ChildRowRefusal; detail?: string };
 
 export type ChildRowWrite =
   | { written: true; mode: 'UPDATE' | 'INSERT'; dropped: string[] }
@@ -183,8 +200,11 @@ export async function probeChildRow(
   const { dropped } = dropHeldFields(probePatch, hold, { honourScraperLock: true });
   if (dropped.length > 0) return { writable: false, reason: 'CHILD_FIELD_HELD', detail: dropped.join(',') };
 
-  const existing = await db.select().from(spec.table as any).where(whereKey(spec, ipoId, key)).limit(1);
-  if (existing.length > 0) return { writable: true, exists: true };
+  const existing = (await db.select().from(spec.table as any).where(whereKey(spec, ipoId, key)).limit(2)) as Record<string, unknown>[];
+  if (existing.length > 1) return { writable: false, reason: 'CHILD_ROW_AMBIGUOUS', detail: `${tableName} key '${rowKey}' names more than one row` };
+  if (existing.length === 1) {
+    return { writable: true, exists: true, existing: Object.fromEntries(fields.map((f) => [f, existing[0][f] ?? null])) };
+  }
   const candidate = { ...(spec.insertBase?.(source) ?? {}), ...key, ...probePatch };
   if (!canInsert(spec, candidate)) return { writable: false, reason: 'CHILD_ROW_NOT_CREATABLE', detail: tableName };
   return { writable: true, exists: false };
@@ -221,6 +241,10 @@ export async function writeChildRowFields(
     );
     if (!hold) return { written: false as const, reason: 'IPO_ROW_MISSING' as const, dropped };
     if (Object.keys(patch).length === 0) return { written: false as const, reason: 'CHILD_FIELD_HELD' as const, dropped };
+
+    // F-233 (fail closed): never update two rows with one key's values.
+    const matches = await tx.select({ id: (cols as any).id }).from(spec.table as any).where(whereKey(spec, ipoId, key)).limit(2);
+    if (matches.length > 1) return { written: false as const, reason: 'CHILD_ROW_AMBIGUOUS' as const, dropped };
 
     const updated = await tx
       .update(spec.table as any)

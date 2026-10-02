@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE, SOURCE_NO_LONGER_FIRST, isAdminOnlyConflict, isBehaviourConflict, isWriterBookkeepingField } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, UNTRACKED_STORED_VALUE_DIFFERS, SOURCE_NO_LONGER_FIRST, isAdminOnlyConflict, isBehaviourConflict, isWriterBookkeepingField } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -87,7 +87,11 @@ export { SOURCE_CHANGED_OWN_VALUE };
 
 /** Is this a same-source row the W-79 invariant must refuse? (Everything but OD-75's named reason.) */
 function isRefusedSameSource(input: LogConflictInput): boolean {
-  return input.source1 === input.source2 && input.resolutionReason !== SOURCE_CHANGED_OWN_VALUE;
+  return (
+    input.source1 === input.source2 &&
+    input.resolutionReason !== SOURCE_CHANGED_OWN_VALUE &&
+    input.resolutionReason !== UNTRACKED_STORED_VALUE_DIFFERS
+  );
 }
 
 export interface SameSourceSkipResult {

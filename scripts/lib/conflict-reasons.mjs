@@ -21,7 +21,9 @@ export const OVERRIDE_SOURCE_LOST_TO_PRIORITY = 'OVERRIDE_SOURCE_LOST_TO_PRIORIT
 export const ADMIN_LIST_SUGGESTION = 'ADMIN_LIST_SUGGESTION';
 // OD-142: a type correction's "source no longer first" queue item (admin list only).
 export const SOURCE_NO_LONGER_FIRST = 'SOURCE_NO_LONGER_FIRST';
-export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VALUE, OVERRIDE_SOURCE_LOST_TO_PRIORITY, ADMIN_LIST_SUGGESTION, SOURCE_NO_LONGER_FIRST]);
+// OD-168 (F-233): an untracked financial_data value kept against a differing non-rank-1 answer.
+export const UNTRACKED_STORED_VALUE_DIFFERS = 'UNTRACKED_STORED_VALUE_DIFFERS';
+export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VALUE, OVERRIDE_SOURCE_LOST_TO_PRIORITY, ADMIN_LIST_SUGGESTION, SOURCE_NO_LONGER_FIRST, UNTRACKED_STORED_VALUE_DIFFERS]);
 
 // Cached probe result for this process: undefined = not yet probed (treated as "present" —
 // the pre-probe/legacy-safe default, matching behaviour before this fix), true/false once probed.

@@ -39,11 +39,21 @@ export const ADMIN_LIST_SUGGESTION = 'ADMIN_LIST_SUGGESTION';
  */
 export const SOURCE_NO_LONGER_FIRST = 'SOURCE_NO_LONGER_FIRST';
 
+/**
+ * OD-168 (F-233): on financial_data, a stored value with NO recorded source (no field_sources row) was
+ * kept against a differing answer from a source below the plan's rank-1; the row lists that answer for
+ * the admin. The stored side's owner is unknown, so source1 = source2 = the answering source and
+ * value1 = the stored value, value2 = the answer. Never a dispute, never an alert; the W-79 same-source
+ * guard admits it by this name.
+ */
+export const UNTRACKED_STORED_VALUE_DIFFERS = 'UNTRACKED_STORED_VALUE_DIFFERS';
+
 export const ADMIN_ONLY_CONFLICT_REASONS: readonly string[] = [
   SOURCE_CHANGED_OWN_VALUE,
   OVERRIDE_SOURCE_LOST_TO_PRIORITY,
   ADMIN_LIST_SUGGESTION,
   SOURCE_NO_LONGER_FIRST,
+  UNTRACKED_STORED_VALUE_DIFFERS,
 ];
 
 /** True for a row that exists only for the admin list and must not affect behaviour or counts. */

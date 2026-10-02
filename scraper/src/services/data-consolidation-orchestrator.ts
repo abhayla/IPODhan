@@ -84,7 +84,8 @@ export type ChildConsolidationTable =
   | 'promoters'
   | 'anchor_investors'
   | 'ipo_intermediaries'
-  | 'peer_companies';
+  | 'peer_companies'
+  | 'financial_data';
 
 // #1419: the row writer must serve every member of this set, and nothing outside it.
 type _SameChildTables = [ChildConsolidationTable] extends [ChildRowTable]
@@ -896,7 +897,8 @@ export class DataConsolidationOrchestrator {
     // #1419 `writeRow`: also land the decided values on the child row itself. A caller with no
     // repository of its own for the table (the field-plan walk) MUST pass it; the persisters write
     // their rows themselves and leave it off.
-    options?: { planRankWinnerFields?: readonly string[]; writeRow?: boolean }
+    // F-233 `keepUntrackedStoredValue`: see ConsolidateIPODataInput (the walk sets it for a non-rank-1 answer).
+    options?: { planRankWinnerFields?: readonly string[]; writeRow?: boolean; keepUntrackedStoredValue?: boolean }
   ): Promise<ConsolidatedChildRowsResult> {
     const result: ConsolidatedChildRowsResult = {
       rowsProcessed: 0,
@@ -927,7 +929,7 @@ export class DataConsolidationOrchestrator {
       return result;
     }
 
-    for (const row of rows) {
+    for (let row of rows) {
       const rowKey = typeof row.rowKey === 'string' ? row.rowKey.trim() : '';
 
       // A keyless row must never be written under `''`: that is the reserved
@@ -960,6 +962,14 @@ export class DataConsolidationOrchestrator {
       const incomingFields = Object.keys(row.data ?? {});
       if (options?.writeRow) {
         const probe = await this.ipoRepository.probeChildRow(tableName, ipoId, rowKey, incomingFields, source);
+        if (probe.writable) {
+          // F-233 / OD-168 (financial_data only, the same table the OD-168 keep rule covers): the stored
+          // values travel to the consolidator, so a value with no field_sources row is judged as a stored
+          // value, never as empty. Every other child table's consolidator input stays as before.
+          // A caller's own read wins when given.
+          const stored = (probe as Extract<ChildRowProbe, { writable: true }>).existing;
+          if (tableName === 'financial_data' && stored && row.existingData === undefined) row = { ...row, existingData: stored };
+        }
         if (!probe.writable) {
           // scraper/ compiles without strictNullChecks, so the union does not narrow on `writable`.
           const refused = probe as Extract<ChildRowProbe, { writable: false }>;
@@ -992,6 +1002,7 @@ export class DataConsolidationOrchestrator {
         confidence,
         docType,
         planRankWinnerFields: options?.planRankWinnerFields,
+        keepUntrackedStoredValue: options?.keepUntrackedStoredValue,
       });
 
       // #1419: the decided value of every field this row carried lands on the row, in the same call
