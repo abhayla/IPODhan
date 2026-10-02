@@ -257,7 +257,7 @@ export interface FieldPlanAnswer {
   docType?: string;
   cause?: string;
   /** Item 38: the document supplied rows already stored (value null; never a pickable value). */
-  credited?: 'DOCUMENT_ROWS_STORED';
+  credited?: 'DOCUMENT_ROWS_STORED' | 'DOCUMENT_VALUE_STORED';
   /** Item 38: stored rows carrying the asked column -- evidence, never the field's value. */
   rowCount?: number;
 }

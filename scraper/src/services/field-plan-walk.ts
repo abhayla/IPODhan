@@ -52,6 +52,7 @@ import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
 import { isHiddenIpo } from '@ipodhan/shared/services/scraper-write-block';
 import { normalizeChosen, isPriorityLossReason } from './data-consolidation-service.js';
+import { outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
@@ -256,6 +257,11 @@ export type FieldFetcherAnswer =
       credited?: CreditedMarker;
       /** Item 38: stored rows carrying the asked column, for a credited answer. Evidence, never a value. */
       rowCount?: number;
+      /**
+       * Item 41 (OD-161(b)): the document's value replaces a lower-ranked website value. The walk lists it
+       * for the admin ONLY when the write is accepted (a refused write replaced nothing).
+       */
+      adminListing?: DocAdminListing;
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
@@ -283,7 +289,35 @@ export type FieldFetcherAnswer =
        * a fact about the field. The walk classifies on THIS, never on `reason`.
        */
       gap?: FieldPlanGapCode;
+      /** Item 41 (OD-161(b), OD-61): a kept document difference the walk lists for the admin. */
+      adminListing?: DocAdminListing;
     };
+
+/**
+ * Item 41 (OD-161(b), OD-61, §9.4): one document-versus-stored-value difference for the admin queue,
+ * deduped to one row per (IPO, field, document) by the writer (`listDocDifferenceForAdmin`).
+ * `REPLACED` = the document's text-page value was written over the website value; `KEPT` = the
+ * stored value was kept (OCR, MIXED or unknown mark, or a value that does not decode).
+ */
+export interface DocAdminListing {
+  ipoId: string;
+  tableName: string;
+  rowKey: string;
+  /** camelCase, as field_sources / data_conflicts store it. */
+  fieldName: string;
+  documentId: string;
+  documentType: string;
+  /** field_sources.source of the stored value (scraper_source enum). */
+  storedSource: string;
+  storedValue: string | null;
+  documentValue: string;
+  /** OD-97 mark of the document's receipt; null = unknown. */
+  mark: string | null;
+  /** `FAILED_VALIDATION` = the document's text value failed the field's checks at the write; the stored value stays (§3.2). */
+  outcome: 'REPLACED' | 'KEPT' | 'FAILED_VALIDATION';
+  /** FAILED_VALIDATION only: the failed check's reason as the write door gave it (OD-62, §2.4). */
+  failedCheck?: string;
+}
 
 /**
  * §9.2 item 9: what the walk tells a fetcher about THIS ask. `held` is set only on the read of an
@@ -293,6 +327,11 @@ export type FieldFetcherAnswer =
  */
 export interface FieldFetcherContext {
   held?: boolean;
+  /**
+   * Item 41 (OD-161): this field's rank list for this IPO (manifest codes, rank order), so a source that
+   * answers from its own record (DOC) can tell whether it outranks the source that owns the stored value.
+   */
+  ranks?: ReadonlyArray<string | null>;
 }
 
 export type FieldFetcher = (
@@ -562,6 +601,11 @@ export interface FieldPlanWalkDeps {
     resolutionReason: string;
     severity?: 'INFO' | 'WARNING' | 'CRITICAL';
   }) => Promise<unknown>;
+  /**
+   * Item 41 (OD-161(b), OD-61): lists a document-versus-stored-value difference in the admin queue
+   * (data_conflicts, one row per IPO/field/document). Absent: nothing is listed (the answer is unchanged).
+   */
+  listDocDifferenceForAdmin?: (row: DocAdminListing) => Promise<unknown>;
 }
 
 /**
@@ -670,8 +714,12 @@ type WriteVerdict =
   | { happened: true; accepted: true }
   /** `refused`: #1379 -- the write door REFUSED this value (an OD-21 validation rule, or the #1229
    *  merged-record date rule), as opposed to keeping a better-ranked source's value. */
-  | { happened: true; accepted: false; reason: string; refused?: boolean }
+  | { happened: true; accepted: false; reason: string; refused?: boolean; refusalKind?: RefusalKind }
   | { happened: false; skipReason: string };
+
+/** OD-161 (round 3 fix): `VALIDATION` = the write door's field-check refusal (OD-21 rule / matrix bounds), the only
+ *  refusal the admin queue lists as FAILED_VALIDATION. Set from the outcome-code table, never from message text. */
+type RefusalKind = 'VALIDATION';
 
 /**
  * Evidence is ALL-OR-NOTHING (item 5's contract): `chosen` provided at all
@@ -1283,7 +1331,7 @@ async function attemptOneField(
 
     let answer: FieldFetcherAnswer;
     try {
-      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, { ranks: policy.ranks });
     } catch (error) {
       // TRANSIENT: a throw is a socket, a timeout, a 503 -- this minute's
       // fact, not the field's. Never an abandoned claim either: falling out
@@ -1318,6 +1366,7 @@ async function attemptOneField(
       );
       answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: failures[failures.length - 1] }));
       if (isTransient) sawTransientFailure = true;
+      if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
       continue;
     }
 
@@ -1466,6 +1515,7 @@ async function attemptOneField(
         const cause = refusalCause('', candidate.rank, candidate.source, candidateVerdict.reason, token, false);
         refusals.push(cause);
         markAnswerRefused(answers, candidate.rank, candidate.source, cause);
+        if (candidate.answer.adminListing && candidateVerdict.refusalKind === 'VALIDATION') await listRefusedDocValue(deps, candidate.answer.adminListing, candidateVerdict.reason);
         logger.warn(
           { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source: candidate.source, rank: candidate.rank, reason: candidateVerdict.reason },
           'PASS 3: the write door REFUSED this value (OD-21) -- dropped, the next rank answer of this pass is tried'
@@ -1639,6 +1689,8 @@ async function attemptOneField(
       });
     }
 
+    // Item 41 (OD-161(b)): an accepted replacement of a website value is listed for the admin.
+    if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
     if (!isCreditedAnswer(answer)) await writeWitnessVerdict(ipoId, plan, source, answers, policy, deps);
 
     result.fieldsSupplied += 1;
@@ -1829,6 +1881,9 @@ async function writeWitnessVerdict(
       docType: a.docType,
       outcome: a.outcome,
       cause: a.cause,
+      // #1459 point 2: the marker travels, so a credited answer is stored as credited and never votes.
+      ...(a.credited !== undefined ? { credited: a.credited } : {}),
+      ...(a.rowCount !== undefined ? { rowCount: a.rowCount } : {}),
     })),
     policy.ranks.length,
     family
@@ -1891,7 +1946,7 @@ async function tryProvisional(
     }
     let answer: FieldFetcherAnswer;
     try {
-      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, { ranks: policy.ranks });
     } catch (error) {
       // TAGGED `:THROWN:` like the main loop's catch (#785 review): a throw here
       // is the same socket/timeout/5xx fact. Untagged, a genuine network failure
@@ -1909,6 +1964,7 @@ async function tryProvisional(
       answers.push(
         rankAnswer(rank, source, 'CHECK_FAILED', { cause: `provisional-rank${rank}:${source}:CHECK_FAILED:${answer.reason}` })
       );
+      if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
       continue;
     }
     // SUPPLIED: always a witness; written only while no provisional value has landed yet.
@@ -1928,6 +1984,7 @@ async function tryProvisional(
         const cause = refusalCause('provisional-', rank, source, verdict.reason, token, false);
         refusalCtx.refusals.push(cause);
         markAnswerRefused(answers, rank, source, cause);
+        if (answer.adminListing && verdict.refusalKind === 'VALIDATION') await listRefusedDocValue(deps, answer.adminListing, verdict.reason);
         continue;
       }
       if (verdict.happened === false) {
@@ -1952,6 +2009,7 @@ async function tryProvisional(
         continue;
       }
       provisional = { source, rank, credited: isCreditedAnswer(answer) };
+      if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
     } catch (error) {
       // A throw from the WRITE (not the fetch): same best-effort contract as before this slice --
       // the provisional value is lost, the ask stays open.
@@ -2048,7 +2106,7 @@ function checkConsolidatorAgreed(
   camelFieldName: string,
   source: string,
   suppliedValue: unknown
-): { accepted: true } | { accepted: false; reason: string; refused?: boolean } {
+): { accepted: true } | { accepted: false; reason: string; refused?: boolean; refusalKind?: RefusalKind } {
   const result = fieldResults?.find((f) => f.fieldName === camelFieldName);
   if (!result) {
     return { accepted: false, reason: NO_FIELD_RESULT_REASON };
@@ -2074,7 +2132,9 @@ function checkConsolidatorAgreed(
     // A rejection recorded for another source is not this write's (falls through to the priority message).
     const rejection = result.rejectedSources?.find((r) => r.source === wantedSource);
     if (rejection && !isPriorityLossReason(rejection.reason)) {
-      return { accepted: false, reason: String(rejection.reason), refused: true };
+      const codeName = outcomeCodeNameOf(rejection.reason);
+      const validation = codeName === 'VALIDATION_RULE_FAILED' || codeName === 'VALIDATION_FAILED';
+      return { accepted: false, reason: String(rejection.reason), refused: true, ...(validation ? { refusalKind: 'VALIDATION' as const } : {}) };
     }
     return {
       accepted: false,
@@ -2147,12 +2207,12 @@ async function runWrite(
       // (e.g. a listing date before the stored open date). Say so, rather than
       // the generic "no field result returned" the missing field result implies.
       if (Array.isArray(r?.refusedDateFields) && r.refusedDateFields.includes(camelFieldName)) {
-        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}`, refused: true };
+        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}`, refused: true, refusalKind: 'VALIDATION' };
       }
       // #721: the orchestrator's spec §1.2 row 4 lot rule refused this value (never written, no
       // provenance). A refusal, recorded as such, the same as the #1229 date refusal above.
       if (Array.isArray(r?.refusedLotFields) && r.refusedLotFields.includes(camelFieldName)) {
-        return { happened: true, accepted: false, reason: `${LOT_REFUSED_REASON}: ${camelFieldName}`, refused: true };
+        return { happened: true, accepted: false, reason: `${LOT_REFUSED_REASON}: ${camelFieldName}`, refused: true, refusalKind: 'VALIDATION' };
       }
       if (Array.isArray(r?.refusedIdentifierFields) && r.refusedIdentifierFields.includes(camelFieldName)) {
         return { happened: true, accepted: false, reason: `${IDENTIFIER_REFUSED_REASON}: ${camelFieldName}`, refused: true };
@@ -2216,11 +2276,32 @@ async function runWrite(
 export function isCreditedAnswer(
   answer: FieldFetcherAnswer
 ): answer is Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }> & { credited: CreditedMarker } {
-  return answer.outcome === 'SUPPLIED' && answer.credited === 'DOCUMENT_ROWS_STORED';
+  return answer.outcome === 'SUPPLIED' && (answer.credited === 'DOCUMENT_ROWS_STORED' || answer.credited === 'DOCUMENT_VALUE_STORED');
 }
 
-/** Item 38: the one credited kind -- "the document supplied rows already stored by the filing persister". */
-export type CreditedMarker = 'DOCUMENT_ROWS_STORED';
+/**
+ * The credited kinds. Item 38: "the document supplied rows already stored by the filing persister".
+ * Item 41 (OD-161(a)): "the document prints the value already stored" -- equal value, nothing written.
+ */
+export type CreditedMarker = 'DOCUMENT_ROWS_STORED' | 'DOCUMENT_VALUE_STORED';
+
+/** OD-161 + OD-62/OD-63: the document's text value failed the field's checks -- list it under FAILED_VALIDATION with the check. */
+async function listRefusedDocValue(deps: FieldPlanWalkDeps, row: DocAdminListing, failedCheck: string): Promise<void> {
+  await listDocDifference(deps, { ...row, outcome: 'FAILED_VALIDATION', failedCheck });
+}
+
+/** Item 41: list a document difference for the admin; a failed listing never fails the walk. */
+async function listDocDifference(deps: FieldPlanWalkDeps, row: DocAdminListing): Promise<void> {
+  if (!deps.listDocDifferenceForAdmin) return;
+  try {
+    await deps.listDocDifferenceForAdmin(row);
+  } catch (error) {
+    logger.warn(
+      { ipoId: row.ipoId, table: row.tableName, field: row.fieldName, documentId: row.documentId, outcome: row.outcome, cause: causeOf(error) },
+      'PASS 3: listing a document difference for the admin FAILED (OD-161); the walk outcome is unaffected'
+    );
+  }
+}
 
 /**
  * Record an outcome and READ THE RETURN. `recordOutcome` refuses silently

@@ -1,10 +1,10 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-02T14:20:15.457Z",
+  "generated_at": "2026-10-02T14:21:30.770Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 219,
-    "retired": 59
+    "retired": 60
   },
   "next_id": 279,
   "rules": [
@@ -837,11 +837,11 @@
       "retired": false
     },
     {
-      "id": "R-268",
-      "hash": "8f759a2894cf",
+      "id": "R-278",
+      "hash": "061f320e7cdc",
       "section": "2.5 When a supplied value is asked for again",
       "kind": "prose",
-      "text": "OD-161 (2026-10-02, F-225): the DOC fetcher takes a document's answer from that record, never from who owns the stored value. When a lower-ranked website owns the column: an equal value credits the document and writes nothing; a different value replaces the website's only when the document outranks it for the field and the value is read from a text page and passes the field's checks (an OCR-only value never replaces; the difference goes to the admin conflicts list); exchange-first timetable fields and ADMIN values are unchanged. OD-162: ipos.lead_managers read from the document's own cover page is a document answer with a record (OD-91(4) no longer applies to it).",
+      "text": "OD-161 (2026-10-02, F-225): the DOC fetcher takes a document's answer from that record, never from who owns the stored value. When a lower-ranked website owns the column: an equal value credits the document and writes nothing; a different value replaces the website's only when the document outranks it for the field and the value is read from a text page and passes the field's checks (an OCR-only value never replaces; the difference goes to the admin conflicts list); exchange-first timetable fields and ADMIN values are unchanged. A text value that fails the field's checks is not written; the stored value stays (§3.2) and the document's value is listed for the admin under FAILED_VALIDATION with the failed check (OD-62, OD-63, OD-95(b)). OD-162: ipos.lead_managers read from the document's own cover page is a document answer with a record (OD-91(4) no longer applies to it).",
       "first_seen": "2026-10-02",
       "retired": false
     },
@@ -1978,6 +1978,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-268",
+      "hash": "8f759a2894cf",
+      "section": "2.5 When a supplied value is asked for again",
+      "kind": "prose",
+      "text": "OD-161 (2026-10-02, F-225): the DOC fetcher takes a document's answer from that record, never from who owns the stored value. When a lower-ranked website owns the column: an equal value credits the document and writes nothing; a different value replaces the website's only when the document outranks it for the field and the value is read from a text page and passes the field's checks (an OCR-only value never replaces; the difference goes to the admin conflicts list); exchange-first timetable fields and ADMIN values are unchanged. OD-162: ipos.lead_managers read from the document's own cover page is a document answer with a record (OD-91(4) no longer applies to it).",
+      "first_seen": "2026-10-02",
+      "retired": true
     },
     {
       "id": "R-276",

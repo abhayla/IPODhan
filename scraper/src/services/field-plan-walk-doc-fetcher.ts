@@ -33,7 +33,7 @@
  *     second copy of it.
  */
 
-import type { FieldFetcher, FieldFetcherAnswer, FieldFetcherContext } from './field-plan-walk.js';
+import type { DocAdminListing, FieldFetcher, FieldFetcherAnswer, FieldFetcherContext } from './field-plan-walk.js';
 import type { FieldSourcesRepository } from '@ipodhan/shared';
 import type { IPORepository } from '@ipodhan/shared';
 import type { DocumentRepository } from '@ipodhan/shared';
@@ -47,6 +47,7 @@ import { bestPlanDocument, isFixedPriceIssue, type PlanDocumentRef } from './doc
 import { logger } from '../utils/logger.js';
 import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, familyForField, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
+import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
 
 /**
  * Which document-type family answers a manifest field's DOC rank, in
@@ -125,6 +126,12 @@ export interface DocFetcherDeps {
   openFailuresReader?: (
     ipoId: string
   ) => Promise<ReadonlyArray<{ tableName: string; documentId: string | null; cause: string | null }>>;
+  /**
+   * Item 41 (OD-97, OD-161(b)): the OD-97 mark of ONE receipt (`document_field_receipts.source_text`:
+   * 'TEXT' | 'OCR' | 'MIXED', null = written before the mark existed). Absent, or any value other than
+   * 'TEXT', means "not read from a text page" -- the document value never replaces (B4(c), fail closed).
+   */
+  receiptMarkReader?: (documentId: string, tableName: string, rowKey: string, camelFieldName: string) => Promise<string | null>;
 }
 
 interface MinimalDocument {
@@ -406,6 +413,148 @@ async function isFixedPriceFor(deps: DocFetcherDeps, ipoId: string): Promise<boo
   );
 }
 
+/**
+ * Item 41: the website sources that can own a stored value the document may replace (OD-161(b)). Any
+ * other owner (ADMIN, a source this list does not name) is never replaced and keeps today's answer.
+ */
+const WEBSITE_OWNERS: ReadonlySet<string> = new Set(['NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'INVESTORGAIN_GMP', 'API_FALLBACK']);
+
+/** The exchanges: a field that ranks one of them above DOC is exchange-first (E-1, S-05) -- OD-161(c). */
+const EXCHANGE_SOURCES: ReadonlySet<string> = new Set(['NSE', 'BSE']);
+
+/**
+ * Item 41: turn a receipt's normalised text back into the stored column's own shape, so the write
+ * carries a number for a number column and a list for a list column. Fail closed (null) when the shapes
+ * do not round-trip -- the value is then kept, never written in a guessed shape.
+ */
+export function decodeReceiptForColumn(receipt: string, stored: unknown): { value: unknown } | null {
+  let value: unknown;
+  try {
+    if (typeof stored === 'number') value = Number(receipt);
+    else if (typeof stored === 'boolean') value = receipt === 'true' ? true : receipt === 'false' ? false : undefined;
+    else if (stored instanceof Date || typeof stored === 'string') value = receipt;
+    else if (stored !== null && typeof stored === 'object') value = JSON.parse(receipt);
+    else return null;
+  } catch {
+    return null;
+  }
+  if (value === undefined || (typeof value === 'number' && !Number.isFinite(value))) return null;
+  return normalizeReceiptValue(value) === receipt ? { value } : null;
+}
+
+type OwnRecordArgs = {
+  ipoId: string;
+  tableName: string;
+  rowKey: string;
+  camelFieldName: string;
+  manifestDocType: string;
+  family: ReadonlyArray<string>;
+  docs: MinimalDocument[];
+  /** `field_sources.source` of the stored value (scraper_source enum), null when no provenance row. */
+  owner: string | null;
+  /** The walk's rank list for this field and IPO (manifest codes), from FieldFetcherContext. */
+  ranks?: ReadonlyArray<string | null>;
+};
+
+/**
+ * Item 41 answer-state table (OD-161, spec §2.5): the DOC answer for a column a non-document source owns,
+ * judged by the best-ranked in-family COMPLETED active document's OWN receipt (the OD-91 comparator).
+ *
+ * | state                                                       | outcome                                                    |
+ * | stored value ADMIN (§2.7); no provenance row; an owner this | null -> today's answer (CHECK_FAILED NO_DOCUMENT_PROVENANCE)|
+ * |   table does not name (fail closed)                         |                                                            |
+ * | no receipt with a value for the field                       | null -> today's answer                                     |
+ * | receipts only from documents OUTSIDE the family (OD-96)     | CHECK_FAILED transient                                     |
+ * | receipt equal to the stored value                           | SUPPLIED credited 'DOCUMENT_VALUE_STORED': value null, no  |
+ * |                                                             |   write, no re-stamp (OD-161(a), OD-73; item 38's path)    |
+ * | differs; an exchange ranks above DOC (E-1, S-05), the owner | CHECK_FAILED transient, kept, nothing listed (OD-161(c))   |
+ * |   ranks above DOC, or no rank list (fail closed)            |                                                            |
+ * | differs; DOC outranks the owner; mark not TEXT (OCR, MIXED, | CHECK_FAILED transient, kept; listed for the admin (OD-61) |
+ * |   unknown) or the value does not decode to the column shape |                                                            |
+ * | differs; DOC outranks the owner; mark TEXT                  | SUPPLIED with the document's value -> the walk's normal    |
+ * |                                                             |   write (its checks may refuse it); listed for the admin   |
+ * |                                                             |   only when that write is accepted (OD-161(b))             |
+ * | ... and that write REFUSES it (the field's checks fail)     | stored value kept; listed for the admin under              |
+ * |                                                             |   FAILED_VALIDATION with the failed check (OD-62/63/95(b)) |
+ */
+async function answerFromOwnRecord(deps: DocFetcherDeps, a: OwnRecordArgs): Promise<FieldFetcherAnswer | null> {
+  if (!deps.receiptReader) return null;
+  if (a.owner === null || a.owner === 'ADMIN' || !WEBSITE_OWNERS.has(a.owner)) return null;
+  if (!DOC_READABLE_TABLES.includes(a.tableName)) return null;
+
+  let receipts: Map<string, ReadonlyMap<string, string | null>>;
+  try {
+    receipts = await deps.receiptReader(a.ipoId);
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+  const key = `${a.tableName}|${a.rowKey}|${a.camelFieldName}`;
+  const printed = new Map<string, ReadonlyMap<string, string | null>>();
+  for (const [docId, byKey] of receipts) {
+    const v = byKey.get(key);
+    if (v !== null && v !== undefined) printed.set(docId, new Map([[key, v]]));
+  }
+  if (printed.size === 0) return null;
+  const best = bestReceiptedDocument(a.docs, a.family, printed, key, await isFixedPriceFor(deps, a.ipoId));
+  if (!best) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `document receipt for ${a.camelFieldName} only from a document outside the ${a.manifestDocType} family (OD-96) — not credited`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  const receipted = printed.get(best.id)!.get(key)!;
+
+  const read = await readColumnValue(deps, a.ipoId, a.tableName, a.camelFieldName);
+  if (read.status !== 'ok' || read.value === null || read.value === undefined) return null;
+  const evidence = { documentId: best.id, documentType: best.type, sha256: best.sha256 ?? undefined };
+
+  if (normalizeReceiptValue(read.value) === receipted) {
+    // OD-161(a): equal -- credit the document, write nothing, re-stamp nothing.
+    return { outcome: 'SUPPLIED', value: null, ...evidence, credited: 'DOCUMENT_VALUE_STORED' };
+  }
+
+  const kept = (why: string, adminListing?: DocAdminListing): FieldFetcherAnswer => ({
+    outcome: 'CHECK_FAILED',
+    reason: `OD-161 kept the ${a.owner} value of ${a.camelFieldName}; the ${best.type} prints a different value (${why})`,
+    transient: true,
+    gap: 'NO_DOCUMENT_PROVENANCE',
+    ...(adminListing ? { adminListing } : {}),
+  });
+
+  const ranks = a.ranks;
+  const docIdx = ranks ? ranks.indexOf('DOC') : -1;
+  if (!ranks || docIdx < 0) return kept('no rank list for this field, fail closed');
+  const above = ranks.slice(0, docIdx).filter((s): s is string => typeof s === 'string');
+  if (above.some((s) => EXCHANGE_SOURCES.has(s))) return kept('an exchange ranks above the document, OD-161(c)');
+  if (above.some((s) => mapManifestSourceToScraperSource(s) === a.owner)) return kept('the owner ranks above the document');
+
+  let mark: string | null = null;
+  try {
+    mark = deps.receiptMarkReader ? await deps.receiptMarkReader(best.id, a.tableName, a.rowKey, a.camelFieldName) : null;
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+  const listing: DocAdminListing = {
+    ipoId: a.ipoId,
+    tableName: a.tableName,
+    rowKey: a.rowKey,
+    fieldName: a.camelFieldName,
+    documentId: best.id,
+    documentType: best.type,
+    storedSource: a.owner,
+    storedValue: normalizeReceiptValue(read.value),
+    documentValue: receipted,
+    mark,
+    outcome: 'KEPT',
+  };
+  if (mark !== 'TEXT') return kept(`mark ${mark ?? 'unknown'}, not a text page, OD-97`, listing);
+  const decoded = decodeReceiptForColumn(receipted, read.value);
+  if (!decoded) return kept('the value does not decode to the column shape, fail closed', listing);
+  return { outcome: 'SUPPLIED', value: decoded.value, ...evidence, adminListing: { ...listing, outcome: 'REPLACED' } };
+}
+
 export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
   return async function docFetcher(
     ipoId: string,
@@ -520,6 +669,13 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
     // to check -- but that is STILL not a settled "not printed", because the
     // wanted family may simply not be extracted yet.
     if (!provenance || provenance.source !== 'DRHP') {
+      // Item 41 (OD-161): a website (or nobody) owns the stored value -- the document's answer is read
+      // from its OWN record (`document_field_receipts`), never from who owns the column.
+      const own = await answerFromOwnRecord(deps, {
+        ipoId, tableName, rowKey: rowKey || '', camelFieldName, manifestDocType, family, docs,
+        owner: provenance?.source ?? null, ranks: context?.ranks,
+      });
+      if (own) return own;
       // Every filing doc type writes field_sources.source as 'DRHP' (the
       // SOURCE ENUM NOTE in filing-persister.ts) — a provenance row that
       // exists but is NOT 'DRHP' means a non-document source (e.g. ADMIN,
