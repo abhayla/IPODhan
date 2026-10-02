@@ -1,0 +1,9 @@
+{
+ "capturedAt": "2026-10-02",
+ "sources": {
+  "bse-board-2026-10-02.json": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w (trimmed to IPO_NO 8022, 8015, 8004; rows unedited)",
+  "bse-detail-8022-2026-10-02.json": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8022 (IPONO_0 kept; demand tables IPONO_1..4 dropped)",
+  "bse-detail-8015-2026-10-02.json": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=8015 (IPONO_0 kept)"
+ },
+ "purpose": "item 43 field-walk BSE mapping (OD-164(e))"
+}

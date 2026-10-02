@@ -1,0 +1,40 @@
+{
+ "Table": [
+  {
+   "Scrip_name": "NITYAS GEMS AND JEWELLERY LIMITED",
+   "Start_Dt": "2026-09-30T00:00:00",
+   "End_Dt": "2026-10-05T00:00:00",
+   "Status": "L",
+   "IR_flag": "IPO",
+   "IR_FLAG_FULL": "Book Building",
+   "IPO_NO": 8022,
+   "flag": 1,
+   "Scrip_cd": 4872,
+   "Is_retailertype": "1"
+  },
+  {
+   "Scrip_name": "Shree TNB Polymers Limited",
+   "Start_Dt": "2026-09-28T00:00:00",
+   "End_Dt": "2026-10-05T00:00:00",
+   "Status": "L",
+   "IR_flag": "IPO",
+   "IR_FLAG_FULL": "Book Building",
+   "IPO_NO": 8004,
+   "flag": 1,
+   "Scrip_cd": 4854,
+   "Is_retailertype": "1"
+  },
+  {
+   "Scrip_name": "Dove  Soft Limited",
+   "Start_Dt": "2026-09-30T00:00:00",
+   "End_Dt": "2026-10-05T00:00:00",
+   "Status": "L",
+   "IR_flag": "IPO",
+   "IR_FLAG_FULL": "Book Building",
+   "IPO_NO": 8015,
+   "flag": 1,
+   "Scrip_cd": 4865,
+   "Is_retailertype": "1"
+  }
+ ]
+}

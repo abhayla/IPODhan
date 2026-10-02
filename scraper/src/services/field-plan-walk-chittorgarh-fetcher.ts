@@ -21,6 +21,13 @@ import type { IPORepository } from '@ipodhan/shared';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { scrapeChittorgarhIPOs } from '../scrapers/chittorgarh-scraper.js';
 import { extractSectorFromDetailHtml, fetchChittorgarhDetailHtml } from '../scrapers/chittorgarh-detail-sector.js';
+import {
+  extractAllotmentDateFromDetailHtml,
+  extractFaceValueFromDetailHtml,
+  extractIsinFromDetailHtml,
+  extractLotSizeFromDetailHtml,
+  extractRegistrarFromDetailHtml,
+} from '../scrapers/chittorgarh-detail-fields.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
 // `plan.fieldName` is the manifest's snake_case key; `ChittorgarhIPO`'s
 // fields are camelCase.
@@ -33,11 +40,49 @@ import { logger } from '../utils/logger.js';
 // ipos.listingDate (#1228, spec field 7 rank 3 / SME rank 2): the list row's own
 // listing-date column (chittorgarh-scraper.ts `listingDate`), the same value the
 // CHITTORGARH orchestrator writes.
-export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
+// Item 43 (OD-164(e), F-226): each pair below was decided on a real page fetched 2026-10-02
+// (report 82 rows + detail pages, fixtures under tests/fixtures/chittorgarh/ with provenance meta).
+// LIST-row fields: report 82 prints "Opening Date", "Closing Date", "Issue Price (Rs.)" (the band),
+// "Issue Category" (Mainboard / SME) and "Listing at" ("BSE, NSE" / "BSE SME" / "NSE SME"), the SAME
+// row `scrapeChittorgarhIPOs()` already maps.
+const CHITTORGARH_LIST_FIELDS: ReadonlySet<string> = new Set([
   'ipos.issueSize',
-  'ipos.sector',
   'ipos.listingDate',
+  'ipos.openDate',
+  'ipos.closeDate',
+  'ipos.priceRangeMin',
+  'ipos.priceRangeMax',
+  'ipos.segment',
+  'ipos.listingExchanges',
 ]);
+
+// DETAIL-page fields: the IPO's own CG page (one GET per IPO per cycle, memoised), read through the
+// SAME extractors the CG detail backfills use (chittorgarh-detail-fields.ts), never a new parser.
+// ipos.sector keeps its own sector-list mapping below.
+const CHITTORGARH_DETAIL_EXTRACTORS: ReadonlyMap<string, (html: string) => string | number | null> = new Map<
+  string,
+  (html: string) => string | number | null
+>([
+  ['ipos.isin', extractIsinFromDetailHtml],
+  ['ipos.allotmentDate', extractAllotmentDateFromDetailHtml],
+  ['ipos.faceValue', extractFaceValueFromDetailHtml],
+  ['ipos.lotSize', extractLotSizeFromDetailHtml],
+  ['ipos.registrar', extractRegistrarFromDetailHtml],
+]);
+
+export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
+  ...CHITTORGARH_LIST_FIELDS,
+  'ipos.sector',
+  ...CHITTORGARH_DETAIL_EXTRACTORS.keys(),
+]);
+
+/** CG "Listing at" -> the stored `ipos.listing_exchanges` array; an unread board stays absent. */
+function listingExchangesFromRow(row: ChittorgarhIPO): ('NSE' | 'BSE')[] | null {
+  if (row.listingExchange === 'BOTH') return ['NSE', 'BSE'];
+  if (row.listingExchange === 'NSE') return ['NSE'];
+  if (row.listingExchange === 'BSE') return ['BSE'];
+  return null;
+}
 
 export interface ChittorgarhFetcherDeps {
   ipoRepository: IPORepository;
@@ -154,16 +199,32 @@ export function buildChittorgarhFetcher(
     }
     const row = resolved.row;
 
-    if (camelFieldName === 'issueSize') {
-      if (row.issueSize === undefined || row.issueSize === null) {
-        return { outcome: 'NOT_AVAILABLE_YET' };
-      }
-      return { outcome: 'SUPPLIED', value: row.issueSize };
+    if (CHITTORGARH_LIST_FIELDS.has(key)) {
+      const value =
+        camelFieldName === 'listingExchanges'
+          ? listingExchangesFromRow(row)
+          : (row as unknown as Record<string, unknown>)[camelFieldName];
+      // Absent stays absent: an empty column is "not printed yet" (re-asked), never a value.
+      if (value === undefined || value === null || value === '') return { outcome: 'NOT_AVAILABLE_YET' };
+      return { outcome: 'SUPPLIED', value };
     }
 
-    if (camelFieldName === 'listingDate') {
-      if (!row.listingDate) return { outcome: 'NOT_AVAILABLE_YET' };
-      return { outcome: 'SUPPLIED', value: row.listingDate };
+    const detailExtractor = CHITTORGARH_DETAIL_EXTRACTORS.get(key);
+    if (detailExtractor) {
+      if (!row.verifierUrl) return { outcome: 'NOT_AVAILABLE_YET' };
+      let html: string;
+      try {
+        html = await state.getDetailHtml(row.verifierUrl, deps.fetchDetailHtml ?? fetchChittorgarhDetailHtml);
+      } catch (error) {
+        return {
+          outcome: 'CHECK_FAILED',
+          reason: error instanceof Error ? error.message : String(error),
+          transient: true,
+        };
+      }
+      const value = detailExtractor(html);
+      if (value === null || value === '') return { outcome: 'NOT_AVAILABLE_YET' };
+      return { outcome: 'SUPPLIED', value };
     }
 
     if (camelFieldName === 'sector') {
@@ -185,8 +246,7 @@ export function buildChittorgarhFetcher(
       return { outcome: 'SUPPLIED', value: sector };
     }
 
-    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize, sector and listingDate,
-    // and the gate above already answers CHECK_FAILED transient for
+    // Unreachable today (every CHITTORGARH_SERVEABLE_FIELDS key has a branch above, and the gate above already answers CHECK_FAILED transient for
     // anything else) — kept as a defensive fallback with the SAME
     // review-round-2 reasoning: a field this fetcher's mapping branch does
     // not handle is a coverage gap, never a manifest no.
