@@ -347,7 +347,6 @@ REFUSING_ARGS = {
     "check_min_count": ((1, 3), (0,)),
     "check_monotonic_mcap": ((200.0, 100.0), (0, 1)),
     "check_monotonic_shares": ((100.0, 200.0), (0, 1)),
-    "check_objects_total": ((200.0, 0, 100.0), (0, 2)),
     "check_percentage": ((150.0,), (0,)),
     "check_price_band": ((500.0, 900.0), (0, 1)),
     "check_ratio_equals": ((1.0, 2.0, 5.0, "x"), (0, 1, 2)),

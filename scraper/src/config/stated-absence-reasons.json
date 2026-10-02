@@ -25,6 +25,11 @@
       "reason": "peer_comparison_issuer_states_no_listed_peers",
       "emittedBy": "scraper/scripts/peer_companies.py NO_LISTED_PEERS (peer_companies)",
       "printedStatement": "there are no listed peers / companies comparable to the issuer"
+    },
+    {
+      "reason": "no_fresh_issue_pure_offer_for_sale",
+      "emittedBy": "scraper/scripts/objects_of_offer.py (objects_of_offer)",
+      "printedStatement": "the OBJECTS OF THE OFFER chapter says the company will not receive any proceeds and has no Fresh Issue (a pure offer for sale)"
     }
   ]
 }

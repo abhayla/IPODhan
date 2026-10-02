@@ -602,12 +602,12 @@ describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {
     const field = out.fields.objects_of_offer;
     expect(field.value).toEqual(DEEPA.RHP.objects_of_offer);
     expect(field.page).toBe(104);
-    expect(field.check.name).toBe('objects_sum_vs_fresh_issue');
+    expect(field.check.name).toBe('objects_f4_vs_net_proceeds');
     // The general-corporate-purposes row is [•] at RHP stage, so the check
     // asserts the bound that IS verifiable, and says so.
     expect(field.check.passed).toBe(true);
-    expect(field.check.detail).toContain('2150.00');
-    expect(field.check.detail).toContain('2500.00');
+    expect(field.check.detail).toContain('215.00 Cr');
+    expect(field.check.detail).toContain('250.00 Cr');
     expect(field.check.detail).toContain('not verifiable');
   });
 
@@ -702,11 +702,13 @@ describe('extract_filing — W-80 risk-factor heading truncation (synthetic, off
 });
 
 describe('extract_filing — objects/risk-factor edge cases (synthetic, offline)', () => {
-  it('E5: a fully-priced objects table whose amounts miss the fresh issue FAILS', (ctx) => {
+  it('E5: a fully-priced objects table whose amounts miss the net proceeds is REFUSED (F4)', (ctx) => {
     if (!pythonAvailable) return ctx.skip();
     const page = [
       'OBJECTS OF THE OFFER',
+      '(in million)',
       'Gross Proceeds of the Fresh Issue 1,000.00',
+      'Net Proceeds 900.00',
       'Utilisation of Net Proceeds',
       '(in  million)',
       'Sr. No. Particulars Estimated Amount',
@@ -717,9 +719,10 @@ describe('extract_filing — objects/risk-factor edge cases (synthetic, offline)
     const out = runOnTexts([[0, page]], 'RHP');
     const field = out.fields.objects_of_offer;
     expect(field.value).toBeNull();
+    expect(field.state).toBe('REFUSED');
     expect(field.check.passed).toBe(false);
-    expect(field.check.detail).toContain('500.00');
-    expect(field.check.detail).toContain('1000.00');
+    expect(field.check.detail).toContain('50.00 Cr');
+    expect(field.check.detail).toContain('90.00 Cr');
   });
 
   it('E8: only strictly sequential numbers count — a nested list is not a risk factor', (ctx) => {
