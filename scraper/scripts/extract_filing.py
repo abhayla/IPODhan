@@ -27,6 +27,7 @@ import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
 import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
 import answer_states  # noqa: E402 — pure-python, stdlib only (#1420)
 import cover_block  # noqa: E402 — pure-python, stdlib only (item 39)
+import objects_of_offer  # noqa: E402 — pure-python, stdlib only (item 40)
 from answer_states import judge, missed, refused  # noqa: E402
 
 # W-178c round 2: how long this process waits to acquire the box lock before
@@ -548,31 +549,6 @@ def check_min_count(n, minimum):
     if n < minimum:
         return refused("%s < required %s" % (n, minimum))
     return True, "%s" % n
-
-
-def check_objects_total(listed_sum, unpriced, fresh_issue, tol=0.01):
-    """E5: the printed object amounts must reconcile with the fresh issue size.
-
-    A red herring prospectus prints the general-corporate-purposes row as
-    `[bullet]` — that amount is finalised only once the Offer Price is known —
-    so exact equality is NOT verifiable at RHP stage and asserting it would
-    fail every honest RHP. When a row is unpriced the check falls back to the
-    bound that IS verifiable: the priced objects can never exceed the fresh
-    issue. When every row carries an amount, the sum must equal the fresh issue
-    within `tol`."""
-    if listed_sum is None:
-        return missed("no object amount printed")
-    if fresh_issue is None:
-        return missed("fresh issue amount not printed")
-    if unpriced:
-        if listed_sum > fresh_issue * (1 + tol):
-            return refused("priced objects %.2f exceed fresh issue %.2f" % (listed_sum, fresh_issue))
-        return True, ("priced objects %.2f <= fresh issue %.2f; %d object(s) unpriced "
-                      "([bullet]), exact sum not verifiable at RHP stage"
-                      % (listed_sum, fresh_issue, unpriced))
-    if abs(listed_sum - fresh_issue) > fresh_issue * tol:
-        return refused("objects sum %.2f != fresh issue %.2f" % (listed_sum, fresh_issue))
-    return True, "%.2f == %.2f" % (listed_sum, fresh_issue)
 
 
 def check_date_before(a, b, label):
@@ -2188,84 +2164,14 @@ def concentration_kpis(all_lines, fiscal_years):
 # --------------------------------------------------------------------------- #
 # RHP / PROSPECTUS / DRHP extraction (group C from the restated P&L, F2 count)
 # --------------------------------------------------------------------------- #
-_UTILISATION_RX = re.compile(r"^\s*Utilisation of (?:the )?Net Proceeds\s*:?\s*$", re.I)
-_OBJ_STOP_RX = re.compile(
-    r"^(?:\(\d+\)|Proposed schedule|Means of finance|Details of Objects|Offer|Total\b)", re.I)
-_OBJ_SKIP_RX = re.compile(r"^(?:\(?in\s+.{0,14}(?:million|lakh|crore)|Sr\.?\s*No\b)", re.I)
-# A trailing cell: either a printed amount (2,150.00) or an unpriced placeholder
-# the prospectus writes as [bullet] / [•] / [●] because the price is not yet set.
-_AMT_TAIL_RX = re.compile(r"(\[\s*\S{0,3}\s*\]|[\d,]+\.\d{2})\s*$")
-
-
-def _fresh_issue_amount(page_texts):
-    """The fresh issue size the objects table must reconcile against."""
-    for idx, text in page_texts:
-        m = re.search(r"Gross Proceeds of the Fresh Issue[^\d\n]*([\d,]+\.\d{2})",
-                      text or "", re.I)
-        if m:
-            return _num(m.group(1)), idx
-    for idx, text in page_texts:
-        m = re.search(r"Fresh Issue of up to.{0,240}?aggregating up to\s*([\d,]+(?:\.\d+)?)\s*"
-                      r"\n?\s*million", text or "", re.I | re.S)
-        if m:
-            return _num(m.group(1)), idx
-    return None, None
-
-
 def extract_objects_of_offer(page_texts):
-    """E5: the 'Utilisation of Net Proceeds' table of the OBJECTS OF THE OFFER
-    chapter — one row per object, amount in the document's own million unit.
-
-    Returns (items, page). A row whose amount cell is an unpriced `[bullet]`
-    yields `amount_mn: None` with `check: "not_priced_yet"` rather than a
-    guessed number."""
-    for idx, text in page_texts:
-        lines = (text or "").split("\n")
-        start = None
-        for i, ln in enumerate(lines):
-            if _UTILISATION_RX.match(ln):
-                start = i + 1
-                break
-        if start is None:
-            continue
-        rows = []
-        for ln in lines[start:]:
-            s = ln.strip()
-            if not s:
-                if rows:
-                    break
-                continue
-            if _OBJ_STOP_RX.match(s):
-                break
-            if _OBJ_SKIP_RX.match(s):
-                continue
-            m = re.match(r"^(\d{1,3})\.\s+(.*)$", s)
-            if m:
-                rows.append([m.group(2)])
-            elif rows:
-                rows[-1].append(s)
-        items = []
-        for row in rows:
-            amount_tok, label_parts = None, []
-            for part in row:
-                mm = _AMT_TAIL_RX.search(part)
-                if mm and amount_tok is None:
-                    amount_tok = mm.group(1)
-                    part = part[:mm.start()]
-                label_parts.append(part.strip())
-            label = re.sub(r"\s+", " ", " ".join(p for p in label_parts if p)).strip()
-            label = re.sub(r"\(\d+\)$", "", label).strip()
-            if not label:
-                continue
-            if amount_tok is None:
-                items.append({"label": label, "amount_mn": None, "check": "no_amount_printed"})
-            elif amount_tok.startswith("["):
-                items.append({"label": label, "amount_mn": None, "check": "not_priced_yet"})
-            else:
-                items.append({"label": label, "amount_mn": _num(amount_tok), "check": "priced"})
-        if items:
-            return items, idx
-    return [], None
+    """E5 (item 40): the utilisation table as (items, page); ([], None) unless a table was read.
+    The full answer (stated none / unreadable / not found, the F4 verdict) is
+    objects_of_offer.read_objects_of_offer."""
+    ans = objects_of_offer.read_objects_of_offer(page_texts)
+    if ans["state"] != "TABLE":
+        return [], None
+    return ans["items"], ans["page"]
 
 
 _RF_HEAD_RX = re.compile(r"^\s*(?:SECTION\s+[IVXL]+\s*[-–—:]?\s*)?RISK FACTORS\s*$", re.I)
@@ -2838,15 +2744,17 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
 
     # E5: objects of the offer — the price band advertisement has no objects
     # section at all, so this is an RHP-only field.
-    objects, obj_page = extract_objects_of_offer(cleaned)
-    if not objects:
-        emit.null("objects_of_offer", "no 'Utilisation of Net Proceeds' table found")
+    obj_ans = objects_of_offer.read_objects_of_offer(cleaned)
+    if obj_ans["state"] == "TABLE":
+        emit.put("objects_of_offer", obj_ans["items"], obj_ans["page"], "objects_f4_vs_net_proceeds",
+                 obj_ans["f4"])
+    elif obj_ans["state"] == "STATED_NONE":
+        emit.null("objects_of_offer", obj_ans["reason"], obj_ans["page"])
+    elif obj_ans["state"] == "UNREADABLE":
+        emit.put("objects_of_offer", None, obj_ans["page"], "objects_table_readable",
+                 missed(obj_ans["reason"]))
     else:
-        priced = [o["amount_mn"] for o in objects if o["amount_mn"] is not None]
-        fresh_issue, _fresh_page = _fresh_issue_amount(cleaned)
-        emit.put("objects_of_offer", objects, obj_page, "objects_sum_vs_fresh_issue",
-                 check_objects_total(sum(priced) if priced else None,
-                                     len(objects) - len(priced), fresh_issue))
+        emit.null("objects_of_offer", obj_ans["reason"])
 
     # E8/F2: the numbered risk factors of the RISK FACTORS chapter.
     risks, first_page = extract_risk_factors(page_texts)

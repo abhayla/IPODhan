@@ -399,17 +399,23 @@
       "2025": 1332.08,
       "2024": 925.53
     },
-    "_objects_source": "Transcribed by hand from RHP page 104 (0-indexed; printed page 101), chapter 'SECTION IV – PARTICULARS OF THE OFFER / OBJECTS OF THE OFFER', table 'Utilisation of Net Proceeds' (in ₹ million). The same page prints 'Gross Proceeds of the Fresh Issue 2,500.00'. The general-corporate-purposes amount is printed as [●] — it is finalised only once the Offer Price is set — so the priced objects (2,150.00) are BELOW the fresh issue by design and an exact sum check is not verifiable at RHP stage.",
+    "_objects_source": "Transcribed by hand from RHP page 104 (0-indexed; printed page 101), chapter 'SECTION IV – PARTICULARS OF THE OFFER / OBJECTS OF THE OFFER', table 'Utilisation of Net Proceeds' (in ₹ million; item 40 stores crore: 2,150.00 million = 215.00 Cr). The same page prints 'Gross Proceeds of the Fresh Issue 2,500.00'. The general-corporate-purposes amount is printed as [●] — it is finalised only once the Offer Price is set — so the priced objects (2,150.00) are BELOW the fresh issue by design and an exact sum check is not verifiable at RHP stage.",
     "fresh_issue_amount": 2500.0,
     "objects_of_offer": [
       {
+        "serial": 1,
         "label": "Funding long-term working capital requirements towards procurement, maintenance and scaling up of inventory by our Company",
-        "amount_mn": 2150.0,
+        "printed_amount": 2150.0,
+        "printed_unit": "million",
+        "amount_cr": 215.0,
         "check": "priced"
       },
       {
+        "serial": 2,
         "label": "General corporate purposes",
-        "amount_mn": null,
+        "printed_amount": null,
+        "printed_unit": "million",
+        "amount_cr": null,
         "check": "not_priced_yet"
       }
     ],

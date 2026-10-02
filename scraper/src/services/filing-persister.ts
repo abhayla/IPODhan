@@ -451,6 +451,26 @@ export function coverLeadManagers(extraction: FilingExtraction): string[] | null
   return names.length > 0 && names.length === v.length ? names : null;
 }
 
+/**
+ * Item 40 (row 27): the objects-of-the-offer table as `ipos.objectives` ({sno, description, amount in
+ * crore}), only from a passing VALUE whose every row is well formed. A row whose amount is an unpriced
+ * [bullet] keeps `amount: null` (not priced yet); any malformed row drops the whole list, never a
+ * partial one (a half-read table would publish a wrong total).
+ */
+export function docObjectives(extraction: FilingExtraction): schema.IPOObjective[] | null {
+  const v = trusted(extraction, mappedField('ipos', 'objectives'));
+  if (!Array.isArray(v) || v.length === 0) return null;
+  const out: schema.IPOObjective[] = [];
+  for (const row of v) {
+    const r = row as { serial?: unknown; label?: unknown; amount_cr?: unknown } | null;
+    if (!r || typeof r.label !== 'string' || r.label.trim() === '') return null;
+    if (typeof r.serial !== 'number' || !Number.isInteger(r.serial)) return null;
+    if (r.amount_cr !== null && !(typeof r.amount_cr === 'number' && Number.isFinite(r.amount_cr))) return null;
+    out.push({ sno: r.serial, description: r.label.trim(), amount: r.amount_cr });
+  }
+  return out;
+}
+
 /** Item 39: the cover reader's registrar name, only as a passing VALUE. */
 export function coverRegistrar(extraction: FilingExtraction): string | null {
   return str(extraction, 'registrar_name');
@@ -1686,6 +1706,13 @@ export async function persistFilingExtraction(
   if (docRegistrar && documentMayWriteField('ipos', 'registrar', options.docType)) {
     iposCandidate.registrar = docRegistrar;
   }
+  // Item 40 / row 27: the objects table is this document's answer for `ipos.objectives` (receipt below,
+  // OD-96 family checked here too). A pure offer for sale (STATED_NOT_PRINTED) and every miss emit no
+  // value, so nothing is claimed and a stored value stays here; the re-read clear decides a stated none.
+  const docObjs = docObjectives(extraction);
+  if (docObjs && documentMayWriteField('ipos', 'objectives', options.docType)) {
+    iposCandidate.objectives = docObjs;
+  }
   // OD-129 (#938): the listing sentence on the cover pages decides the exchanges.
   // #1233 (OD-129, row 23): it decides the BOARD too — `ipos.segment` is this document's claim,
   // under the same precedence gate, the same protection gate (an admin hold drops it, §9) and
@@ -1747,7 +1774,7 @@ export async function persistFilingExtraction(
   // filed; an identical stored value is credited by it with no write and no re-stamp (OD-73), and
   // a different stored value (a website's, or ADMIN's) is left for the walk's OD-161 path, which
   // decides from the receipt (text-only replace, OCR/MIXED to the admin list).
-  for (const col of ['leadManagers', 'registrar'] as const) {
+  for (const col of ['leadManagers', 'registrar', 'objectives'] as const) {
     if (!(col in iposCandidate)) continue;
     const stored = (existing as unknown as Record<string, unknown>)[col];
     const storedEmpty =
