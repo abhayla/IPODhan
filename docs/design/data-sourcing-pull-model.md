@@ -1747,6 +1747,8 @@ identifier against every row" is not a rule until you say which identifier wins 
 | 3 | **The exchange symbol** | days before listing | unique among live issues, but reused across time and absent for most of an IPO's life |
 | 4 | **The normalised name** | discovery, always | the weakest, and the only one available at the moment a row is created |
 
+**F-229 (measured 2026-10-02, item 44):** the final Prospectus is published by SEBI, not by the exchanges, so an exchange "no link" never settles a PROSPECTUS or BASIS_OF_ALLOTMENT_AD once the IPO is CLOSED/LISTED; discovery escalates to the SEBI and company rungs and writes `EXCHANGES:no_link[due_after_close]` in the chain. 48 of 84 BLOCKED_ALL PROSPECTUS rows on staging had skipped SEBI; NSE's is SEBI document 104637. An abridged prospectus is never stored as the Prospectus (F-159).
+
 **F-125 (measured 2026-09-23):** SEBI numbers each document (DRHP/RHP/Prospectus/corrigendum)
 separately and nothing links a draft's number to its RHP's; the only per-offering number is the
 observation-letter number, printed only in the RHP/Prospectus. So step 2's "SEBI draft filing

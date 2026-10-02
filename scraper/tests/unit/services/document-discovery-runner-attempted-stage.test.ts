@@ -125,7 +125,14 @@ describe('attempted_at_stage is written only on a concluded search (item 7, #957
 
     const result = await runner.runIpo(ipo, []);
     expect(result.found.length).toBeGreaterThan(0);
-    expect(result.notFound.length).toBeGreaterThan(0);
+    // Item 44: the post-close types now escalate past the exchanges (SEBI 404s here), so this
+    // fixture's concluded rows are the FOUND ones; the stamp rule below is unchanged.
+    // PR #1464 fix round 1 (MINOR 3): the new expected state, asserted exactly. SEBI 404s on this
+    // fixture, so the post-close types conclude nothing this run (chain_incomplete -> WANTED):
+    // neither settled-notFound nor BLOCKED_ALL, and not found.
+    expect(result.blocked).toEqual([]);
+    expect(result.notFound).toEqual([]);
+    expect(result.found).not.toContain('PROSPECTUS');
 
     const rows = await store.listForIpo(ipo.id);
     expect(rows.length).toBeGreaterThan(0);

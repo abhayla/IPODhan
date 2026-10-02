@@ -34,6 +34,7 @@ import {
 } from '@ipodhan/shared/utils/company-name-normalizer';
 import { levenshteinSimilarity } from '@ipodhan/shared/utils/company-name-similarity';
 import { classifyByTitle } from './document-classifier.js';
+import { parseFilingDate } from './document-identity-binding.js';
 import type { DocumentType } from './document-types.js';
 
 export const SEBI_BASE = 'https://www.sebi.gov.in';
@@ -65,6 +66,12 @@ export interface SebiListingRow {
   detailUrl: string;
   /** Raw title text, kept for the attempt log. */
   title: string;
+  /**
+   * PR #1464 fix round 1: the row's own date cell ("Sep 22, 2026"), SEBI's filing date. Read so
+   * the identity binding (document-identity-binding.ts) can refuse a same-name filing of another
+   * issue. Null when the row carries no parseable date.
+   */
+  filedOn?: Date | null;
 }
 
 /** Absolute-ise a SEBI href. Already-absolute URLs pass through. */
@@ -137,11 +144,17 @@ export function parseSebiListing(html: string): SebiListingRow[] {
     const companyName = sep > 0 ? prefix.slice(0, sep).trim() : prefix;
     const kind = sep > 0 ? prefix.slice(sep + 3).trim() : '';
 
+    const dateCell = $(tr)
+      .find('td')
+      .toArray()
+      .map((td) => $(td).text().replace(/\s+/g, ' ').trim())
+      .find((t) => parseFilingDate(t) !== null);
     rows.push({
       companyName,
       docType: classifyByTitle(kind),
       detailUrl: absolute(href.trim()),
       title: prefix,
+      filedOn: dateCell ? parseFilingDate(dateCell) : null,
     });
   });
   return rows;

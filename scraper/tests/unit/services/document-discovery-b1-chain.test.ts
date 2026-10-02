@@ -200,6 +200,8 @@ describe('B-1 (b) CLOSED IPO off the BSE board, SEBI lists the Prospectus', () =
       symbol: 'OFFBOARD',
       segment: 'MAINBOARD',
       stage: 'CLOSED',
+      // PR #1464 fix round 1: the IPO's own date binds the SEBI row (Aug 28) to it.
+      closeDate: '2026-08-27',
       bseIpoNo: null,
     };
     const alreadyDone = [

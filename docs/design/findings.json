@@ -2211,6 +2211,15 @@
       "title": "Row 46 \"email domain matches the company website\" would refuse a true compliance-officer email: the NSE RHP prints nse_ipo@nse.co.in with website www.nseindia.com",
       "detail": "Measured 2026-10-02 on the NSE RHP (stored copy RHP-4e566b15.pdf, pages 1 and 3 printed): the cover contact table and the second-cover line both print E-mail nse_ipo@nse.co.in and Website www.nseindia.com; the domains differ and the email is the issuer's own. Of the 6 real offer documents read for item 39 (NSE, Nityas, Vishal Nirmiti, R K Fashion RHP+DRHP, Dove Soft) 5 match and 1 (NSE) does not. The item 39 reader therefore records the domain comparison as cross_check on the field and does not refuse the value. Open for owner decision: keep row 46 as a hard check (would refuse NSE) or make it a cross-check.",
       "phase1": false
+    },
+    {
+      "id": "F-229",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "§2.3 identity table / F-125 discovery rungs; document_fetch_state PROSPECTUS + BASIS_OF_ALLOTMENT_AD; item 44",
+      "title": "An exchange 'no link' was treated as settling a final Prospectus: SEBI was never asked, and the same rows sat BLOCKED_ALL",
+      "detail": "Measured 2026-10-02 on ipodhan_staging (read-only, docs/design/probes/blocked-prospectus-chain.mjs): 84 of 105 PROSPECTUS rows BLOCKED_ALL, 48 of them with the chain 'rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it'; BASIS_OF_ALLOTMENT_AD 84 BLOCKED_ALL, 54 with that chain. NSE (national-stock-exchange-of-india-ltd, LISTED, attempts 38, next_retry 2026-09-29 18:30, attempted_at_stage LISTED) is one of them, while SEBI's Final Prospectus listing (smid=12) carries national-stock-exchange-of-india-ltd-prospectus_104637.html -> attachdocs/sep-2026/1790059120635.pdf. Cause: document-discovery-runner.ts settled any exchange-served type on complete exchange coverage, a code-only rule; W-28 then escalated the same due row to BLOCKED_ALL. A fetch-only dry run of the fixed runner (in-memory store, no DB) found NSE's Prospectus on SEBI ('EXCHANGES:no_link[due_after_close] -> SEBI:page1 -> SEBI:found') and Himalayan Solar's on its own site (Prospectus_Himalayan_NSE_30092026_ROC.pdf, after the abridged copy was refused per F-159); Bench Mark Infotech: SEBI not_listed, company page none, so still a real miss. Also seen: 36 of the 84 rows already walked SEBI (not_listed, or failed:budget) and stay a separate question.",
+      "phase1": false
     }
   ],
   "false_assertions": [

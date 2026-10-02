@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "/var/www/ipodhan/shared/prospectus/staging/national-stock-exchange-of-india-ltd-nse-ipo/PRICE_BAND_AD-d3bed466.pdf",
+  "capturedAt": "2026-10-02",
+  "ipoId": "national-stock-exchange-of-india-ltd",
+  "company": "National Stock Exchange of India",
+  "note": "Real RapidOCR text lines (ocr_pages.py default backend and dpi) of page 0 of the NSE IPO price band advertisement, read from the local copy of the staging document store (D:/Abhay/Ventures/IPODhan-documents/staging/national-stock-exchange-of-india-ltd-nse-ipo/PRICE_BAND_AD-d3bed466.pdf), page confidence 0.7369. Text only; the PDF is not committed. Used by scraper/scripts/test_ocr_ambiguous_amounts.py (item 44)."
+}

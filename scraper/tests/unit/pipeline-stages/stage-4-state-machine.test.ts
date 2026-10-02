@@ -107,7 +107,17 @@ describe('pipeline stage 4 - state machine (run N+1 costs nothing new)', () => {
     const { runner } = makeRunner();
     const result = await runner.runIpo({ ...SKYWAYS, stage: 'CLOSED' }, []);
 
-    expect(result.notFound).toContain(GOLDEN.closedStage.notFoundContains);
+    // Item 44 / F-229: the exchanges no longer SETTLE a post-close Prospectus -- it escalates to
+    // SEBI (404 on this fixture), so it is neither a settled notFound nor notYetFiled.
+    const chain = result.attempts.find((a) => a.source === 'CHAIN' && a.outcome.startsWith('rungs[PROSPECTUS]'))?.outcome ?? '';
+    expect(chain).toContain('EXCHANGES:no_link[due_after_close]');
+    expect(chain).not.toContain('exchanges_settled_it');
     expect(result.notYetFiled).not.toContain(GOLDEN.closedStage.notYetFiledExcludes);
+    // PR #1464 fix round 1 (MINOR 3): the new expected state, asserted exactly. SEBI 404s on this
+    // fixture, so the post-close types conclude nothing this run (chain_incomplete -> WANTED):
+    // neither settled-notFound nor BLOCKED_ALL, and not found.
+    expect(result.blocked).toEqual([]);
+    expect(result.notFound).toEqual([]);
+    expect(result.found).not.toContain('PROSPECTUS');
   }, 30_000);
 });

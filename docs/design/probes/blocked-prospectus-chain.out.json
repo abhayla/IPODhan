@@ -1,0 +1,163 @@
+{
+  "measured_at": "2026-10-02T13:34:42.467Z",
+  "database": "ipodhan_staging",
+  "byType": [
+    {
+      "doc_type": "PROSPECTUS",
+      "state": "NOT_FOUND",
+      "n": 6,
+      "chain_settled_by_exchanges": 3
+    },
+    {
+      "doc_type": "PROSPECTUS",
+      "state": "FOUND",
+      "n": 15,
+      "chain_settled_by_exchanges": 1
+    },
+    {
+      "doc_type": "PROSPECTUS",
+      "state": "BLOCKED_ALL",
+      "n": 84,
+      "chain_settled_by_exchanges": 48
+    },
+    {
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "state": "WANTED",
+      "n": 14,
+      "chain_settled_by_exchanges": 0
+    },
+    {
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "state": "NOT_FOUND",
+      "n": 6,
+      "chain_settled_by_exchanges": 3
+    },
+    {
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "state": "FOUND",
+      "n": 1,
+      "chain_settled_by_exchanges": 0
+    },
+    {
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "state": "BLOCKED_ALL",
+      "n": 84,
+      "chain_settled_by_exchanges": 54
+    }
+  ],
+  "nse": [
+    {
+      "id": "b8c5d769-3ad1-4c6c-b58d-9f37965ee343",
+      "slug": "national-stock-exchange-of-india-ltd",
+      "company_name": "National Stock Exchange of India Ltd.",
+      "symbol": "NSE",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "bse_ipo_no": 7977,
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/nse-ipo/3151/",
+      "close_date": "2026-09-21",
+      "state": "BLOCKED_ALL",
+      "attempts": 38,
+      "attempted_at_stage": "LISTED",
+      "next_retry_at": "2026-09-29 18:30:00",
+      "chain": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    }
+  ],
+  "otherShapes": [
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it",
+      "n": 48
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:page1 -> SEBI:searched:no_records -> SEBI:paged:1 -> SEBI:paged:2 -> SEBI:paged:3 -> SEBI:paged:4 -> SEBI:paged:5 -",
+      "n": 15
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:page1 -> SEBI:searched -> SEBI:paged:1 -> SEBI:paged:2 -> SEBI:paged:3 -> SEBI:paged:4 -> SEBI:paged:5 -> SEBI:page",
+      "n": 10
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:failed -> SEBI:page1:http_error:0 -> SEBI:failed:budget -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link",
+      "n": 5
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:page1 -> SEBI:searched:no_records -> SEBI:paged:1 -> SEBI:paged:2 -> SEBI:paged:3 -> SEBI:paged:4 -> SEBI:paged:5:h",
+      "n": 2
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:page1:http_error:0 -> SEBI:failed:budget -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "n": 2
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:page1:http_error:0 -> SEBI:failed:budget -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link",
+      "n": 1
+    },
+    {
+      "chain_shape": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:page1 -> SEBI:searched:http_error:0 -> SEBI:reused:1 -> SEBI:failed:budget -> COMPANY:skipped:no_company_url -> VER",
+      "n": 1
+    }
+  ],
+  "sample": [
+    {
+      "id": "7a58268b-ca4d-4c9e-ac9c-e44245e2fd33",
+      "slug": "bench-mark-infotech-services-ltd",
+      "company_name": "Bench Mark Infotech Services Ltd.",
+      "symbol": "BMISL",
+      "segment": "SME",
+      "status": "CLOSED",
+      "bse_ipo_no": null,
+      "company_website": "https://www.benchmarkinfo.com",
+      "verifier_url": "https://www.chittorgarh.com/ipo/bench-mark-infotech-services-ipo/3212/",
+      "close_date": "2026-09-29",
+      "attempts": 6,
+      "attempted_at_stage": "CLOSED",
+      "next_retry_at": "2026-10-01 18:30:00"
+    },
+    {
+      "id": "867700f5-50ab-4e9e-a08d-20e7ac74c8cd",
+      "slug": "himalayan-solar-ltd",
+      "company_name": "Himalayan Solar Ltd.",
+      "symbol": "HIMALAYAN",
+      "segment": "SME",
+      "status": "CLOSED",
+      "bse_ipo_no": null,
+      "company_website": "https://www.himalayansolar.co.in",
+      "verifier_url": "https://www.chittorgarh.com/ipo/himalayan-solar-ipo/2716/",
+      "close_date": "2026-09-29",
+      "attempts": 6,
+      "attempted_at_stage": "CLOSED",
+      "next_retry_at": "2026-10-01 18:30:00"
+    },
+    {
+      "id": "4c8942b5-b8e1-4972-85f0-a1562f5f38b7",
+      "slug": "german-green-steel-and-power-ltd",
+      "company_name": "German Green Steel and Power Limited",
+      "symbol": "GERMAN",
+      "segment": "MAINBOARD",
+      "status": "CLOSED",
+      "bse_ipo_no": 8005,
+      "company_website": "https://www.germansteel.in",
+      "verifier_url": "https://www.chittorgarh.com/ipo/german-green-steel-and-power-ipo/2497/",
+      "close_date": "2026-09-29",
+      "attempts": 6,
+      "attempted_at_stage": "CLOSED",
+      "next_retry_at": "2026-10-01 18:30:00"
+    },
+    {
+      "id": "aee6c50a-b025-40be-9aea-c5a438267ab7",
+      "slug": "runwal-enterprises-ltd",
+      "company_name": "Runwal Enterprises Ltd.",
+      "symbol": "RUNWALENTR",
+      "segment": "MAINBOARD",
+      "status": "CLOSED",
+      "bse_ipo_no": 8003,
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/runwal-enterprises-ipo/2298/",
+      "close_date": "2026-09-29",
+      "attempts": 6,
+      "attempted_at_stage": "CLOSED",
+      "next_retry_at": "2026-10-01 18:30:00"
+    }
+  ]
+}

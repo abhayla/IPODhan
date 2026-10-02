@@ -114,9 +114,18 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
 
     expect(result.attempts.some((a) => a.source === 'BSE' && a.outcome === 'ok')).toBe(true);
     expect(result.attempts.some((a) => a.source === 'NSE' && a.outcome === 'ok')).toBe(true);
-    expect(result.notFound).toContain('PROSPECTUS');
+    // Item 44 / F-229: the exchanges no longer SETTLE a post-close Prospectus -- it escalates to
+    // SEBI (404 on this fixture), so it is neither a settled notFound nor notYetFiled.
+    const chain = result.attempts.find((a) => a.source === 'CHAIN' && a.outcome.startsWith('rungs[PROSPECTUS]'))?.outcome ?? '';
+    expect(chain).toContain('EXCHANGES:no_link[due_after_close]');
+    expect(chain).not.toContain('exchanges_settled_it');
     expect(result.notYetFiled).not.toContain('PROSPECTUS');
+    // PR #1464 fix round 1 (MINOR 3): the new expected state, asserted exactly. SEBI 404s on this
+    // fixture, so the post-close types conclude nothing this run (chain_incomplete -> WANTED):
+    // neither settled-notFound nor BLOCKED_ALL, and not found.
     expect(result.blocked).toEqual([]);
+    expect(result.notFound).toEqual([]);
+    expect(result.found).not.toContain('PROSPECTUS');
   }, 30_000);
 
   it('a FAILED exchange must NOT produce NOT_YET_FILED for the types it carries', async () => {

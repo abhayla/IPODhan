@@ -83,6 +83,20 @@ export interface StateRow {
    * Optional so callers/tests that predate it read as "not attempted at this stage".
    */
   attemptedAtStage?: string | null;
+  /**
+   * Item 44 / F-229: the row's LAST chain skipped the SEBI/company rungs as
+   * `exchanges_settled_it`. Derived from `document_fetch_state.last_attempt` by
+   * `toStateRow`; absent reads as false. Only `planIpoCycle` reads it, to give
+   * a post-close publisher type concluded under the old rule one escalated try.
+   */
+  lastChainSettledByExchanges?: boolean;
+  /**
+   * PR #1464 fix round 1 (MINOR 2): the row's LAST chain already escalated a post-close no_link
+   * past the exchanges (SEBI was asked). With `attemptedAtStage` it makes that escalation count
+   * once per stage (OD-65): a CLOSED row is not re-escalated -- and SEBI's 12 MB file not
+   * re-downloaded -- every data slot while it stays open. Absent reads as false.
+   */
+  lastChainEscalatedAfterClose?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +129,41 @@ export const STAGE_DOCUMENT_TYPES: Record<LifecycleStage, DocumentType[]> = {
 };
 
 const STAGE_ORDER: LifecycleStage[] = ['UPCOMING', 'PRE_OPEN', 'OPEN', 'CLOSED', 'LISTED'];
+
+/**
+ * Item 44 / F-229: the types filed once the issue has CLOSED (the final
+ * Prospectus, the basis-of-allotment advertisement). The exchanges are not their
+ * publisher: the issuer files the Prospectus with the RoC and SEBI publishes it
+ * (F-125: NSE's own Prospectus is SEBI document 104637 while neither exchange
+ * links it). So once the IPO is past its close, an exchange "no link" for one
+ * of these is not an answer about whether it exists.
+ */
+export const POST_CLOSE_PUBLISHER_TYPES: readonly DocumentType[] = STAGE_DOCUMENT_TYPES.CLOSED;
+
+/**
+ * What an exchange `no_link` may conclude for this type at this stage (item 44).
+ *
+ * - `may_settle`: the exchanges may settle it (unchanged rule, B-1).
+ *   FOLLOW-UP (PR #1464 MINOR 3, tracked in item 44): this includes RHP and PRICE_BAND_AD on a
+ *   CLOSED/LISTED IPO, whose chains still record `exchanges_settled_it` -- only the post-close
+ *   publisher types escalate here.
+ * - `due_after_close`: a post-close publisher type on an IPO at CLOSED/LISTED —
+ *   the exchanges cannot settle it; the SEBI and company rungs must be asked.
+ * - `stage_unknown`: the stage is not one the machine knows. Fail closed: no
+ *   new escalation spend on a guess, and the chain line says why.
+ */
+export type ExchangeNoLinkDecision = 'may_settle' | 'due_after_close' | 'stage_unknown';
+
+export function exchangeNoLinkDecision(
+  docType: DocumentType,
+  stage: string | null | undefined
+): ExchangeNoLinkDecision {
+  if (!stage || !(STAGE_ORDER as string[]).includes(stage)) return 'stage_unknown';
+  if (POST_CLOSE_PUBLISHER_TYPES.includes(docType) && (stage === 'CLOSED' || stage === 'LISTED')) {
+    return 'due_after_close';
+  }
+  return 'may_settle';
+}
 
 /** Every document type due at or before `stage`. */
 export function dueDocTypesForStage(stage: LifecycleStage): DocumentType[] {
@@ -465,7 +514,29 @@ export function planIpoCycle(params: {
     // data slot open nor spends a LISTED cap slot, until a NEW document for the
     // IPO is first seen after the row's last attempt (OD-81 event 2). A missing
     // row (a doc type first seen) is handled above: it is always due.
-    if (params.stage === 'LISTED' && !listedRowDue(row, options.newestDocumentSeenAt ?? null)) {
+    // Item 44 / F-229: a post-close publisher type whose last chain was
+    // "settled" by the exchanges was concluded under a rule that never asked
+    // SEBI. It gets one more attempt; that attempt escalates, its chain no
+    // longer reads settled, and the row falls back under OD-56 by itself.
+    const reopenForPublisherRung =
+      row.lastChainSettledByExchanges === true &&
+      exchangeNoLinkDecision(docType, params.stage) === 'due_after_close';
+    // PR #1464 fix round 1 (MINOR 2, OD-65 once per stage): at CLOSED, a post-close publisher
+    // type whose chain already asked SEBI in THIS stage is not attempted again until the stage
+    // changes (CLOSED -> LISTED is due again). LISTED already holds this through `listedRowDue`.
+    if (
+      params.stage === 'CLOSED' &&
+      row.lastChainEscalatedAfterClose === true &&
+      row.attemptedAtStage === 'CLOSED' &&
+      exchangeNoLinkDecision(docType, params.stage) === 'due_after_close'
+    ) {
+      continue;
+    }
+    if (
+      params.stage === 'LISTED' &&
+      !reopenForPublisherRung &&
+      !listedRowDue(row, options.newestDocumentSeenAt ?? null)
+    ) {
       continue;
     }
 

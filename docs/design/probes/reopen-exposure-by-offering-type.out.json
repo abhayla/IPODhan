@@ -1,0 +1,53 @@
+{
+  "measured_at": "2026-10-02T14:05:32.041Z",
+  "database": "ipodhan_staging",
+  "exposure": [
+    {
+      "doc_type": "PROSPECTUS",
+      "offering_type": "IPO",
+      "status": "CLOSED",
+      "rows": 9,
+      "with_cin": 9,
+      "with_dates": 9,
+      "neither": 0
+    },
+    {
+      "doc_type": "PROSPECTUS",
+      "offering_type": "IPO",
+      "status": "LISTED",
+      "rows": 43,
+      "with_cin": 32,
+      "with_dates": 43,
+      "neither": 0
+    },
+    {
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "offering_type": "IPO",
+      "status": "CLOSED",
+      "rows": 9,
+      "with_cin": 9,
+      "with_dates": 9,
+      "neither": 0
+    },
+    {
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "offering_type": "IPO",
+      "status": "LISTED",
+      "rows": 48,
+      "with_cin": 37,
+      "with_dates": 48,
+      "neither": 0
+    }
+  ],
+  "nse": [
+    {
+      "slug": "national-stock-exchange-of-india-ltd",
+      "status": "LISTED",
+      "offering_type": "IPO",
+      "cin": "U67120MH1992PLC069769",
+      "open_date": "2026-09-17",
+      "close_date": "2026-09-21",
+      "listing_date": "2026-09-24"
+    }
+  ]
+}

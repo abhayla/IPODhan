@@ -1,9 +1,9 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-02T13:15:15.846Z",
+  "generated_at": "2026-10-02T14:21:30.770Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 218,
+    "live": 219,
     "retired": 60
   },
   "next_id": 279,
@@ -501,6 +501,15 @@
       "kind": "table-normative",
       "text": "4 — The normalised name — discovery, always — the weakest, and the only one available at the moment a row is created",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-278",
+      "hash": "74c8518ae6ac",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "F-229 (measured 2026-10-02, item 44): the final Prospectus is published by SEBI, not by the exchanges, so an exchange \"no link\" never settles a PROSPECTUS or BASIS_OF_ALLOTMENT_AD once the IPO is CLOSED/LISTED; discovery escalates to the SEBI and company rungs and writes EXCHANGES:no_link[due_after_close] in the chain. 48 of 84 BLOCKED_ALL PROSPECTUS rows on staging had skipped SEBI; NSE's is SEBI document 104637. An abridged prospectus is never stored as the Prospectus (F-159).",
+      "first_seen": "2026-10-02",
       "retired": false
     },
     {

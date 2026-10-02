@@ -318,3 +318,45 @@ describe('OD-97 — the mark of a value built from several fields', () => {
     expect(ocrValueLoses({ ...base, incomingMark: { sourceText: 'OCR', confidence: 0.7 } })).toBe(true);
   });
 });
+
+/**
+ * Item 44 / OD-164(f): an OCR-read identifier never overwrites a text one. Real shapes from the
+ * NSE IPO (staging receipts 2026-10-02): the price band ad's OCR read the CIN as
+ * U67120MH1992PLC089769 while the DRHP/RHP text layer reads U67120MH1992PLC069769.
+ */
+describe('Item 44 — an OCR CIN that disagrees with any text CIN is not written', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+  const OCR_CIN = 'U67120MH1992PLC089769';
+  const TEXT_CIN = 'U67120MH1992PLC069769';
+  const withOcrCin = (cin: string): FilingExtraction => {
+    const e = realOcrEnvelope();
+    const page = (e.ocr_pages ?? [0])[0];
+    e.fields.cin = {
+      value: cin, page, source_doc: e.source_doc, state: 'VALUE',
+      check: { name: 'cin_matches_mca_pattern', passed: true, detail: cin },
+      source_text: 'OCR', ocr_confidence: 0.7665,
+    } as never;
+    return e;
+  };
+  const scrapedOf = () => upsertIPOMock.mock.calls[0][1] as Record<string, unknown>;
+
+  it('drops it even when nothing is stored yet and the text read is from a lower-ranked document', async () => {
+    const h = makeDeps({
+      stored: { cin: null },
+      textReceipts: { 'ipos.cin': [{ value: TEXT_CIN, docType: 'DRHP', filingDate: '2026-07-01' }] },
+    });
+    const summary = await run(withOcrCin(OCR_CIN), h, 'RHP');
+    expect(scrapedOf().cin).toBeUndefined();
+    expect(summary.skipped_lower_priority_source.join('\n')).toContain(
+      `ipos.cin (OCR identifier '${OCR_CIN}' disagrees with the text read '${TEXT_CIN}', not written, OD-164(f))`
+    );
+  });
+
+  it('writes an OCR CIN that agrees with the text read, or when no text read exists', async () => {
+    await run(withOcrCin(TEXT_CIN), makeDeps({ stored: { cin: null }, textReceipts: { 'ipos.cin': [TEXT_CIN] } }), 'RHP');
+    expect(scrapedOf().cin).toBe(TEXT_CIN);
+    upsertIPOMock.mockClear();
+    await run(withOcrCin(OCR_CIN), makeDeps({ stored: { cin: null }, textReceipts: {} }), 'RHP');
+    expect(scrapedOf().cin).toBe(OCR_CIN);
+  });
+});

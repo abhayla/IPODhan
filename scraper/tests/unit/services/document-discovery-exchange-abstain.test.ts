@@ -142,6 +142,7 @@ describe('#632 NSE 200 with an empty issueInfo does not carry the issue', () => 
       symbol: 'PESHWA',
       segment: 'SME',
       stage: 'CLOSED',
+      closeDate: '2026-09-19', // PR #1464 fix round 1: binds the SEBI row (Sep 20) to this IPO
       bseIpoNo: null,
     };
 
@@ -168,6 +169,7 @@ describe('#632 NSE 200 with an empty issueInfo does not carry the issue', () => 
       symbol: 'MADHURKNIT',
       segment: 'SME',
       stage: 'CLOSED',
+      closeDate: '2026-09-19', // PR #1464 fix round 1: binds the SEBI row (Sep 20) to this IPO
       bseIpoNo: null,
     };
     const result = await runner.runIpo(ipo, ALL_BUT_PROSPECTUS as never);
@@ -195,6 +197,7 @@ describe('#632 an NSE shape change is a shape_error, never not_carried', () => {
         symbol: 'PESHWA',
         segment: 'SME',
         stage: 'CLOSED',
+        closeDate: '2026-09-19', // PR #1464 fix round 1: binds the SEBI row (Sep 20) to this IPO
         bseIpoNo: null,
       };
       const result = await runner.runIpo(ipo, ALL_BUT_PROSPECTUS as never);
@@ -221,6 +224,7 @@ describe('#632 exchanges that only abstained are not a FAILED exchange verdict',
       symbol: null,
       segment: 'MAINBOARD',
       stage: 'CLOSED',
+      closeDate: '2026-09-19', // PR #1464 fix round 1: binds the SEBI row (Sep 20) to this IPO
       bseIpoNo: null,
     };
 
@@ -244,6 +248,7 @@ describe('#632 exchanges that only abstained are not a FAILED exchange verdict',
       symbol: null,
       segment: 'SME',
       stage: 'CLOSED',
+      closeDate: '2026-09-19', // PR #1464 fix round 1: binds the SEBI row (Sep 20) to this IPO
       bseIpoNo: null,
     };
     const result = await runner.runIpo(ipo, ALL_BUT_PROSPECTUS as never);
