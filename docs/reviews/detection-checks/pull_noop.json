@@ -2,7 +2,7 @@
   "id": "pull_noop",
   "designId": "PULL-NOOP",
   "findingClass": "pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle",
-  "whatItAsks": "writes per cycle ÷ fields re-asked per cycle",
+  "whatItAsks": "real value/source changes (not re-read rewrites) ÷ fields re-asked per cycle; writes on IPOs with a document re-read or an OD-163 answers round in the window are exempt (#1490)",
   "healthy": "near zero on a day with no filings",
   "alarmsWhen": "rises without a matching document arrival — verification is rewriting unchanged values",
   "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",

@@ -1,0 +1,22 @@
+{
+  "database": "ipodhan_staging",
+  "measuredAt": "2026-10-02T21:34:39.045Z",
+  "pull_noop": {
+    "reasked": 6054,
+    "newDocuments": 0,
+    "touched": 3694,
+    "realChanges": 0,
+    "unexplained": 0,
+    "exemptedReread": 0,
+    "exemptedAnswers": 0,
+    "oldRatio": 0.6102,
+    "newRatio": 0
+  },
+  "pull_write": {
+    "supplied": 138,
+    "oldMissing": 12,
+    "newMissing": 0,
+    "credited": 60,
+    "newMissingSample": []
+  }
+}
