@@ -86,6 +86,7 @@ So a card saying DONE is a claim. Each verdict below was checked against an arte
 | 43 | Close source mapping gaps (OD-164(e)) | **NOT BUILT** | NO_MAPPING pairs exist, e.g. CHITTORGARH listing_exchanges 128 IPOs, status 126; BSE listing_exchanges 96 (F-226). Each needs a real-page fixture decision. |
 | 44 | OCR guards and the NSE PROSPECTUS block (OD-164(f)) | **NOT BUILT** | NSE price band advert OCR read 1.7 and 1.785 against 1,700 and 1,785, CIN ...089769 against ...069769; final PROSPECTUS fetch BLOCKED_ALL (F-224). |
 | 45 | One re-read after cover reader and objects (OD-164(g)) | **NOT BUILT** | Not started; depends on items 39 and 40. How many documents still hold their file after OD-32 purges is unverified (OD-67 noted 46 of 307). |
+| 46 | Offer-document table readers on real layouts (OD-165) | **NOT BUILT** | Not started; peers, financial statements and ratios, promoters and WACA; NSE DRHP+RHP fail issuer_ratio_yield (#1179), VANS and Papadmalji 0 promoters/peers (#545); item 45 waits for it. |
 
 **Totals: 26 built, 4 partial, 0 not built, of 30 items** (derived per row by `scripts/ops/render-board.mjs`, 2026-09-29, after item 36 moved NOT BUILT -> PARTIAL with the release-1 admin scope on staging; 2026-09-25: 26/3/1 after item 36 was added by OD-122; the line below is the history of an earlier, hand-typed total that had drifted to 17/12/0 of 29). (2026-09-21: item 17 NOT BUILT -> BUILT; items 11 and 9 NOT BUILT -> PARTIAL, both because an
 owner decision REMOVED work rather than because work was done — OD-67 withdrew the crore
