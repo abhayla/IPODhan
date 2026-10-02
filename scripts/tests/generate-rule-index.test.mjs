@@ -21,6 +21,7 @@ function fixture(rules, nextId, base = {}) {
   writeFileSync(join(root, 'rules.json'), JSON.stringify({ ...base, next_id: nextId, rules }, null, 2));
   return root;
 }
+// install-order-ok: the child is a temp copy of docs/design/generate-rule-index.mjs, which imports only node:fs and node:path (no package)
 const run = (root, ...args) => spawnSync('node', [join(root, 'generate-rule-index.mjs'), ...args], { encoding: 'utf8' });
 const ids = (root) => JSON.parse(readFileSync(join(root, 'rules.json'), 'utf8')).rules.map((r) => r.id);
 
