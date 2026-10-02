@@ -28,6 +28,8 @@ export interface OcrMark {
 interface MarkableField {
   value: unknown;
   page?: number | null;
+  /** PR #1460: every agreeing place a value was read from (the cover reader); each page counts. */
+  pages?: number[] | null;
   ocr_confidence?: number | null;
 }
 
@@ -54,6 +56,10 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
     listingDate: ['listing_date'],
     companyDescription: ['business_description'],
     cin: ['cin'],
+    // Item 39 (OD-161 (b)): the walk reads this mark off the receipt; an OCR or MIXED cover read
+    // never replaces a website's stored value, so the mark must be known, not null.
+    leadManagers: ['lead_managers'],
+    registrar: ['registrar_name'],
   },
   ipo_details: {
     basisOfAllotmentDate: ['basis_of_allotment_date'],
@@ -89,16 +95,19 @@ export function fieldsMark(extraction: MarkableExtraction, names: readonly strin
   for (const name of names) {
     const f = extraction.fields?.[name];
     if (!f || f.value === null || f.value === undefined) continue;
-    const page = typeof f.page === 'number' ? f.page : null;
-    if (page === null) {
-      if (ocrPages.size === 0) text += 1;
-      else unplaced += 1;
-    } else if (ocrPages.has(page)) {
-      ocr += 1;
-      const c = typeof f.ocr_confidence === 'number' ? f.ocr_confidence : null;
-      if (c !== null) lowest = lowest === null ? c : Math.min(lowest, c);
-    } else {
-      text += 1;
+    const listed = Array.isArray(f.pages) ? f.pages.filter((p): p is number => typeof p === 'number') : [];
+    const pages: Array<number | null> = listed.length > 0 ? listed : [typeof f.page === 'number' ? f.page : null];
+    for (const page of pages) {
+      if (page === null) {
+        if (ocrPages.size === 0) text += 1;
+        else unplaced += 1;
+      } else if (ocrPages.has(page)) {
+        ocr += 1;
+        const c = typeof f.ocr_confidence === 'number' ? f.ocr_confidence : null;
+        if (c !== null) lowest = lowest === null ? c : Math.min(lowest, c);
+      } else {
+        text += 1;
+      }
     }
   }
   if (ocr + text + unplaced === 0) return null;

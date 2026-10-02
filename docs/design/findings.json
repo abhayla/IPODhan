@@ -2202,6 +2202,15 @@
       "title": "Keyed child-table provenance rows carry no document lineage; only the table's IPO-level `rows` record names the document",
       "detail": "Measured 2026-10-02 on ipodhan_staging (read-only, docs/design/probes/_lib.mjs openReadOnlyPool): field_sources rows with source DRHP, row_key <> '' on child tables: 11,020, of which 11,020 have data_lineage docType NULL and documentId NULL (updated_by SYSTEM only). The IPO-level section records (field_name 'rows', row_key ''): 288 on six tables (financial_statements 66, ipo_intermediaries 73, ipo_risk_factors 77, peer_companies 18, promoter_acquisition_ranges 2, promoters 52), 0 missing docType or documentId. Query: select count(*), count(*) filter (where data_lineage->>'docType' is null) from field_sources where source='DRHP' and row_key<>'' and table_name not in ('ipos','ipo_details'). So the DOC family check for a child-table plan row must read the `rows` record, never the keyed rows (item 38). Also measured: national-stock-exchange-of-india-ltd promoter_acquisition_ranges `rows` record comes from a PRICE_BAND_AD, outside the field's RHP family, so it stays CHECK_FAILED (not credited). Open for owner decision: none (no rule change).",
       "phase1": false
+    },
+    {
+      "id": "F-228",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "§1.2 ipo_details row 46 compliance_officer_email E4 check; item 39 cover reader",
+      "title": "Row 46 \"email domain matches the company website\" would refuse a true compliance-officer email: the NSE RHP prints nse_ipo@nse.co.in with website www.nseindia.com",
+      "detail": "Measured 2026-10-02 on the NSE RHP (stored copy RHP-4e566b15.pdf, pages 1 and 3 printed): the cover contact table and the second-cover line both print E-mail nse_ipo@nse.co.in and Website www.nseindia.com; the domains differ and the email is the issuer's own. Of the 6 real offer documents read for item 39 (NSE, Nityas, Vishal Nirmiti, R K Fashion RHP+DRHP, Dove Soft) 5 match and 1 (NSE) does not. The item 39 reader therefore records the domain comparison as cross_check on the field and does not refuse the value. Open for owner decision: keep row 46 as a hard check (would refuse NSE) or make it a cross-check.",
+      "phase1": false
     }
   ],
   "false_assertions": [
