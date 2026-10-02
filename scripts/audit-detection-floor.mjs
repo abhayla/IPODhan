@@ -43,6 +43,7 @@ import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { runCheckAgainstIds } from './lib/run-check.mjs';
+import { runDocYieldPerDocument, runDocRank1Unanswered, runWitnessMissing, runListedSourceNeverAsked, runOcrAmountMagnitude } from './lib/doc-yield-checks.mjs';
 import { evaluateShiftedHolidayCopies } from './lib/shifted-holiday-copies.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import { fetchOracleCalendar } from './lib/chittorgarh-oracle-parser.mjs';
@@ -3156,6 +3157,59 @@ async function checkPullDocNayWithOfferDoc() {
       (ipos.length ? ` (${ipos.slice(0, MAX_OFFENDERS).map(([s, n]) => `${s}=${n}`).join('; ')})` : ''));
 }
 
+// ---- item 37 (OD-164, spec 2.5.6): the five document-yield / every-source checks. The predicates and
+// read-only SELECTs live in scripts/lib/doc-yield-checks.mjs (tested by scripts/tests/audit-detection-floor.test.mjs).
+// Answer states read: SUPPLIED / NOT_PRINTED / NOT_AVAILABLE_YET / CHECK_FAILED / FAILED / no row --
+// each evaluator's header says what each counts as. A read error is UNVERIFIABLE, never PASS.
+function readJsonConfig(...parts) {
+  return JSON.parse(readFileSync(join(REPO_ROOT, ...parts), 'utf8'));
+}
+
+// Returns { status, detail } for the caller's literal record('<id>', ...) call (the registry test greps for it).
+async function runYieldCheck(id, title, severity, collect) {
+  let res;
+  try {
+    res = await collect();
+  } catch (e) {
+    return { status: 'UNVERIFIABLE', detail: `source tables or config not readable: ${e.message}` };
+  }
+  for (const l of res.labels.slice(0, MAX_OFFENDERS)) notify(id, severity, l.split(' ')[0], title, l);
+  return { status: res.status, detail: res.detail + (res.labels.length ? `: ${res.labels.slice(0, MAX_OFFENDERS).join('; ')}` : '') };
+}
+
+const FIELD_MANIFEST_PATH = ['scraper', 'config', 'field-manifest.json'];
+
+async function checkDocYieldPerDocument() {
+  const title = 'every COMPLETED offer document delivers at least its floor share of the fields its type gives';
+  const r = await runYieldCheck('doc_yield_per_document', title, 'P1', () => runDocYieldPerDocument(q, readJsonConfig(...FIELD_MANIFEST_PATH)));
+  record('doc_yield_per_document', title, r.status, r.detail);
+}
+
+async function checkDocRank1UnansweredWithOfferDoc() {
+  const title = 'no rank-1 DOC plan row stays unanswered (CHECK_FAILED / no document provenance) while its IPO holds a COMPLETED family document';
+  const r = await runYieldCheck('doc_rank1_unanswered_with_offer_doc', title, 'P2', () => runDocRank1Unanswered(q, readJsonConfig(...FIELD_MANIFEST_PATH)));
+  record('doc_rank1_unanswered_with_offer_doc', title, r.status, r.detail);
+}
+
+async function checkWitnessMissingOnStoredValue() {
+  const title = 'every stored value that other listed sources could answer carries its recorded witnesses';
+  const r = await runYieldCheck('witness_missing_on_stored_value', title, 'P2', () => runWitnessMissing(q, readJsonConfig(...FIELD_MANIFEST_PATH)));
+  record('witness_missing_on_stored_value', title, r.status, r.detail);
+}
+
+async function checkListedSourceNeverAsked() {
+  const title = 'every source a field lists at rank 2 or 3 is mapped and asked (extends the #884 coverage-gap baseline)';
+  const r = await runYieldCheck('listed_source_never_asked', title, 'P2',
+    () => runListedSourceNeverAsked(q, readJsonConfig('scraper', 'config', 'manifest-rank-coverage-gaps.baseline.json').gaps ?? []));
+  record('listed_source_never_asked', title, r.status, r.detail);
+}
+
+async function checkOcrAmountMagnitude() {
+  const title = 'no OCR-read amount differs from a text or exchange value by a power of ten';
+  const r = await runYieldCheck('ocr_amount_magnitude', title, 'P1', () => runOcrAmountMagnitude(q, readJsonConfig(...FIELD_MANIFEST_PATH)));
+  record('ocr_amount_magnitude', title, r.status, r.detail);
+}
+
 // ---- (S) item 3 slice S4: PULL-OVERRIDES -- every active field_source_overrides row still holds
 async function checkS_pullOverrides() {
   let manifest;
@@ -4174,6 +4228,11 @@ async function main() {
   await runCheck(checkS_pullPlanStuckReclaim, ['pull_plan_stuck_reclaim']);
   await runCheck(checkS_pullPlanPendingStranded, ['pull_plan_pending_stranded']);
   await runCheck(checkPullDocNayWithOfferDoc, ['pull_doc_nay_with_offer_doc']);
+  await runCheck(checkDocYieldPerDocument, ['doc_yield_per_document']);
+  await runCheck(checkDocRank1UnansweredWithOfferDoc, ['doc_rank1_unanswered_with_offer_doc']);
+  await runCheck(checkWitnessMissingOnStoredValue, ['witness_missing_on_stored_value']);
+  await runCheck(checkListedSourceNeverAsked, ['listed_source_never_asked']);
+  await runCheck(checkOcrAmountMagnitude, ['ocr_amount_magnitude']);
   await runCheck(checkPullFrozen, ['pull_frozen']);
   await runCheck(checkPullPlanConfigGapAtCap, ['pull_plan_config_gap_at_cap']);
   await runCheck(checkPullPlanGapStalled, ['pull_plan_gap_stalled']);

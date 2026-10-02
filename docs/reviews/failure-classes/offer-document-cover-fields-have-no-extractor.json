@@ -4,8 +4,8 @@
   "symptom": "The ranking says the document wins, but nothing reads the field from the document, so the plan row is refused as \"no document provenance\" and a rank 2 or 3 website supplies the value. The ranking is correct on paper and absent in effect, and nothing counts rank-1 fields no extractor can produce.",
   "first_seen": "2026-10-02 (F-224, F-225) -- 5 of 5 real documents (NSE RHP, Vishal Nirmiti, TNA SME, Armee, Veegaland PROSPECTUS) print registrar and lead managers on pages 1-4 and the extractor emits none; document_field_receipts has 0 IPOs for registrar, leadManagers, companyWebsite, objectives across 77 IPOs on staging.",
   "fix_prs": "none yet -- planned: spec 7.1 items 39 and 40 (OD-164(b),(c))",
-  "detection_check": "planned listed_source_never_asked (docs/reviews/detection-checks/listed_source_never_asked.json, notCoveredByThisManifest): a listed source and field pair never asked or unmapped",
-  "status": "unguarded -- no implemented check",
+  "detection_check": "doc_yield_per_document (a COMPLETED document far below its type's fields, by document identity; scripts/audit-detection-floor.mjs)",
+  "status": "guarded -- detected by doc_yield_per_document; the class itself is not yet fixed (OD-164 items 38-46)",
   "spec_ref": [
     "§1.2",
     "§5.6"

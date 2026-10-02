@@ -4,8 +4,8 @@
   "symptom": "A document that yielded 4 of 42 fields reads as done; the plan rows it should have answered are parked as temporary failures with no next due time, and a partial read is indistinguishable from a full one. An OCR amount a power of ten off likewise passes unflagged.",
   "first_seen": "2026-10-02 (F-224, F-225) -- NSE RHP COMPLETED with 15 of 42 fields reported by the extractor and 4 DOC-first receipts; NSE price band advert OCR 1.7 against 1,700 (1000x small).",
   "fix_prs": "none yet -- planned: spec 7.1 items 37 and 44",
-  "detection_check": "planned doc_yield_per_document and ocr_amount_magnitude (docs/reviews/detection-checks/, notCoveredByThisManifest)",
-  "status": "unguarded -- no implemented check",
+  "detection_check": "doc_yield_per_document and ocr_amount_magnitude (scripts/audit-detection-floor.mjs; docs/reviews/detection-checks/)",
+  "status": "guarded -- detected by doc_yield_per_document; the class itself is not yet fixed (OD-164 items 38-46)",
   "spec_ref": [
     "§2.5",
     "§4"
