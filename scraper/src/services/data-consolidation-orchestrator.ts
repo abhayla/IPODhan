@@ -963,10 +963,12 @@ export class DataConsolidationOrchestrator {
       if (options?.writeRow) {
         const probe = await this.ipoRepository.probeChildRow(tableName, ipoId, rowKey, incomingFields, source);
         if (probe.writable) {
-          // F-233: the stored values travel to the consolidator, so a value with no field_sources row is
-          // judged as a stored value (W-16b / M-1), never as empty. A caller's own read wins when given.
+          // F-233 / OD-168 (financial_data only, the same table the OD-168 keep rule covers): the stored
+          // values travel to the consolidator, so a value with no field_sources row is judged as a stored
+          // value, never as empty. Every other child table's consolidator input stays as before.
+          // A caller's own read wins when given.
           const stored = (probe as Extract<ChildRowProbe, { writable: true }>).existing;
-          if (stored && row.existingData === undefined) row = { ...row, existingData: stored };
+          if (tableName === 'financial_data' && stored && row.existingData === undefined) row = { ...row, existingData: stored };
         }
         if (!probe.writable) {
           // scraper/ compiles without strictNullChecks, so the union does not narrow on `writable`.

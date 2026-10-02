@@ -229,6 +229,51 @@ describe('F-233: walk writes financial_data (one row per IPO) through the consol
   });
 });
 
+describe('F-233 / OD-168 round 2: the stored-value pass-through is financial_data only', () => {
+  const saved = {
+    child: FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION,
+    cons: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+    track: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+    pct: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
+  };
+  beforeEach(() => {
+    (FEATURE_FLAGS as any).ENABLE_CHILD_TABLE_CONSOLIDATION = true;
+    (FEATURE_FLAGS as any).ENABLE_DATA_CONSOLIDATION = true;
+    (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = true;
+    (FEATURE_FLAGS as any).CONSOLIDATION_PERCENTAGE = 100;
+  });
+  afterEach(() => {
+    (FEATURE_FLAGS as any).ENABLE_CHILD_TABLE_CONSOLIDATION = saved.child;
+    (FEATURE_FLAGS as any).ENABLE_DATA_CONSOLIDATION = saved.cons;
+    (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = saved.track;
+    (FEATURE_FLAGS as any).CONSOLIDATION_PERCENTAGE = saved.pct;
+  });
+
+  it('ipo_details: an untracked stored value is NOT handed to the consolidator (input as on main), so the incoming value is decided as before', async () => {
+    // ipo_details row holding issueType with no field_sources row; the probe reports it (as the shared
+    // writer now does for every table). CHITTORGARH is issueType's worst-ranked source, so if the stored
+    // value leaked into the consolidator the M-1 rule would KEEP it -- on main the value is written.
+    const rows: Record<string, unknown>[] = [{ ipoId: IPO_ID, issueType: 'FIXED_PRICE' }];
+    const repo = {
+      async probeChildRow(_t: string, _i: string, _k: string, fields: readonly string[]) {
+        return { writable: true, exists: true, existing: Object.fromEntries(fields.map((f) => [f, rows[0][f] ?? null])) };
+      },
+      async writeChildRowFields(_t: string, _i: string, _k: string, values: Record<string, unknown>) {
+        Object.assign(rows[0], values);
+        return { written: true, mode: 'UPDATE', dropped: [] };
+      },
+    };
+    const orchestrator = new DataConsolidationOrchestrator(repo as never, new FakeFieldSources() as never, new FakeConflicts() as never, null);
+    const r = await orchestrator.consolidatedUpsertChildRows(IPO_ID, 'ipo_details', [{ rowKey: '', data: { issueType: 'BOOK_BUILDING' } }], 'CHITTORGARH', undefined, undefined, {
+      writeRow: true,
+    });
+    const fr = r.rows[0].fieldResults?.find((f) => f.fieldName === 'issueType');
+    expect(fr?.rejectedSources?.some((x) => x.reason === 'UNTRACKED_EXISTING_VALUE_KEPT') ?? false).toBe(false);
+    expect(fr?.finalValue).toBe('BOOK_BUILDING');
+    expect(rows[0].issueType).toBe('BOOK_BUILDING');
+  });
+});
+
 describe('F-233: which child tables take the singleton row key is structural, not a name list', () => {
   /**
    * A table may carry the '' row key exactly when it holds one row per IPO: its `ipo_id` column is
