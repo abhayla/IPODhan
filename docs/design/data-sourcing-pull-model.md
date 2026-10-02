@@ -2526,7 +2526,7 @@ Owner approval 2026-10-02 of the plan that follows from F-224, F-225 and F-226. 
 | `listed_source_never_asked` | a source and field pair Appendix A lists that is never asked or has no mapping (extends the coverage-gap baseline) |
 | `ocr_amount_magnitude` | an OCR amount off by a power of ten against a text or exchange value |
 
-Baselines at the time of writing (staging, 2026-10-02, read-only): 28,760 child-table rank-1-DOC rows with 0 SUPPLIED; 5,995 DOC rows on 77 IPOs carrying NO_DOCUMENT_PROVENANCE; 0 of 77 IPOs with cover fields from a document; 20,008 of 20,532 stored values without other-source answers. Evidence: F-224, F-225, F-226; issue #1454. Build items: §7.1 items 37 to 45. The design is not ready for release while those items are NOT BUILT (staging-is-the-release-gate R0, OD-146).
+Baselines at the time of writing (staging, 2026-10-02, read-only): 28,760 child-table rank-1-DOC rows with 0 SUPPLIED; 4,769 plan rows on 77 IPOs carrying NO_DOCUMENT_PROVENANCE at ~13:15 IST (5,995 at the morning measurement in F-225, before the day's data slots re-walked rows); 0 of 77 IPOs with cover fields from a document; 20,008 of 20,532 stored values without other-source answers. Evidence: F-224, F-225, F-226; issue #1454. Build items: §7.1 items 37 to 45. The design is not ready for release while those items are NOT BUILT (staging-is-the-release-gate R0, OD-146).
 
 ### 2.6 When all three sources fail
 
