@@ -410,6 +410,19 @@ function bool(extraction: FilingExtraction, name: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
+/** Item 39: the cover reader's BRLM list, only as a passing VALUE of 1+ company names. */
+export function coverLeadManagers(extraction: FilingExtraction): string[] | null {
+  const v = trusted(extraction, 'lead_managers');
+  if (!Array.isArray(v)) return null;
+  const names = v.filter((n): n is string => typeof n === 'string' && n.trim().length > 0).map((n) => n.trim());
+  return names.length > 0 && names.length === v.length ? names : null;
+}
+
+/** Item 39: the cover reader's registrar name, only as a passing VALUE. */
+export function coverRegistrar(extraction: FilingExtraction): string | null {
+  return str(extraction, 'registrar_name');
+}
+
 function list<T>(extraction: FilingExtraction, name: string): T[] {
   const v = trusted(extraction, name);
   return Array.isArray(v) ? (v as T[]) : [];
@@ -1626,6 +1639,20 @@ export async function persistFilingExtraction(
   if (listingDate) iposCandidate.listingDate = listingDate;
   if (description) iposCandidate.companyDescription = description;
   if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
+  // Item 39 / OD-162: the book running lead managers and the registrar read off THIS
+  // document's own cover / Definitions / General Information blocks are the document's answer
+  // (receipt below, OD-91(4) lifted for lead_managers). The reader emits a value only when every
+  // place it read agrees; a miss emits nothing here, so a stored value stays (OD-158).
+  // OD-96 is checked HERE as well as in filterFields, so an out-of-family document (a price band
+  // advertisement) leaves no receipt claiming it answered an RHP-family field.
+  const docLeadManagers = coverLeadManagers(extraction);
+  if (docLeadManagers && documentMayWriteField('ipos', 'leadManagers', options.docType)) {
+    iposCandidate.leadManagers = docLeadManagers;
+  }
+  const docRegistrar = coverRegistrar(extraction);
+  if (docRegistrar && documentMayWriteField('ipos', 'registrar', options.docType)) {
+    iposCandidate.registrar = docRegistrar;
+  }
   // OD-129 (#938): the listing sentence on the cover pages decides the exchanges.
   // #1233 (OD-129, row 23): it decides the BOARD too — `ipos.segment` is this document's claim,
   // under the same precedence gate, the same protection gate (an admin hold drops it, §9) and
@@ -2880,7 +2907,11 @@ export async function persistFilingExtraction(
     extraction,
     'brlm_track_record'
   );
-  const brlmNames = (existing.leadManagers || []).filter((n): n is string => !!n);
+  // Item 39 (row 114): the BRLM rows reconcile with ipos.lead_managers. A document that read its
+  // own BRLMs files THOSE (and, for a single BRLM, its INM number); otherwise the stored list.
+  const docBrlms = coverLeadManagers(extraction);
+  const brlmNames = (docBrlms ?? existing.leadManagers ?? []).filter((n): n is string => !!n);
+  const soleBrlmReg = docBrlms && docBrlms.length === 1 ? str(extraction, 'lead_manager_sebi_reg') : null;
   // Item 1 slice s1 (row-key prep, F-74): built without `normalizedName`
   // here — every entry (the initial map, and each subsequent push below)
   // carries only a bare `name`; `normalizedName` is derived once, uniformly,
@@ -2893,24 +2924,30 @@ export async function persistFilingExtraction(
     // The extractor emits SEBI registration numbers as a bare LIST with no
     // name->reg mapping. Pairing them positionally against a differently
     // sourced BRLM name list would publish a registration number against the
-    // wrong firm - left null, and the list is reported as skipped.
-    sebiRegNo: null,
+    // wrong firm - left null, and the list is reported as skipped. One BRLM read
+    // from the document with its own INM number is unambiguous (item 39).
+    sebiRegNo: soleBrlmReg,
     contactPerson: null,
     phone: null,
     email: null,
     grievanceEmail: null,
   }));
   const registrarReg = str(extraction, 'registrar_sebi_reg');
-  if (existing.registrar) {
+  const docRegistrarName = coverRegistrar(extraction);
+  const registrarName = docRegistrarName ?? existing.registrar;
+  if (registrarName) {
+    // Item 39: the contact lines belong to the registrar the document named; they are filed
+    // only on that row, never on a stored name from another source.
+    const own = docRegistrarName !== null;
     intermediaries.push({
       ipoId,
       role: 'REGISTRAR',
-      name: existing.registrar,
+      name: registrarName,
       // Exactly one registrar and exactly one registrar reg number: unambiguous.
       sebiRegNo: registrarReg,
-      contactPerson: null,
-      phone: null,
-      email: null,
+      contactPerson: own ? str(extraction, 'registrar_contact_person') : null,
+      phone: own ? str(extraction, 'registrar_phone') : null,
+      email: own ? str(extraction, 'registrar_email') : null,
       grievanceEmail: null,
     });
   }

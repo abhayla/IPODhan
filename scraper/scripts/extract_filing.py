@@ -26,6 +26,7 @@ import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
 import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
 import answer_states  # noqa: E402 — pure-python, stdlib only (#1420)
+import cover_block  # noqa: E402 — pure-python, stdlib only (item 39)
 from answer_states import judge, missed, refused  # noqa: E402
 
 # W-178c round 2: how long this process waits to acquire the box lock before
@@ -2862,6 +2863,10 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
             break
     emit.put("cin", found[0] if found else None, found[1] if found else None,
              "cin_matches_mca_pattern", check_cin(found[0] if found else None))
+    # Item 39 (OD-164(b), OD-162): registrar, book running lead managers,
+    # company website and compliance officer from the cover / Definitions /
+    # General Information blocks; candidates must agree, else a MISSED cause.
+    cover_block.read_cover_block(page_texts, emit)
     # W-133 MAJOR-3: `pnl["status"]` (shared core's own OK/PARTIAL verdict —
     # every headline P&L metric present for >= 2 fiscal years) can be PARTIAL
     # even when every per-field check above passed, e.g. a single-fiscal-year

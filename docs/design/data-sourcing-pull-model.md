@@ -769,7 +769,7 @@ Rank 2 is the exchange circular where one exists, rank 3 Chittorgarh's detail pa
 | 43 | `last_verified_at` | 20 | **I** | — | — | keep | — | pipeline clock | — | — |
 | 44 | `compliance_officer` | 10 | DOC | — | — | keep | E4 | non-empty person name | none — document-only | — |
 | 45 | `compliance_officer_phone` | 5 | DOC | — | — | keep | E4 | Indian phone form | none | — |
-| 46 | `compliance_officer_email` | 8 | DOC | — | — | keep | E4 | email form; domain matches the company website | none | — |
+| 46 | `compliance_officer_email` | 8 | DOC | — | — | keep | E4 | email form; domain matches the company website (F-228: the NSE RHP's true email fails it; the item 39 reader records it as a cross-check, open for owner decision) | none | — |
 | 47 | `upi_cutoff_time` | 9 | DOC | NSE | — | keep | B7 | time-of-day on the close date | NSE circular | — |
 | 48 | `designated_exchange` | 8 | DOC | NSE | BSE | keep | A14 | one of {NSE, BSE}; must be in `listing_exchanges` | internal | SME-on-BSE: always BSE |
 | 49 | `lot_multiple` | 8 | DOC | BSE | — | keep | A3 | positive integer; `lot_multiple × lot × floor` is the true minimum | BSE | **SME: 2 since the 2025 rule** — this is the field that records it, rather than doubling `lot_size` |
