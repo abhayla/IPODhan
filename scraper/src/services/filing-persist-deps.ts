@@ -31,6 +31,7 @@ import {
   DataConflictsRepository,
   getRedisClient,
 } from '@ipodhan/shared';
+import { createHash } from 'node:crypto';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
@@ -190,6 +191,33 @@ export function buildFilingPersistDeps(
     ocrPrecedence: makeOcrPrecedenceReader(),
     listingPrecedence: makeListingPrecedenceReader(),
     planRebuildInTx: makePlanRebuilder(),
+    // OD-166: a kept value the admin should look at goes to the admin queue (data_conflicts, §9.4),
+    // one row per (document, field, value) ever, the suggestion_key dedupe every document listing uses.
+    adminListing: {
+      async listForAdmin(row) {
+        const suggestionKey = createHash('sha256')
+          .update(`${row.rule}|${row.documentId}|${row.tableName}|${row.fieldName}|${row.value}`)
+          .digest('hex');
+        await db
+          .insert(schema.dataConflicts)
+          .values({
+            ipoId: row.ipoId,
+            tableName: row.tableName,
+            rowKey: '',
+            fieldName: row.fieldName,
+            source1: 'DRHP',
+            value1: row.value,
+            source2: 'DRHP',
+            value2: row.value,
+            severity: 'INFO',
+            resolutionReason: null,
+            documentId: row.documentId,
+            suggestionKey,
+            evidence: { origin: `${row.rule}_KEPT_FOR_REVIEW`, rule: row.rule, ...row.detail },
+          } as never)
+          .onConflictDoNothing({ target: schema.dataConflicts.suggestionKey });
+      },
+    },
     fieldManifest: loadFieldManifest(),
     protectionFilter: (
       id: string,

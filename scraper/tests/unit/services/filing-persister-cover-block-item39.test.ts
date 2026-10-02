@@ -164,4 +164,54 @@ describe('filing-persister — item 39 cover block', () => {
     const rows = intermediaryRows(h.replaceForIpo);
     expect(rows.find((r) => r.role === 'BRLM')?.sebiRegNo).toBe('INM000012838');
   });
+
+  // OD-166 (row 46), the NSE RHP's own values (F-228): nse_ipo@nse.co.in vs www.nseindia.com.
+  function nseEmail(passed: boolean): Record<string, Field> {
+    return {
+      ...RKFAL_FIELDS,
+      company_website: value('www.nseindia.com', 0),
+      compliance_officer_email: {
+        ...(value('nse_ipo@nse.co.in', 0) as object),
+        cross_check: { name: 'email_domain_matches_website', passed },
+      } as unknown as Field,
+    };
+  }
+
+  it('OD-166: an email on another domain is KEPT and listed for the admin, never refused', async () => {
+    const h = makeDeps();
+    const listForAdmin = vi.fn(async () => undefined);
+    (h.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    const writer = (h.deps as unknown as { ipoDetailsWriter: { upsert: ReturnType<typeof vi.fn> } }).ipoDetailsWriter;
+    await persistFilingExtraction(IPO_ID, extraction('RHP', nseEmail(false)), { docType: 'RHP', apply: true, documentId: 'doc-1' }, h.deps);
+    const details = writer.upsert.mock.calls.map((c) => c[1] as Record<string, unknown>).find((v) => 'complianceOfficerEmail' in v);
+    expect(details?.complianceOfficerEmail).toBe('nse_ipo@nse.co.in');
+    expect(listForAdmin).toHaveBeenCalledTimes(1);
+    expect(listForAdmin.mock.calls[0][0]).toMatchObject({
+      ipoId: IPO_ID,
+      documentId: 'doc-1',
+      tableName: 'ipo_details',
+      fieldName: 'complianceOfficerEmail',
+      value: 'nse_ipo@nse.co.in',
+      rule: 'OD-166',
+    });
+  });
+
+  it('OD-166: a matching domain is not listed; a dry run lists nothing', async () => {
+    const listForAdmin = vi.fn(async () => undefined);
+    const a = makeDeps();
+    (a.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    await persistFilingExtraction(IPO_ID, extraction('RHP', nseEmail(true)), { docType: 'RHP', apply: true, documentId: 'doc-1' }, a.deps);
+    const b = makeDeps();
+    (b.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    await persistFilingExtraction(IPO_ID, extraction('RHP', nseEmail(false)), { docType: 'RHP', apply: false, documentId: 'doc-1' }, b.deps);
+    expect(listForAdmin).not.toHaveBeenCalled();
+  });
+
+  it('OD-166 / OD-96: a PRICE_BAND_AD carrying the email lists nothing for the admin', async () => {
+    const h = makeDeps();
+    const listForAdmin = vi.fn(async () => undefined);
+    (h.deps as unknown as Record<string, unknown>).adminListing = { listForAdmin };
+    await persistFilingExtraction(IPO_ID, extraction('PRICE_BAND_AD', nseEmail(false)), { docType: 'PRICE_BAND_AD', apply: true, documentId: 'doc-1' }, h.deps);
+    expect(listForAdmin).not.toHaveBeenCalled();
+  });
 });

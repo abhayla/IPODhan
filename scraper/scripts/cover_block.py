@@ -49,8 +49,14 @@ DEFINITIONS_PAGES = 40
 _FIRM_END = r"(?:Private\s+Limited|Pvt\.?\s+Ltd\.?|Limited|LIMITED|Ltd\.?|LLP)"
 # A firm name at the START of a line: 2+ words, no label colon, ending in a
 # company suffix. Lazy, so "X Limited Y Limited" yields X first.
-FIRM_AT_START = re.compile(r"^\s*(?!(?:Private|Limited|LIMITED|Ltd|LLP|Pvt))([A-Z0-9][A-Za-z0-9&.,'()\-/ ]{2,}?\b" + _FIRM_END + r")\*?(?=[\s;,.)]|$)")
-FIRM_ANYWHERE = re.compile(r"(?<![A-Za-z])(?!(?:Private|Limited|LIMITED|Ltd|LLP|Pvt))([A-Z0-9][A-Za-z0-9&.'()\-/ ]{2,}?\b" + _FIRM_END + r")\*?(?=[\s;,.)]|$)")
+# A footnote / role marker printed on a firm name is not part of the name: "ICICI Securities
+# Limited*", "SBI Capital Markets Limited#", "$SBI Capital Markets Limited ...", "SBI Capital
+# Markets Limited (SS)" (NSE RHP). Leading markers are skipped; trailing ones are consumed
+# outside the captured name.
+_MARK = r"[*#$\u2020\u2021]"
+_TRAIL_MARK = r"(?:" + _MARK + r"|\s?\((?:SS|ss)\))*"
+FIRM_AT_START = re.compile(r"^\s*" + _MARK + r"*\s*(?!(?:Private|Limited|LIMITED|Ltd|LLP|Pvt)\b)([A-Z0-9][A-Za-z0-9&.,'()\-/ ]{2,}?\b" + _FIRM_END + r")" + _TRAIL_MARK + r"(?=[\s;,.)]|$)")
+FIRM_ANYWHERE = re.compile(r"(?<![A-Za-z])(?!(?:Private|Limited|LIMITED|Ltd|LLP|Pvt)\b)([A-Z0-9][A-Za-z0-9&.'()\-/ ]{2,}?\b" + _FIRM_END + r")" + _TRAIL_MARK + r"(?=[\s;,.)]|$)")
 
 SEBI_INM = re.compile(r"\bINM\s?\d{9}\b")
 SEBI_INR = re.compile(r"\bINR\s?\d{9}\b")
@@ -68,6 +74,11 @@ GI_REGISTRAR_HEADING = re.compile(r"^\s*Registrar\s+to\s+the\s+(?:Offer|Issue)\s
 GI_BLOCK_END = re.compile(r"^\s*(?:Statutory|Legal|Banker|Syndicate|Self|Sponsor|Escrow|Public\s+Offer|Refund|"
                           r"Monitoring|Designated|Market\s+Maker|Underwrit|Changes\s+in|Credit\s+Rating|Experts?|"
                           r"Peer\s+Review|Inter|Filing|Book\s+Running|Collecting|Registrar\s+and\s+Share)\b", re.I)
+# The marketing BRLM (SEBI Merchant Bankers Regulation 21A: a BRLM that is also a selling
+# shareholder or its associate) has its own Definitions row, quoted or not: NSE RHP p.13
+# "M-BRLM SBI Capital Markets Limited acting as a book running lead manager to the Offer*".
+# It IS a book running lead manager and joins the BRLM row's list; the row must say so.
+DEF_MBRLM_ROW = re.compile(r"^\s*[“\"]?(?:M-BRLMs?|Marketing\s+(?:Book\s+Running\s+)?Lead\s+Managers?)[”\"]?\s+(.*\bbook\s+running\s+lead\s+manager\b.*)$", re.I)
 DEF_ROW = re.compile(r"^\s*[“\"](Registrar\s+to\s+the\s+(?:Offer|Issue)|Book\s+Running\s+Lead\s+Managers?|BRLMs?)[”\"]", re.I)
 DEF_NEXT_ROW = re.compile(r"^\s*[“\"][A-Z]")
 DEF_TERM_TAIL = re.compile(r"^\s*(?:or\s+)?[“\"][^”\"]{1,40}[”\"]\s*")
@@ -162,8 +173,9 @@ def _canon_person(name):
 
 
 def _clean_firm(raw):
-    name = re.sub(r"\s+", " ", raw).strip(" *;,")
-    return name
+    name = re.sub(r"\s+", " ", raw)
+    name = re.sub(r"\s?\((?:SS|ss)\)$", "", name)
+    return name.strip(" *#$†‡;,")
 
 
 def _firm_line(line):
@@ -240,9 +252,15 @@ def _cover_tables(page_texts):
 def _definition_rows(page_texts):
     """'Definitions and Abbreviations': {"registrar": (name, page), "brlm": ([names], page)}."""
     out = {}
+    marketing = []
     for idx, text in page_texts[:DEFINITIONS_PAGES]:
         lines = (text or "").splitlines()
         for k, line in enumerate(lines):
+            mb = DEF_MBRLM_ROW.match(line)
+            if mb:
+                head = re.split(r"\b(?:acting|in\s+its\s+capacity|appointed|as\s+a\s+book)\b", mb.group(1), flags=re.I)[0]
+                marketing += [_clean_firm(f) for f in FIRM_ANYWHERE.findall(head)]
+                continue
             m = DEF_ROW.match(line)
             if not m:
                 continue
@@ -267,6 +285,11 @@ def _definition_rows(page_texts):
                 out["registrar"] = (names[0], idx)
             elif not term.startswith("registrar") and "brlm" not in out:
                 out["brlm"] = (names, idx)
+    # An M-BRLM row extends the BRLM row's list; alone it is not the whole list (fail closed).
+    if "brlm" in out and marketing:
+        names, idx = out["brlm"]
+        seen = {_canon_firm(n) for n in names}
+        out["brlm"] = (names + [n for n in dict.fromkeys(marketing) if _canon_firm(n) not in seen], idx)
     return out
 
 

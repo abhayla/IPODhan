@@ -85,6 +85,24 @@ export interface ExtractedField {
   /** OD-97: set by ocr_pages.annotate_fields on a value read off an OCR'd page. */
   source_text?: string | null;
   ocr_confidence?: number | null;
+  /** A recorded, not enforced, second check (OD-166: email domain vs company website). */
+  cross_check?: { name?: string; passed?: boolean } | null;
+}
+
+/**
+ * OD-166: a value that is KEPT but that the admin should look at. Listed in the admin queue the
+ * same way every document suggestion is (`data_conflicts`, spec §9.4), never refused.
+ */
+export interface AdminListingWriter {
+  listForAdmin(row: {
+    ipoId: string;
+    documentId: string;
+    tableName: string;
+    fieldName: string;
+    value: string;
+    rule: string;
+    detail: Record<string, unknown>;
+  }): Promise<void>;
 }
 
 export interface FilingExtraction {
@@ -180,6 +198,8 @@ export interface DocumentFilingDateWriter {
 }
 
 export interface FilingPersisterDeps {
+  /** OD-166: the admin-queue listing for a kept value the admin should look at. */
+  adminListing: AdminListingWriter;
   /**
    * #1420 (OD-153, OD-158, OD-160): the database the re-read answer clear runs its ONE transaction on
    * (reread-answer-clear.ts). Absent = nothing is cleared (non-null writes only, the pre-#1420 rule).
@@ -1860,6 +1880,36 @@ export async function persistFilingExtraction(
   mark('complianceOfficer', str(extraction, mappedField('ipo_details', 'complianceOfficer')));
   mark('complianceOfficerPhone', str(extraction, mappedField('ipo_details', 'complianceOfficerPhone')));
   mark('complianceOfficerEmail', str(extraction, mappedField('ipo_details', 'complianceOfficerEmail')));
+  // OD-166 (row 46): an email whose domain differs from the company website is KEPT (written
+  // above) and listed for the admin, never refused. Only a document allowed to answer the field
+  // (OD-96) lists it; nothing is listed on a dry run.
+  const coEmailKey = mappedField('ipo_details', 'complianceOfficerEmail');
+  const coEmail = str(extraction, coEmailKey);
+  if (
+    apply &&
+    coEmail &&
+    options.documentId &&
+    extraction.fields[coEmailKey]?.cross_check?.passed === false &&
+    documentMayWriteField('ipo_details', 'complianceOfficerEmail', options.docType)
+  ) {
+    if (deps.adminListing) {
+      await deps.adminListing.listForAdmin({
+        ipoId,
+        documentId: options.documentId,
+        tableName: 'ipo_details',
+        fieldName: 'complianceOfficerEmail',
+        value: coEmail,
+        rule: 'OD-166',
+        detail: {
+          check: 'email_domain_matches_website',
+          website: str(extraction, 'company_website'),
+          page: extraction.fields[coEmailKey]?.page ?? null,
+        },
+      });
+    } else {
+      skippedNoColumn.push('ipo_details.complianceOfficerEmail: OD-166 admin listing not wired (no adminListing dep)');
+    }
+  }
   mark('companyDescription', description);
   if (faceValue !== null) mark('faceValue', faceValue.toString());
   const lotMultiple = num(extraction, mappedField('ipo_details', 'lotMultiple'));

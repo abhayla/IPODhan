@@ -48,6 +48,9 @@ NSE_BRLMS = [
     "IIFL Capital Services Limited", "Motilal Oswal Investment Advisors Limited",
     "Nuvama Wealth Management Limited", "Pantomath Capital Advisors Private Limited",
     "360 ONE WAM Limited",
+    # p.13 Definitions: "M-BRLM SBI Capital Markets Limited acting as a book running lead manager to
+    # the Offer*" - a BRLM printed in its own row with a selling-shareholder marker (BSE stores 20).
+    "SBI Capital Markets Limited",
 ]
 
 # name -> {field: (value, page)}; page None = any page
@@ -199,3 +202,39 @@ def test_email_domain_cross_check_is_recorded_not_enforced():
     rec = fields["compliance_officer_email"]
     assert rec["state"] == answer_states.VALUE
     assert rec["cross_check"] == {"name": "email_domain_matches_website", "passed": False}
+
+
+# ---- the BRLM-with-a-marker class (supervisor finding 1) ------------------ #
+@pytest.mark.parametrize("line,want", [
+    # real lines of the NSE RHP: a footnote / role marker is not part of the name
+    ("SBI Capital Markets Limited#", "SBI Capital Markets Limited"),
+    ("SBI Capital Markets Limited (SS) SBI Capital Markets Limited, participating as a Selling Shareholder",
+     "SBI Capital Markets Limited"),
+    ("ICICI Securities Limited*", "ICICI Securities Limited"),
+    ("$SBI Capital Markets Limited is also participating as a Selling Shareholder in the Offer.",
+     "SBI Capital Markets Limited"),
+])
+def test_a_marker_on_a_firm_name_is_kept_off_the_name(line, want):
+    name, _two = cover_block._firm_line(line)
+    assert name == want
+
+
+def test_marketing_brlm_row_joins_the_brlm_list():
+    defs = cover_block._definition_rows(load("nse-mainboard-rhp"))
+    names, _page = defs["brlm"]
+    assert names[-1] == "SBI Capital Markets Limited"
+    assert len(names) == 20
+
+
+def test_marketing_brlm_row_alone_does_not_make_a_list():
+    # an M-BRLM row with no Book Running Lead Managers row is not the whole list: no value
+    pages = [(i, t.replace("“Book Running Lead Managers”", "“Something Else”")) for i, t in load("nse-mainboard-rhp")]
+    defs = cover_block._definition_rows(pages)
+    assert "brlm" not in defs
+
+
+def test_two_or_more_brlms_get_no_inm_pairing():
+    # finding 4: the General Information BRLM blocks are printed two to a row; pairing an INM
+    # number with a name by text order is a guess, so 2+ BRLMs emit no lead_manager_sebi_reg.
+    fields = read("nse-mainboard-rhp")
+    assert "lead_manager_sebi_reg" not in fields
