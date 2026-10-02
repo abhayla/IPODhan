@@ -465,8 +465,11 @@ export function docObjectives(extraction: FilingExtraction): schema.IPOObjective
     const r = row as { serial?: unknown; label?: unknown; amount_cr?: unknown } | null;
     if (!r || typeof r.label !== 'string' || r.label.trim() === '') return null;
     if (typeof r.serial !== 'number' || !Number.isInteger(r.serial)) return null;
-    if (r.amount_cr !== null && !(typeof r.amount_cr === 'number' && Number.isFinite(r.amount_cr))) return null;
-    out.push({ sno: r.serial, description: r.label.trim(), amount: r.amount_cr });
+    let amount: number | null;
+    if (r.amount_cr === null) amount = null;
+    else if (typeof r.amount_cr === 'number' && Number.isFinite(r.amount_cr)) amount = r.amount_cr;
+    else return null;
+    out.push({ sno: r.serial, description: r.label.trim(), amount });
   }
   return out;
 }
