@@ -256,6 +256,11 @@ export type FieldFetcherAnswer =
       credited?: CreditedMarker;
       /** Item 38: stored rows carrying the asked column, for a credited answer. Evidence, never a value. */
       rowCount?: number;
+      /**
+       * Item 41 (OD-161(b)): the document's value replaces a lower-ranked website value. The walk lists it
+       * for the admin ONLY when the write is accepted (a refused write replaced nothing).
+       */
+      adminListing?: DocAdminListing;
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
@@ -283,7 +288,32 @@ export type FieldFetcherAnswer =
        * a fact about the field. The walk classifies on THIS, never on `reason`.
        */
       gap?: FieldPlanGapCode;
+      /** Item 41 (OD-161(b), OD-61): a kept document difference the walk lists for the admin. */
+      adminListing?: DocAdminListing;
     };
+
+/**
+ * Item 41 (OD-161(b), OD-61, §9.4): one document-versus-stored-value difference for the admin queue,
+ * deduped to one row per (IPO, field, document) by the writer (`listDocDifferenceForAdmin`).
+ * `REPLACED` = the document's text-page value was written over the website value; `KEPT` = the
+ * stored value was kept (OCR, MIXED or unknown mark, or a value that does not decode).
+ */
+export interface DocAdminListing {
+  ipoId: string;
+  tableName: string;
+  rowKey: string;
+  /** camelCase, as field_sources / data_conflicts store it. */
+  fieldName: string;
+  documentId: string;
+  documentType: string;
+  /** field_sources.source of the stored value (scraper_source enum). */
+  storedSource: string;
+  storedValue: string | null;
+  documentValue: string;
+  /** OD-97 mark of the document's receipt; null = unknown. */
+  mark: string | null;
+  outcome: 'REPLACED' | 'KEPT';
+}
 
 /**
  * §9.2 item 9: what the walk tells a fetcher about THIS ask. `held` is set only on the read of an
@@ -293,6 +323,11 @@ export type FieldFetcherAnswer =
  */
 export interface FieldFetcherContext {
   held?: boolean;
+  /**
+   * Item 41 (OD-161): this field's rank list for this IPO (manifest codes, rank order), so a source that
+   * answers from its own record (DOC) can tell whether it outranks the source that owns the stored value.
+   */
+  ranks?: ReadonlyArray<string | null>;
 }
 
 export type FieldFetcher = (
@@ -562,6 +597,11 @@ export interface FieldPlanWalkDeps {
     resolutionReason: string;
     severity?: 'INFO' | 'WARNING' | 'CRITICAL';
   }) => Promise<unknown>;
+  /**
+   * Item 41 (OD-161(b), OD-61): lists a document-versus-stored-value difference in the admin queue
+   * (data_conflicts, one row per IPO/field/document). Absent: nothing is listed (the answer is unchanged).
+   */
+  listDocDifferenceForAdmin?: (row: DocAdminListing) => Promise<unknown>;
 }
 
 /**
@@ -1283,7 +1323,7 @@ async function attemptOneField(
 
     let answer: FieldFetcherAnswer;
     try {
-      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, { ranks: policy.ranks });
     } catch (error) {
       // TRANSIENT: a throw is a socket, a timeout, a 503 -- this minute's
       // fact, not the field's. Never an abandoned claim either: falling out
@@ -1318,6 +1358,7 @@ async function attemptOneField(
       );
       answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: failures[failures.length - 1] }));
       if (isTransient) sawTransientFailure = true;
+      if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
       continue;
     }
 
@@ -1639,6 +1680,8 @@ async function attemptOneField(
       });
     }
 
+    // Item 41 (OD-161(b)): an accepted replacement of a website value is listed for the admin.
+    if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
     if (!isCreditedAnswer(answer)) await writeWitnessVerdict(ipoId, plan, source, answers, policy, deps);
 
     result.fieldsSupplied += 1;
@@ -1829,6 +1872,9 @@ async function writeWitnessVerdict(
       docType: a.docType,
       outcome: a.outcome,
       cause: a.cause,
+      // #1459 point 2: the marker travels, so a credited answer is stored as credited and never votes.
+      ...(a.credited !== undefined ? { credited: a.credited } : {}),
+      ...(a.rowCount !== undefined ? { rowCount: a.rowCount } : {}),
     })),
     policy.ranks.length,
     family
@@ -1891,7 +1937,7 @@ async function tryProvisional(
     }
     let answer: FieldFetcherAnswer;
     try {
-      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, { ranks: policy.ranks });
     } catch (error) {
       // TAGGED `:THROWN:` like the main loop's catch (#785 review): a throw here
       // is the same socket/timeout/5xx fact. Untagged, a genuine network failure
@@ -1909,6 +1955,7 @@ async function tryProvisional(
       answers.push(
         rankAnswer(rank, source, 'CHECK_FAILED', { cause: `provisional-rank${rank}:${source}:CHECK_FAILED:${answer.reason}` })
       );
+      if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
       continue;
     }
     // SUPPLIED: always a witness; written only while no provisional value has landed yet.
@@ -1952,6 +1999,7 @@ async function tryProvisional(
         continue;
       }
       provisional = { source, rank, credited: isCreditedAnswer(answer) };
+      if (answer.adminListing) await listDocDifference(deps, answer.adminListing);
     } catch (error) {
       // A throw from the WRITE (not the fetch): same best-effort contract as before this slice --
       // the provisional value is lost, the ask stays open.
@@ -2216,11 +2264,27 @@ async function runWrite(
 export function isCreditedAnswer(
   answer: FieldFetcherAnswer
 ): answer is Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }> & { credited: CreditedMarker } {
-  return answer.outcome === 'SUPPLIED' && answer.credited === 'DOCUMENT_ROWS_STORED';
+  return answer.outcome === 'SUPPLIED' && (answer.credited === 'DOCUMENT_ROWS_STORED' || answer.credited === 'DOCUMENT_VALUE_STORED');
 }
 
-/** Item 38: the one credited kind -- "the document supplied rows already stored by the filing persister". */
-export type CreditedMarker = 'DOCUMENT_ROWS_STORED';
+/**
+ * The credited kinds. Item 38: "the document supplied rows already stored by the filing persister".
+ * Item 41 (OD-161(a)): "the document prints the value already stored" -- equal value, nothing written.
+ */
+export type CreditedMarker = 'DOCUMENT_ROWS_STORED' | 'DOCUMENT_VALUE_STORED';
+
+/** Item 41: list a document difference for the admin; a failed listing never fails the walk. */
+async function listDocDifference(deps: FieldPlanWalkDeps, row: DocAdminListing): Promise<void> {
+  if (!deps.listDocDifferenceForAdmin) return;
+  try {
+    await deps.listDocDifferenceForAdmin(row);
+  } catch (error) {
+    logger.warn(
+      { ipoId: row.ipoId, table: row.tableName, field: row.fieldName, documentId: row.documentId, outcome: row.outcome, cause: causeOf(error) },
+      'PASS 3: listing a document difference for the admin FAILED (OD-161); the walk outcome is unaffected'
+    );
+  }
+}
 
 /**
  * Record an outcome and READ THE RETURN. `recordOutcome` refuses silently

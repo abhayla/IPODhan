@@ -43,11 +43,13 @@ export interface Witness {
   /** Absent on every witness written before OD-103; such a witness was always SUPPLIED. */
   outcome?: WitnessOutcome;
   /** Short cause token for a non-SUPPLIED answer (the same string the walk pushes to `failures`). */
-  cause?: string;  /**
+  cause?: string;
+  /**
    * Item 38: 'DOCUMENT_ROWS_STORED' = the document supplied rows already stored by their own writer;
-   * `value` is then null and is never a pickable value (the row count rides on `rowCount`).
+   * item 41: 'DOCUMENT_VALUE_STORED' = the document prints the value already stored (OD-161(a)).
+   * `value` is then null and is never a pickable value or a vote (#1459 point 2).
    */
-  credited?: 'DOCUMENT_ROWS_STORED';
+  credited?: 'DOCUMENT_ROWS_STORED' | 'DOCUMENT_VALUE_STORED';
   rowCount?: number;
 }
 
@@ -78,6 +80,8 @@ export function computeVerdict(
     docType?: string;
     outcome?: WitnessOutcome;
     cause?: string;
+    credited?: 'DOCUMENT_ROWS_STORED' | 'DOCUMENT_VALUE_STORED';
+    rowCount?: number;
   }>,
   capableSourceCount: number,
   family: ComparisonFamily
@@ -89,10 +93,14 @@ export function computeVerdict(
     ...(a.docType ? { docType: a.docType } : {}),
     ...(a.outcome ? { outcome: a.outcome } : {}),
     ...(a.cause ? { cause: a.cause } : {}),
+    ...(a.credited !== undefined ? { credited: a.credited } : {}),
+    ...(a.rowCount !== undefined ? { rowCount: a.rowCount } : {}),
   }));
   // OD-103: every ranked answer is a witness, but only a SUPPLIED one is a vote (OD-60). An
   // abstention or failure carries value null and must never be compared as a disagreeing value.
-  const real = answers.filter(isSuppliedWitness);
+  // #1459 point 2: a credited answer carries value null (its value is the stored one, or a row count),
+  // so it is never a vote -- counting it would compare null against a real value and read DISPUTED.
+  const real = answers.filter((a) => isSuppliedWitness(a) && a.credited === undefined);
 
   if (capableSourceCount === 0) {
     return { verdict: 'NO_WITNESS', witnesses };

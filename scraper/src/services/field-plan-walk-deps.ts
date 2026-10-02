@@ -53,6 +53,8 @@ import {
 import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { and, eq } from 'drizzle-orm';
+import { dataConflicts, documentFieldReceipts } from '@ipodhan/shared/db/schema';
+import type { DocAdminListing } from './field-plan-walk.js';
 import { makeChildColumnCounter } from './field-plan-walk-child-rows-reader.js';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
@@ -216,6 +218,8 @@ export function buildFieldPlanWalkFetchers(
       return (await loadSupersessionInputs(db as never, ipoId)).receipts;
     },
     // Item 38: IPO-level child-table answers (stored rows + the open stated-absence failures).
+    // Item 41 (OD-97, OD-161(b)): the receipt's own mark decides whether a different value may replace.
+    receiptMarkReader: makeReceiptMarkReader(),
     childColumnCounter: makeChildColumnCounter(db),
     openFailuresReader: (ipoId: string) => new FieldExtractionFailuresRepository(db, redis).findUnresolvedForIPO(ipoId),
   });
@@ -464,10 +468,70 @@ export function buildFieldPlanWalkHoldDeps(
 
 export function buildFieldPlanWalkReopenDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
-): Pick<FieldPlanWalkDeps, 'supersessionForReopened' | 'logAdminConflict'> {
+): Pick<FieldPlanWalkDeps, 'supersessionForReopened' | 'logAdminConflict' | 'listDocDifferenceForAdmin'> {
   const conflicts = new DataConflictsRepository(db, redis);
   return {
     supersessionForReopened: (ipoId, planRowId) => findSupersessorForReopenedRow(db as never, ipoId, planRowId),
     logAdminConflict: (input) => conflicts.upsertConflict(input as never),
+    listDocDifferenceForAdmin: makeDocDifferenceListing(),
+  };
+}
+
+/** Item 41 (OD-97): the mark of one receipt, `document_field_receipts.source_text` (null = unknown). */
+export function makeReceiptMarkReader(): (documentId: string, tableName: string, rowKey: string, camelFieldName: string) => Promise<string | null> {
+  return async (documentId, tableName, rowKey, camelFieldName) => {
+    const rows = await db
+      .select({ mark: documentFieldReceipts.sourceText })
+      .from(documentFieldReceipts)
+      .where(
+        and(
+          eq(documentFieldReceipts.documentId, documentId),
+          eq(documentFieldReceipts.tableName, tableName),
+          eq(documentFieldReceipts.rowKey, rowKey),
+          eq(documentFieldReceipts.fieldName, camelFieldName)
+        )
+      )
+      .limit(1);
+    return rows[0]?.mark ?? null;
+  };
+}
+
+/**
+ * Item 41 (OD-161(b), OD-61, §9.4): a document-versus-stored-value difference in the admin queue -- the
+ * same `data_conflicts` document-listing shape OD-166 uses (document_id + evidence.origin, never a
+ * behaviour conflict), deduped by `suggestion_key` to ONE row per (IPO, field, document), never per cycle.
+ */
+export function docDifferenceKey(row: Pick<DocAdminListing, 'ipoId' | 'tableName' | 'rowKey' | 'fieldName' | 'documentId'>): string {
+  return createHash('sha256')
+    .update(`OD-161|${row.ipoId}|${row.tableName}|${row.rowKey}|${row.fieldName}|${row.documentId}`)
+    .digest('hex');
+}
+
+export function makeDocDifferenceListing(): (row: DocAdminListing) => Promise<void> {
+  return async (row) => {
+    await db
+      .insert(dataConflicts)
+      .values({
+        ipoId: row.ipoId,
+        tableName: row.tableName,
+        rowKey: row.rowKey,
+        fieldName: row.fieldName,
+        source1: row.storedSource as never,
+        value1: row.storedValue,
+        source2: 'DRHP',
+        value2: row.documentValue,
+        severity: 'INFO',
+        resolutionReason: null,
+        documentId: row.documentId,
+        suggestionKey: docDifferenceKey(row),
+        evidence: {
+          origin: row.outcome === 'REPLACED' ? 'OD161_DOCUMENT_REPLACED_WEBSITE_VALUE' : 'OD161_DOCUMENT_DIFFERENCE_KEPT',
+          rule: 'OD-161',
+          docType: row.documentType,
+          ocr: row.mark,
+          storedSource: row.storedSource,
+        },
+      })
+      .onConflictDoNothing({ target: dataConflicts.suggestionKey });
   };
 }
