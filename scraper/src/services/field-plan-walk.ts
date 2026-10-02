@@ -2273,9 +2273,14 @@ async function runWrite(
       writerSource as any,
       answer.documentType,
       undefined,
-      // F-233: an answer from below the plan's rank-1 source never replaces a stored value whose owner
-      // is unknown (no field_sources row) -- it may be the offer document's (OD-73, Appendix A).
-      { ...(writeOptions ?? {}), writeRow: true, keepUntrackedStoredValue: source !== plan.rank1Source }
+      // F-233 / OD-168: on financial_data (one row per IPO) an answer from below the plan's rank-1 source
+      // never replaces a stored value whose owner is unknown (no field_sources row) -- it may be the offer
+      // document's; a differing answer is listed for the admin. Other child tables keep the M-1 rule.
+      {
+        ...(writeOptions ?? {}),
+        writeRow: true,
+        keepUntrackedStoredValue: plan.tableName === 'financial_data' && source !== plan.rank1Source,
+      }
     );
     // A child-row call returns per-row outcomes; the one row we sent is the
     // only one that can answer for this field.

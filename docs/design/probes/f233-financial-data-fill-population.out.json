@@ -1,5 +1,5 @@
 {
-  "measured_at": "2026-10-02T21:17:40.418Z",
+  "measured_at": "2026-10-02T21:44:27.856Z",
   "database": "ipodhan_staging",
   "plan_rows_refused_missing_row_key": {
     "rows": 0,
@@ -11,5 +11,96 @@
     "fields": 1780,
     "ipos": 94
   },
-  "ipos_with_two_financial_data_rows": 0
+  "stored_values_without_provenance_by_column": [
+    {
+      "field_name": "market_cap",
+      "fields": 94
+    },
+    {
+      "field_name": "net_worth",
+      "fields": 94
+    },
+    {
+      "field_name": "pre_ipo_eps",
+      "fields": 94
+    },
+    {
+      "field_name": "total_assets",
+      "fields": 94
+    },
+    {
+      "field_name": "promoter_holding_pre_issue",
+      "fields": 93
+    },
+    {
+      "field_name": "eps",
+      "fields": 92
+    },
+    {
+      "field_name": "pe_ratio",
+      "fields": 92
+    },
+    {
+      "field_name": "post_ipo_eps",
+      "fields": 92
+    },
+    {
+      "field_name": "profit_fy2024",
+      "fields": 92
+    },
+    {
+      "field_name": "reserves_and_surplus",
+      "fields": 92
+    },
+    {
+      "field_name": "ronw",
+      "fields": 92
+    },
+    {
+      "field_name": "ebitda_fy2024",
+      "fields": 91
+    },
+    {
+      "field_name": "total_income_fy2024",
+      "fields": 91
+    },
+    {
+      "field_name": "total_borrowing",
+      "fields": 90
+    },
+    {
+      "field_name": "promoter_holding_post_issue",
+      "fields": 89
+    },
+    {
+      "field_name": "roe",
+      "fields": 82
+    },
+    {
+      "field_name": "total_income_fy2023",
+      "fields": 80
+    },
+    {
+      "field_name": "profit_fy2023",
+      "fields": 79
+    },
+    {
+      "field_name": "ebitda_fy2023",
+      "fields": 78
+    },
+    {
+      "field_name": "debt_to_equity",
+      "fields": 77
+    },
+    {
+      "field_name": "revenue_fy2023",
+      "fields": 1
+    },
+    {
+      "field_name": "revenue_fy2024",
+      "fields": 1
+    }
+  ],
+  "ipos_with_two_financial_data_rows": 0,
+  "ipos_with_two_or_more_anchor_investors_rows": 0
 }

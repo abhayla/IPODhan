@@ -63,6 +63,7 @@ import type { FieldDocumentRef } from '../../config/document-field-order.mjs';
 import { OUTCOME_CODE, outcomeCategoryOf, outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import {
   SOURCE_CHANGED_OWN_VALUE,
+  UNTRACKED_STORED_VALUE_DIFFERS,
   isBehaviourConflict,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
@@ -2119,11 +2120,33 @@ export class DataConsolidationService {
           { ipoId, tableName, fieldName, incomingSource, storedValue, incomingValue },
           'untracked_existing_value_kept: incoming source does not outrank an untracked stored value'
         );
+        // OD-168 (F-233): under the walk's financial_data rule the differing answer is listed for the admin
+        // (OD-73: a differing lower-ranked value goes to the conflicts list, OD-61), as an admin-only row
+        // under UNTRACKED_STORED_VALUE_DIFFERS (the stored side has no recorded source; see that constant).
+        // Nothing is resolved (resolved_source NULL) -- the admin decides.
+        const listForAdmin = params.keepUntrackedStoredValue === true && incomingSource !== 'ADMIN';
+        if (listForAdmin) {
+          await this.logConflict({
+            ipoId,
+            tableName,
+            rowKey,
+            fieldName,
+            existingValue: storedValue,
+            existingSource: incomingSource,
+            incomingValue,
+            incomingSource,
+            normalizedExisting: normalizedStored,
+            normalizedIncoming,
+            severity: 'INFO',
+            reason: UNTRACKED_STORED_VALUE_DIFFERS,
+            chosenSource: undefined as unknown as ScraperSource,
+          });
+        }
         return {
           fieldName,
           finalValue: storedValue,
           chosenSource: incomingSource,
-          hadConflict: false,
+          hadConflict: listForAdmin,
           rejectedSources: [
             {
               source: incomingSource,

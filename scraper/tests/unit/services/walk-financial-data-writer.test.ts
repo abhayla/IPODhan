@@ -59,6 +59,10 @@ class FakeConflicts {
     this.logged.push(row);
     return row;
   }
+  async upsertConflict(row: any) {
+    this.logged.push(row);
+    return row;
+  }
   async findOpenConflicts() {
     return [];
   }
@@ -117,18 +121,21 @@ describe('F-233: walk writes financial_data (one row per IPO) through the consol
     cons: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
     track: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
     pct: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
+    conflicts: FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION,
   };
   beforeEach(() => {
     (FEATURE_FLAGS as any).ENABLE_CHILD_TABLE_CONSOLIDATION = true;
     (FEATURE_FLAGS as any).ENABLE_DATA_CONSOLIDATION = true;
     (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = true;
     (FEATURE_FLAGS as any).CONSOLIDATION_PERCENTAGE = 100;
+    (FEATURE_FLAGS as any).ENABLE_CONFLICT_DETECTION = true;
   });
   afterEach(() => {
     (FEATURE_FLAGS as any).ENABLE_CHILD_TABLE_CONSOLIDATION = saved.child;
     (FEATURE_FLAGS as any).ENABLE_DATA_CONSOLIDATION = saved.cons;
     (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = saved.track;
     (FEATURE_FLAGS as any).CONSOLIDATION_PERCENTAGE = saved.pct;
+    (FEATURE_FLAGS as any).ENABLE_CONFLICT_DETECTION = saved.conflicts;
   });
 
   it('written: a CHITTORGARH answer for an EMPTY field (no row yet) creates the row by ipo_id and files its provenance', async () => {
@@ -171,8 +178,8 @@ describe('F-233: walk writes financial_data (one row per IPO) through the consol
     expect(repo.rows[0].totalAssets).toBe('10254.50');
   });
 
-  it('witness only: a DIFFERENT value from a non-rank-1 source never replaces a stored value with no provenance row (owner unknown)', async () => {
-    const { orchestrator, repo, fieldSources } = make();
+  it('witness only: a DIFFERENT value from a non-rank-1 source never replaces a stored value with no provenance row (owner unknown), and is listed for the admin (OD-168)', async () => {
+    const { orchestrator, repo, fieldSources, conflicts } = make();
     repo.rows.push({ ipoId: IPO_ID, netWorth: '768.20' });
     const r = await orchestrator.consolidatedUpsertChildRows(IPO_ID, 'financial_data' as never, [{ rowKey: '', data: { netWorth: '999.99' } }], 'CHITTORGARH', undefined, undefined, {
       writeRow: true,
@@ -182,6 +189,9 @@ describe('F-233: walk writes financial_data (one row per IPO) through the consol
     expect(fr?.rejectedSources?.[0]?.reason).toBe('UNTRACKED_EXISTING_VALUE_KEPT');
     expect(repo.rows[0].netWorth).toBe('768.20');
     expect([...fieldSources.rows.values()].filter((x) => x.fieldName === 'netWorth')).toEqual([]);
+    expect(conflicts.logged).toMatchObject([
+      { tableName: 'financial_data', rowKey: '', fieldName: 'netWorth', value1: '768.20', value2: '999.99', source2: 'CHITTORGARH', resolutionReason: 'UNTRACKED_STORED_VALUE_DIFFERS' },
+    ]);
   });
 
   it('credited equal: the same value from the source that already holds it is not re-written as a change', async () => {

@@ -42,6 +42,16 @@ try {
       AND NOT EXISTS (SELECT 1 FROM field_sources s WHERE s.ipo_id = p.ipo_id AND s.table_name = 'financial_data'
                         AND s.row_key = '' AND lower(s.field_name) = replace(p.field_name, '_', ''))`);
 
+  const storedNoProvenanceByColumn = await pool.query(`
+    SELECT p.field_name, count(*)::int AS fields
+    FROM ipo_field_plan p JOIN financial_data fd ON fd.ipo_id = p.ipo_id
+    WHERE p.table_name = 'financial_data' AND to_jsonb(fd) ->> p.field_name IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM field_sources s WHERE s.ipo_id = p.ipo_id AND s.table_name = 'financial_data'
+                        AND s.row_key = '' AND lower(s.field_name) = replace(p.field_name, '_', ''))
+    GROUP BY p.field_name ORDER BY fields DESC, p.field_name`);
+
+  const anchorDup = await pool.query(`SELECT count(*)::int AS n FROM (SELECT ipo_id FROM anchor_investors GROUP BY ipo_id HAVING count(*) > 1) d`);
+
   const dupRows = await pool.query(`SELECT count(*)::int AS n FROM (SELECT ipo_id FROM financial_data GROUP BY ipo_id HAVING count(*) > 1) d`);
 
   const out = {
@@ -51,7 +61,9 @@ try {
     would_fill_by_supplier_status: fill.rows,
     would_fill_sample: sample.rows,
     stored_values_without_provenance: storedNoProvenance.rows[0],
+    stored_values_without_provenance_by_column: storedNoProvenanceByColumn.rows,
     ipos_with_two_financial_data_rows: dupRows.rows[0].n,
+    ipos_with_two_or_more_anchor_investors_rows: anchorDup.rows[0].n,
   };
   saveOutput('f233-financial-data-fill-population', out);
   console.log(JSON.stringify(out, null, 2));

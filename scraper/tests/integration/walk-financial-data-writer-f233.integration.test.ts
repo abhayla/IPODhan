@@ -21,6 +21,7 @@ process.env.ENABLE_DATA_CONSOLIDATION = 'true';
 process.env.CONSOLIDATION_PERCENTAGE = '100';
 process.env.ENABLE_SOURCE_TRACKING = 'true';
 process.env.ENABLE_CHILD_TABLE_CONSOLIDATION = 'true';
+process.env.ENABLE_CONFLICT_DETECTION = 'true';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const REDIS_URL = process.env.REDIS_URL;
@@ -45,6 +46,7 @@ describe.skipIf(!DATABASE_URL)('F-233: walk writes financial_data through the co
   async function wipe() {
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
     await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+    await db.delete(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, IPO_ID));
     await db.delete(schema.financialData).where(eq(schema.financialData.ipoId, IPO_ID));
     await db.delete(schema.ipos).where(eq(schema.ipos.id, IPO_ID));
   }
@@ -86,6 +88,7 @@ describe.skipIf(!DATABASE_URL)('F-233: walk writes financial_data through the co
       rowKey: '',
       fieldName: 'market_cap',
       rank1Source: 'DOC',
+      rank2Source: 'CHITTORGARH',
       state: 'PENDING',
       manifestVersion: 1,
       nextDueAt: null,
@@ -119,11 +122,27 @@ describe.skipIf(!DATABASE_URL)('F-233: walk writes financial_data through the co
       .filter((r) => r.tableName === 'financial_data')
       .map((r) => [r.rowKey, r.fieldName, r.source]);
 
-  it('empty field, no row: the CHITTORGARH answer creates the row by ipo_id, stored in crore as supplied, with provenance', async () => {
+  // Spec §2.4 (OD-103 paragraph): rank 1 (DOC) has not published, so the lower rank's value is stored
+  // PROVISIONALLY and the ask stays open (NOT_AVAILABLE_YET) until DOC answers.
+  it('empty field, no row, DOC not yet available: the CHITTORGARH value is written PROVISIONALLY (row created by ipo_id, crore as supplied, provenance), the ask stays open', async () => {
     const result = await walkFieldPlanForIPO(IPO_ID, deps(), openBudget());
-    expect(result.fieldsSupplied).toBe(1);
+    expect(result.fieldsSupplied).toBe(0);
+    expect(result.fieldsProvisional).toBe(1);
     expect(await readMarketCap()).toEqual([{ marketCap: '4507.61' }]);
     expect(await provenance()).toEqual([['', 'marketCap', 'CHITTORGARH']]);
+    const plan = await db.select({ state: schema.ipoFieldPlan.state }).from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
+    expect(plan).toEqual([{ state: 'NOT_AVAILABLE_YET' }]);
+  });
+
+  it('a stored value with NO provenance row is kept against a differing CHITTORGARH answer and listed for the admin (OD-168)', async () => {
+    await db.insert(schema.financialData).values({ ipoId: IPO_ID, marketCap: '4000.00' } as never);
+    await walkFieldPlanForIPO(IPO_ID, deps(), openBudget());
+    expect(await readMarketCap()).toEqual([{ marketCap: '4000.00' }]);
+    expect(await provenance()).toEqual([]);
+    const listed = await db.select().from(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, IPO_ID));
+    expect(listed.map((r) => [r.fieldName, r.value1, r.value2, r.resolutionReason])).toEqual([
+      ['marketCap', '4000.00', '4507.61', 'UNTRACKED_STORED_VALUE_DIFFERS'],
+    ]);
   });
 
   it('a DOC (DRHP) value already stored is NOT replaced by a different CHITTORGARH answer', async () => {
