@@ -1,6 +1,6 @@
 {
   "database": "ipodhan_staging",
-  "measuredAt": "2026-10-02T21:34:39.045Z",
+  "measuredAt": "2026-10-02T21:44:37.878Z",
   "pull_noop": {
     "reasked": 6054,
     "newDocuments": 0,
@@ -15,8 +15,10 @@
   "pull_write": {
     "supplied": 138,
     "oldMissing": 12,
-    "newMissing": 0,
-    "credited": 60,
-    "newMissingSample": []
+    "newMissing": 1,
+    "credited": 59,
+    "newMissingSample": [
+      "eventions-ltd:ipo_risk_factors[].body (stored column empty)"
+    ]
   }
 }

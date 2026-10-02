@@ -50,16 +50,40 @@ export async function judgeUnwrittenSupplied(plan, q) {
   const column = resolveColumn(cols, plan.fieldName) ?? resolveColumn(cols, toCamel(plan.fieldName));
   if (!column) return { ok: false, why: 'column not found' };
   const idCol = table === 'ipos' ? 'id' : 'ipo_id';
-  const stored = (await q(`SELECT "${column}" AS v FROM ${table} WHERE ${idCol} = $1 LIMIT 500`, [plan.ipoId]))
-    .map((r) => r.v).filter((v) => !isBlankCurrentValue(v));
-  if (stored.length === 0) return { ok: false, why: 'stored column empty' };
-  const answers = Array.isArray(plan.answers) ? plan.answers.filter((a) => a && a.outcome === 'SUPPLIED') : [];
-  if (answers.some((a) => a.credited)) return { ok: true, why: 'credited, value stored' };
-  const storedSet = new Set(stored.map(sval));
-  if (answers.some((a) => a.value !== null && a.value !== undefined && storedSet.has(sval(a.value)))) {
-    return { ok: true, why: 'stored equals answer' };
+  // Identify the plan row's OWN row (scraper/src/services/child-row-keys.ts). A value in another row
+  // of the same IPO never credits this one.
+  let where = `${idCol} = $1`;
+  const params = [plan.ipoId];
+  const rowKey = plan.rowKey ?? '';
+  if (rowKey !== '') {
+    if (table === 'financial_statements' && /^\d+:.+$/.test(rowKey)) {
+      const i = rowKey.indexOf(':');
+      where += ' AND fiscal_year = $2 AND basis = $3';
+      params.push(Number(rowKey.slice(0, i)), rowKey.slice(i + 1));
+    } else if (table === 'ipo_valuation') {
+      where += ' AND pricing_event = $2';
+      params.push(rowKey);
+    } else {
+      return { ok: false, why: `row ${rowKey} not identifiable in ${table}` };
+    }
   }
-  return { ok: false, why: 'stored value matches no SUPPLIED answer' };
+  const rows = (await q(`SELECT "${column}" AS v FROM ${table} WHERE ${where} LIMIT 500`, params)).map((r) => r.v);
+  // '' on a table with several rows per IPO (item 38: risk-factor seq, statement basis/unit) means the
+  // column across the IPO's rows: every one of them must carry a value.
+  if (rows.length === 0) return { ok: false, why: 'stored row not found' };
+  if (rows.some((v) => isBlankCurrentValue(v))) return { ok: false, why: 'stored column empty' };
+  const answers = Array.isArray(plan.answers) ? plan.answers.filter((a) => a && a.outcome === 'SUPPLIED') : [];
+  const withValue = answers.filter((a) => a.value !== null && a.value !== undefined);
+  const stored = rows.map(sval);
+  if (withValue.length > 0) {
+    // A SUPPLIED answer that states a value is COMPARED with what is stored (credited or not).
+    const want = new Set(withValue.map((a) => sval(a.value)));
+    return stored.every((v) => want.has(v))
+      ? { ok: true, why: 'stored equals answer' }
+      : { ok: false, why: 'stored value differs from the SUPPLIED answer' };
+  }
+  if (answers.some((a) => a.credited)) return { ok: true, why: 'credited, value stored' };
+  return { ok: false, why: 'no SUPPLIED answer states or credits the stored value' };
 }
 
 /**
