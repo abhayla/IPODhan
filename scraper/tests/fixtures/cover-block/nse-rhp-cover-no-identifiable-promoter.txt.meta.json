@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1789108351258.pdf",
+  "sourceSha256": "4e566b15fef416efa0c24ad9ec3d35f4a93aab95f5997bdd26c66925e1af4cc5",
+  "capturedAt": "2026-10-02",
+  "ipoId": "national-stock-exchange-of-india-ltd",
+  "company": "National Stock Exchange of India Limited",
+  "source": "RHP (staging documents 3cb0ba27, 668 pages), text layer by pdfplumber page.extract_text() - the same call the extractor makes; the PDF is not committed",
+  "note": "Pages 0-2 (cover): 'OUR COMPANY DOES NOT HAVE AN IDENTIFIABLE PROMOTER' on pages 0 and 2. Before item 46 the reader reported our_promoters_statement_not_on_cover (a miss); the document states the absence."
+}

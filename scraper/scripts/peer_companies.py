@@ -141,6 +141,27 @@ def _looks_like_the_peer_table(table, issuer_name=None):
     return parsed if parsed["peers"] else None
 
 
+# Item 46 (OD-165): a footnote reference glued to a cell - "BSE Limited(1)",
+# "54.28(2)", "45.00%(4)" (NSE RHP p138). It is never part of a name or figure;
+# left on a figure the persister cannot parse it and stores null. Only a 1-2 digit
+# bracket glued to a preceding character is a reference: a whole-cell "(4.20)" or
+# "(2)" is a bracketed negative and is left alone.
+_FOOTNOTE_REF = re.compile(r"(?<=[\w%.)])\(\d{1,2}\)$")
+# A reference after a space ("Infosys Limited (1)") is stripped only from a NAME that has letters,
+# so a numeric cell "(2)" or "12 (3)" stays as is.
+_SPACED_FOOTNOTE_REF = re.compile(r"(?<=[A-Za-z.)])\s+\(\d{1,2}\)$")
+
+
+def drop_footnote_refs(record):
+    """`record` with each string cell's trailing glued footnote reference removed."""
+    out = {}
+    for key, value in record.items():
+        if isinstance(value, str):
+            value = _SPACED_FOOTNOTE_REF.sub("", _FOOTNOTE_REF.sub("", value.strip()))
+        out[key] = value
+    return out
+
+
 def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
     """Return ``(result, reason)``.
 
@@ -196,8 +217,8 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
                 return (
                     {
                         "page": p,
-                        "issuer": parsed["issuer"],
-                        "peers": parsed["peers"],
+                        "issuer": parsed["issuer"] and drop_footnote_refs(parsed["issuer"]),
+                        "peers": [drop_footnote_refs(peer) for peer in parsed["peers"]],
                         "columns": parsed["columns"],
                     },
                     None,
@@ -208,7 +229,8 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
     parsed = parse_peer_text_rows(body, issuer_name)
     if parsed["peers"]:
         return (
-            {"page": page, "issuer": parsed["issuer"], "peers": parsed["peers"], "columns": {}},
+            {"page": page, "issuer": parsed["issuer"] and drop_footnote_refs(parsed["issuer"]),
+             "peers": [drop_footnote_refs(peer) for peer in parsed["peers"]], "columns": {}},
             None,
         )
 

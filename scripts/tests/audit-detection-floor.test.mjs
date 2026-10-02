@@ -13,6 +13,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { judgePromotersPeersYield } from '../lib/prospectus-yield-checks.mjs';
 import { parseIpowatchDetail, parseIpowatchDate, parsePriceBand, parseRupeeAmount, computeOracleCoverageWarning } from '../lib/ipowatch-oracle-parser.mjs';
 import { parseChittorgarhIssueSizeDetail, evaluateUpcomingSourceDrift, ROUNDING_TOLERANCE_RUPEES } from '../lib/upcoming-source-drift-checks.mjs';
 import {
@@ -2839,4 +2840,20 @@ test('(ocr_amount_magnitude) receipt and field_sources keys are both camelCase a
   assert.equal(ok.status, 'FAIL');
   const drift = evaluateOcrAmountMagnitude([oRow('1.785', { fieldName: 'priceRangeMax' })], [{ ...oRow('1785', { fieldName: 'price_range_max' }), via: 'CHITTORGARH' }]);
   assert.equal(drift.status, 'UNVERIFIABLE');
+});
+
+// prospectus_promoters_peers_yield: the 0-promoter excuse is per DOCUMENT (the audit SQL matches
+// fef.document_id = d.id and feeds the result in as promoters_stated_none).
+const yRow = (o = {}) => ({ company_name: 'X', document_id: 'aaaaaaaa-1', doc_type: 'RHP', promoter_rows: 0, peer_rows: 1, e6_evidence: '', promoters_stated_none: false, ...o });
+test("(prospectus_promoters_peers_yield) 0 promoters + this document's stated absence passes", () => {
+  assert.deepEqual(judgePromotersPeersYield(yRow({ promoters_stated_none: true })), []);
+});
+test("(prospectus_promoters_peers_yield) 0 promoters and no stated absence fails", () => {
+  assert.equal(judgePromotersPeersYield(yRow()).length, 1);
+});
+test("(prospectus_promoters_peers_yield) another document's stated absence on the same IPO does not excuse this one", () => {
+  const sql = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'audit-detection-floor.mjs'), 'utf8');
+  assert.match(sql, /fef\.document_id = d\.id AND fef\.table_name = 'promoters'/);
+  // the SQL gives the sibling document promoters_stated_none=false, so it is judged a miss
+  assert.match(judgePromotersPeersYield(yRow({ document_id: 'bbbbbbbb-2', promoters_stated_none: false }))[0], /0 promoters/);
 });

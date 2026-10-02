@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1789108351258.pdf",
+  "sourceSha256": "4e566b15fef416efa0c24ad9ec3d35f4a93aab95f5997bdd26c66925e1af4cc5",
+  "capturedAt": "2026-10-02",
+  "ipoId": "national-stock-exchange-of-india-ltd",
+  "company": "National Stock Exchange of India Limited",
+  "note": "RHP page 138 (0-based), pdfplumber page.extract_tables() - the call extract_filing.tables_for_page makes. Table 2 is the peer comparison: 'BSE Limited(1)' with footnote references glued to every figure ('54.28(2)', '60.61(3)', '45.00%(4)', '163.60(5)'). Before item 46 the name kept '(1)' and the persister's parsePrintedNumber stored every figure as null (unparseable)."
+}

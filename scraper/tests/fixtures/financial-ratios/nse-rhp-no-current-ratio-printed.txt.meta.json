@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1789108351258.pdf",
+  "sourceSha256": "4e566b15fef416efa0c24ad9ec3d35f4a93aab95f5997bdd26c66925e1af4cc5",
+  "capturedAt": "2026-10-02",
+  "ipoId": "national-stock-exchange-of-india-ltd",
+  "company": "National Stock Exchange of India Limited",
+  "source": "RHP (staging documents 3cb0ba27, 668 pages), text layer by pdfplumber page.extract_text() - the same call the extractor makes; the PDF is not committed",
+  "note": "Page 0 (cover, identity) plus Pages 13, 153 and 523: the only pages the ratio-note locator matched, each on the PROSE words 'financial ratios' (no ratio table). Measured 2026-10-02 over all 668 pages: no page prints 'current ratio' (0 hits, also across line breaks). Before item 46 the reader reported ratio_row_not_in_note (issuer_ratio_yield FAIL #1179); the truthful answer is ratio_note_not_in_document with empty current_ratio_line_pages."
+}

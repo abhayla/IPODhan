@@ -1149,6 +1149,25 @@ def read_cover_company_name(page_texts):
     return None
 
 
+# Item 46 (OD-165): a widely held issuer's cover says so in place of the list -
+# "OUR COMPANY DOES NOT HAVE AN IDENTIFIABLE PROMOTER" (NSE RHP pages 0 and 2).
+# On the stated-absence list (scraper/src/config/stated-absence-reasons.json).
+NO_IDENTIFIABLE_PROMOTER = "promoters_issuer_states_no_identifiable_promoter"
+_NO_IDENTIFIABLE_PROMOTER_RX = re.compile(
+    r"\bdoes\s+not\s+have\s+(?:an?|any)\s+identifiable\s+promoters?\b", re.I)
+
+
+def cover_states_no_identifiable_promoter(page_texts):
+    """The first cover page stating the issuer has no identifiable promoter, or None.
+
+    Cover pages only (the same window as the promoter statement): the sentence in
+    body prose never stands in for the cover's own statement."""
+    for index, text in page_texts[:_PROMOTER_COVER_PAGES]:
+        if _NO_IDENTIFIABLE_PROMOTER_RX.search(" ".join((text or "").split())):
+            return index
+    return None
+
+
 def read_cover_promoters(page_texts):
     """(names, page) from a prospectus's cover "OUR PROMOTERS: A, B AND C".
 
@@ -2691,7 +2710,13 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # never got a `promoters` row. Same field names as the ad, so the persister's
     # existing promoters block writes them unchanged.
     cover_names, cover_page = read_cover_promoters(page_texts)
-    if cover_names:
+    stated_none_page = cover_states_no_identifiable_promoter(page_texts)
+    if not cover_names and stated_none_page is not None:
+        # Item 46 (OD-165, OD-158): the cover STATES there is no promoter (NSE RHP
+        # p0/p2) - a stated absence, never the cover-miss reason.
+        emit.null("promoter_name", NO_IDENTIFIABLE_PROMOTER, stated_none_page)
+        emit.null("promoter_names", NO_IDENTIFIABLE_PROMOTER, stated_none_page)
+    elif cover_names:
         emit.put("promoter_name", cover_names[0], cover_page, "promoter_name_present",
                  (True, cover_names[0]))
         emit.put("promoter_names", cover_names, cover_page, "promoter_names_present",

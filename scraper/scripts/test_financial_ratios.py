@@ -342,3 +342,43 @@ def test_a_wrapped_label_with_values_on_the_head_line_is_read():
                  "5 Inventory Turnover Cost of goods sold Average inventory 4.40 4.10 7.32%",
                  "Ratio")
     assert read_ratio(note, "inventory_turnover", FY26).get("value") == 4.40
+
+
+# Item 46 (OD-165, #1179). NSE RHP: the locator matched three pages on the prose
+# words "financial ratios" and the document prints no Current Ratio anywhere
+# (measured over all 668 pages). The answer is "no note", with the page evidence
+# the verdict reads (empty), never ratio_row_not_in_note.
+def test_prose_ratio_mentions_with_no_current_ratio_anywhere_is_no_note():
+    read = read_ratio(pages("nse-rhp-no-current-ratio-printed.txt"), "current_ratio", (2026, 3, 31))
+    assert read["value"] is None
+    assert read["reason"] == "ratio_note_not_in_document"
+    assert read["current_ratio_line_pages"] == []
+
+
+def test_a_current_ratio_printed_elsewhere_keeps_the_miss_open():
+    # Fail closed: any Current Ratio mention (here a peer working-capital table,
+    # Shah Investor's Home RHP p376 shape) means the row may exist, so the miss
+    # stays a miss and is never claimed as "no note".
+    extra = (376, "Particulars\nConsolidated Consolidated\nCurrent ratio 1.36 1.28 2.04 1.56\n")
+    read = read_ratio(pages("nse-rhp-no-current-ratio-printed.txt") + [extra], "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_row_not_in_note"
+
+
+def test_a_current_ratio_label_wrapped_across_lines_keeps_the_miss_open():
+    extra = (400, "1 Current\nRatio Current assets Current liabilities\n")
+    read = read_ratio(pages("nse-rhp-no-current-ratio-printed.txt") + [extra], "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_row_not_in_note"
+
+
+@pytest.mark.parametrize("printed", ["CurrentRatio 1.36 1.28", "Current-Ratio 1.36 1.28", "Current Ratio 1.36"])
+def test_a_glued_or_hyphenated_current_ratio_keeps_the_miss_open(printed):
+    extra = (376, "Particulars\n" + printed + "\n")
+    read = read_ratio(pages("nse-rhp-no-current-ratio-printed.txt") + [extra], "current_ratio", (2026, 3, 31))
+    assert read["reason"] == "ratio_row_not_in_note", read
+
+
+def test_a_glued_inventory_turnover_keeps_the_miss_open():
+    extra = (400, "InventoryTurnover 4.1 3.9\n")
+    pg = pages("nse-rhp-no-current-ratio-printed.txt") + [extra]
+    from financial_ratios import _ratio_named_anywhere
+    assert _ratio_named_anywhere(pg, "inventory_turnover")

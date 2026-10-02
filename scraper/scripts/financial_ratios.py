@@ -454,6 +454,18 @@ def current_ratio_line_pages(page_texts):
     return out
 
 
+# Item 46: the ratio's NAME anywhere in the document, whitespace (and line
+# breaks) collapsed - deliberately looser than a row match, so that "no page
+# names it" is the only way a located-but-rowless note becomes "no note".
+_NAMED = {"current_ratio": re.compile(r"current\W*ratio", re.I),
+          "inventory_turnover": re.compile(r"inventory\W*turnover", re.I)}
+
+
+def _ratio_named_anywhere(page_texts, key):
+    rx = _NAMED[key]
+    return any(rx.search(" ".join((text or "").split())) for _i, text in page_texts)
+
+
 # #1420 / F-219: the reasons for which a value WAS read for the latest period
 # and a rule then rejected it - REFUSED in the envelope, carrying the value.
 # Every other null reason is a reader MISS (no note, no row, no readable or
@@ -516,6 +528,14 @@ def read_ratio(page_texts, key, latest_period, stored_basis=None):
                           "headings": [h[1] for h in headings]})
     if not reads:
         reason = next((r for r in _REFUSAL_ORDER if r in refusals), "ratio_row_not_in_note")
+        if reason == "ratio_row_not_in_note" and not _ratio_named_anywhere(page_texts, key):
+            # Item 46 (OD-165, #1179): every "note" page matched on prose ("financial
+            # ratios" in a sentence, NSE RHP p13/p153/p523) and NO page of the document
+            # names this ratio at all, even across a line break. That is the truthful
+            # "no note" answer, with its page evidence. Any mention anywhere keeps the
+            # miss open (fail closed): the row may be printed in a shape not read yet.
+            return {"value": None, "reason": "ratio_note_not_in_document",
+                    "current_ratio_line_pages": current_ratio_line_pages(page_texts)}
         return {"value": None, "reason": reason}
     if len({r["value"] for r in reads}) > 1:
         return {"value": None, "reason": "ratio_rows_disagree_for_latest_period",

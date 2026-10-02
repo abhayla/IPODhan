@@ -1,0 +1,67 @@
+<<<PAGE 138>>>
+Limited divided by Average Net Worth. Average Net Worth is calculated as the average of the Net Worth at the end of relevant period/year and
+beginning of the relevant period/year.
+ii. Net Worth has been defined as the aggregate value of the paid-up share capital and all reserves created out of the profits and securities premium
+account and debit or credit balance of profit and loss account, after deducting the aggregate value of the accumulated losses, deferred expenditure
+and miscellaneous expenditure not written off, as per the Restated Consolidated Financial Information, but does not include reserves created out
+of revaluation of assets, write-back of depreciation and amalgamation, in accordance with Regulation 2(1)(hh) of the SEBI ICDR Regulations.
+Accordingly net worth has been calculated as equity attributable to the owners of the National Stock Exchange of India Limited as reduced by Other
+Comprehensive Income, Capital Reserve on consolidation and Liquidity Enhancement Scheme Incentive Reserve.
+iii. The Weighted average return on Net Worth is a product of Return on Net Worth and respective assigned weight, dividing the resultant by total
+aggregate weight.
+5. Net Asset Value (“NAV”) per share (Face value of ₹ 1)
+Particulars Amount (₹)
+As on June 30, 2026 142.40
+As on June 30, 2025 134.67
+As on March 31, 2026 129.75
+After the Offer
+- At the Floor Price [●]*
+- At the Cap Price [●]*
+Offer Price [●]*
+* To be computed upon finalisation of the Price Band.
+Notes:
+(1) The Group does not have any outstanding dilutive potential Equity Shares, the basic and diluted NAV remains the same.
+(2) Net Asset Value per Equity share represents Total Equity divided by the number of Equity Shares (post bonus) as at the end of the relevant
+period/year.
+6. Comparison of Accounting Ratios with listed industry peer
+We have considered BSE Limited as the listed peer company, given its operation as a comparable multi-asset stock
+exchange with presence across cash market, equity derivatives, mutual funds and other segments (including exchange
+traded derivatives and wholesale debt market) similar to those of our Company. Further, BSE Limited exhibits a
+broadly similar revenue mix, with income streams comprising transaction charges, listing services, data related services
+and charges and other exchange-related revenues. Set forth below is a comparison of our accounting ratios with BSE
+Limited as identified in accordance with the SEBI ICDR Regulations:
+Total Revenue
+from Face Value P/E ratio EPS Net Asset
+Name of the Standalone / RoNW
+operations (no. of Value per
+company consolidated (%)
+(₹ per equity times) Diluted share (₹)
+(₹ in Million) Basic (₹)
+share) (₹)
+Our Company Consolidated 166,013.09 1 [●]^ 41.62 41.62 33.21% 129.75
+Listed peer
+BSE Limited(1) Consolidated 48,339.50 2 54.28(2) 60.61(3) 60.61(3) 45.00%(4) 163.60(5)
+^ To be updated upon finalisation of the Price Band.
+Notes:
+1. All the financial information for listed industry peer is sourced from the financial information of such listed industry peer as at and for the
+Financial Year ended March 31, 2026 available on the website of the stock exchanges or the company.
+2. P/E Ratio has been computed based on the closing market price of equity shares available on NSE website as on September 9, 2026 divided
+by the diluted earnings per share as at and for the Financial Year ended March 31, 2026.
+3. Basic and diluted EPS from total operations as reported in the consolidated financial statement.
+4. Return on Net Worth (RoNW)% is calculated as profit for the year attributable to the shareholders of the company divided by Average Net
+Worth. Average Net Worth is calculated as the average of the net worth at the end of relevant period/year and beginning of the relevant
+period/ year.
+5. NAV per share is calculated as equity attributable to shareholders of the company as at March 31, 2026 divided by the total number of equity
+shares disclosed on NSE website as at March 31, 2026.
+7. Key Performance Indicators (“KPIs”)
+The table below sets forth the details of the KPIs that our Company considers have a bearing for arriving at the basis
+for Offer Price. The KPIs disclosed below have been used historically by our Company to understand and analyse our
+business performance, which in result, help us in analysing the growth of our business in comparison to our peers. The
+Bidders can refer to the below-mentioned KPIs, being a combination of financial and operational key financial and
+operational KPIs, to make an assessment of our Company’s performance in various business verticals and make an
+informed decision.
+The KPIs disclosed below have been approved by a resolution of our Audit Committee dated September 10, 2026
+(copy made available under “Material Contracts and Documents for Inspection – Material Documents” as disclosed
+on page 592), certified by our Chief Financial Officer, on behalf of the management of our Company by way of their
+certificate dated September 10, 2026. The Audit Committee has confirmed that the KPIs pertaining to our Company
+133
