@@ -41,9 +41,17 @@ function makeStubDb(rows: Array<{ id: string; closeDate: string; status: string 
 const okResult = { outcome: 'DONE' as const, fieldsWritten: 3, fieldsLeftEmpty: 0 };
 
 describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
-  it('(a,c) selects only LISTED and CLOSED — an UPCOMING or OPEN IPO can never match', () => {
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/upper\(i\.status::text\) IN \('LISTED', 'CLOSED'\)/);
-    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/'UPCOMING'|'OPEN'/);
+  it('(a,c) WALKS only LISTED and CLOSED — an UPCOMING or OPEN IPO is never walked; OPEN never matches at all', () => {
+    // The walk population is the `w.walk` lateral; UPCOMING appears ONLY in the answers-only branch,
+    // and only for offering_type NOT IN ('IPO', 'OFS') (#1493, OD-169), which never walks (answersOnly = NOT w.walk).
+    expect(norm(CLOSED_IPO_CANDIDATES_SQL)).toContain(
+      norm(`SELECT coalesce((upper(i.status::text) IN ('LISTED', 'CLOSED') AND i.close_date < CURRENT_DATE AND c.due), false) AS walk`)
+    );
+    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/'OPEN'/);
+    expect(CLOSED_IPO_CANDIDATES_SQL.match(/'UPCOMING'/g)).toHaveLength(1);
+    expect(norm(CLOSED_IPO_CANDIDATES_SQL)).toContain(
+      norm(`(upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text NOT IN ('IPO', 'OFS'))`)
+    );
   });
 
   it('(b) close_date is STRICTLY before today — an IPO that closed TODAY is excluded', () => {
@@ -72,7 +80,8 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
   it('(g) never-walked first (OD-78), then newest closed first -- close_date DESC, per spec §6.1 rules 2-3', () => {
     // `false` sorts before `true`: rows with no closed_ipo_resourcing row lead,
     // so a re-pickable PARTIAL/FAILED never takes a slot a never-walked IPO wants.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+\(r\.ipo_id IS NOT NULL\),\s+\(NOT c\.due\),\s+i\.close_date DESC,\s+i\.id/);
+    // Walk picks first (NOT w.walk = false); among them never-walked first (OD-78), then newest closed.
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+\(NOT w\.walk\),\s+\(r\.ipo_id IS NOT NULL\),\s+i\.close_date DESC,\s+i\.id/);
     // #873's pending-document ranking is gone: OD-76's walk never reads a
     // document, so that count ranked IPOs by work this job cannot do.
     expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/extraction_status = 'PENDING'/);
@@ -140,14 +149,30 @@ describe('closedIpoCandidatesQuery — OD-81 FIELDS_PENDING events', () => {
 describe('closedIpoCandidatesQuery — OD-163(b) answers-only picks', () => {
   it('selects a LISTED IPO with answers_round_at NULL even when no re-pick rule makes it due, only when answersRound is bound true', () => {
     const t = norm(CLOSED_IPO_CANDIDATES_SQL);
-    expect(t).toContain(norm(`c.due OR ($2 AND upper(i.status::text) = 'LISTED' AND i.answers_round_at IS NULL)`));
+    expect(t).toContain(
+      norm(`w.walk OR ( $2 AND i.answers_round_at IS NULL AND (
+        (upper(i.status::text) = 'LISTED' AND i.close_date < CURRENT_DATE)
+        OR (upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text NOT IN ('IPO', 'OFS'))
+      ) )`)
+    );
     expect(new PgDialect().sqlToQuery(closedIpoCandidatesQuery('v', 10, true)).params).toEqual(['v', true, 10]);
   });
 
   it('is the LOWEST priority: never-walked first, then due re-picks, then answers-only -- inside the same LIMIT', () => {
     const t = norm(CLOSED_IPO_CANDIDATES_SQL);
-    expect(t).toMatch(/ORDER BY \(r\.ipo_id IS NOT NULL\), \(NOT c\.due\), i\.close_date DESC, i\.id LIMIT \$3$/);
-    expect(t).toContain('NOT c.due AS "answersOnly"');
+    expect(t).toMatch(/ORDER BY \(NOT w\.walk\), \(r\.ipo_id IS NOT NULL\), i\.close_date DESC, i\.id LIMIT \$3$/);
+    // #1493: answersOnly is "not a walk pick", not "not due": a never-walked UPCOMING non-IPO row is
+    // due by the LEFT JOIN rule yet must only run the round.
+    expect(t).toContain('NOT w.walk AS "answersOnly"');
+  });
+
+  it('#1493/OD-169: CLOSED and UPCOMING non-IPO offerings take the round here, except OFS (OD-53 freeze); offering_type=IPO rows never do (data slots)', () => {
+    const t = norm(CLOSED_IPO_CANDIDATES_SQL);
+    expect(t).toContain(norm(`i.offering_type::text NOT IN ('IPO', 'OFS')`));
+    // The executed template carries the same branch (bound params only: version, answersRound, cap).
+    const q = new PgDialect().sqlToQuery(closedIpoCandidatesQuery('v', 10, true));
+    expect(norm(q.sql)).toContain(norm(`(upper(i.status::text) IN ('CLOSED', 'UPCOMING') AND i.offering_type::text NOT IN ('IPO', 'OFS'))`));
+    expect(q.params).toEqual(['v', true, 10]);
   });
 
   it('a NULL re-pick test is "not due", never unknown (coalesce), so an answers-only row is labelled answersOnly=true', () => {
@@ -180,6 +205,26 @@ describe('runClosedIpoJob — OD-163(b) answers-only picks', () => {
     // The selection was asked to include answers-only picks.
     const q = new PgDialect().sqlToQuery(stub.execute.mock.calls[0][0]);
     expect(q.params).toEqual(['v1', true, 10]);
+  });
+
+  it('#1493: counts answers-only picks by status/offering type in the summary (the run log line)', async () => {
+    const stub = makeStubDb([
+      { ...rows[1], offeringType: 'IPO' },
+      { id: 'rights-1', closeDate: '2025-03-12', status: 'CLOSED', offeringType: 'RIGHTS', answersOnly: true },
+      { id: 'rights-2', closeDate: '2025-03-11', status: 'CLOSED', offeringType: 'RIGHTS', answersOnly: true },
+      { id: 'ncd-1', closeDate: null, status: 'UPCOMING', offeringType: 'NCD', answersOnly: true },
+    ] as never);
+    const runAnswersRound = vi.fn(async () => ({ roundStamped: true, stoppedAtDeadline: false, asked: 0, recorded: 0 }));
+    const summary = await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: vi.fn(),
+      runAnswersRound,
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
+    });
+    expect(summary.answersRoundOnly).toBe(4);
+    expect(summary.answersRoundOnlyByType).toEqual({ 'LISTED/IPO': 1, 'CLOSED/RIGHTS': 2, 'UPCOMING/NCD': 1 });
   });
 
   it('without runAnswersRound the selection binds answersRound=false (no pick that cannot run)', async () => {

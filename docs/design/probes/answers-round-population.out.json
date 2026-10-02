@@ -1,0 +1,122 @@
+{
+  "measuredAt": "2026-10-02T22:44:05.031Z",
+  "byStatus": [
+    {
+      "status": "CLOSED",
+      "offering_type": "IPO",
+      "hidden": false,
+      "ipos": 30,
+      "round_null": 30,
+      "round_null_with_unanswered": 27,
+      "round_null_closed_past": 30
+    },
+    {
+      "status": "CLOSED",
+      "offering_type": "RIGHTS",
+      "hidden": false,
+      "ipos": 6,
+      "round_null": 6,
+      "round_null_with_unanswered": 4,
+      "round_null_closed_past": 6
+    },
+    {
+      "status": "CLOSED",
+      "offering_type": "OFS",
+      "hidden": false,
+      "ipos": 19,
+      "round_null": 19,
+      "round_null_with_unanswered": 1,
+      "round_null_closed_past": 19
+    },
+    {
+      "status": "CLOSED",
+      "offering_type": "NCD",
+      "hidden": false,
+      "ipos": 7,
+      "round_null": 7,
+      "round_null_with_unanswered": 4,
+      "round_null_closed_past": 7
+    },
+    {
+      "status": "CLOSED",
+      "offering_type": "INVITS",
+      "hidden": false,
+      "ipos": 1,
+      "round_null": 1,
+      "round_null_with_unanswered": 0,
+      "round_null_closed_past": 1
+    },
+    {
+      "status": "CLOSED",
+      "offering_type": "BUYBACK",
+      "hidden": false,
+      "ipos": 1,
+      "round_null": 1,
+      "round_null_with_unanswered": 0,
+      "round_null_closed_past": 1
+    },
+    {
+      "status": "CLOSED",
+      "offering_type": "TENDER",
+      "hidden": false,
+      "ipos": 16,
+      "round_null": 16,
+      "round_null_with_unanswered": 11,
+      "round_null_closed_past": 16
+    },
+    {
+      "status": "LISTED",
+      "offering_type": "IPO",
+      "hidden": false,
+      "ipos": 301,
+      "round_null": 301,
+      "round_null_with_unanswered": 301,
+      "round_null_closed_past": 301
+    },
+    {
+      "status": "LISTED",
+      "offering_type": "INVITS",
+      "hidden": false,
+      "ipos": 2,
+      "round_null": 2,
+      "round_null_with_unanswered": 2,
+      "round_null_closed_past": 2
+    },
+    {
+      "status": "LISTED",
+      "offering_type": "REITS",
+      "hidden": false,
+      "ipos": 1,
+      "round_null": 1,
+      "round_null_with_unanswered": 1,
+      "round_null_closed_past": 1
+    },
+    {
+      "status": "OPEN",
+      "offering_type": "IPO",
+      "hidden": false,
+      "ipos": 13,
+      "round_null": 0,
+      "round_null_with_unanswered": 0,
+      "round_null_closed_past": 0
+    },
+    {
+      "status": "UPCOMING",
+      "offering_type": "IPO",
+      "hidden": false,
+      "ipos": 1,
+      "round_null": 0,
+      "round_null_with_unanswered": 0,
+      "round_null_closed_past": 0
+    },
+    {
+      "status": "UPCOMING",
+      "offering_type": "NCD",
+      "hidden": false,
+      "ipos": 1,
+      "round_null": 1,
+      "round_null_with_unanswered": 1,
+      "round_null_closed_past": 0
+    }
+  ]
+}

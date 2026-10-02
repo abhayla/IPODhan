@@ -54,8 +54,10 @@ export interface AnswersRoundCandidate {
 }
 
 export interface AnswersRoundStore {
-  /** The IPO's status and its round stamp; null when the row cannot be read. */
-  readIpo(ipoId: string): Promise<{ status: string | null; answersRoundAt: Date | null } | null>;
+  /** The IPO's status, offering type and round stamp; null when the row cannot be read. */
+  readIpo(
+    ipoId: string
+  ): Promise<{ status: string | null; answersRoundAt: Date | null; offeringType?: string | null } | null>;
   /**
    * Stored values of this IPO with a plan row and no recorded answers (witnesses NULL or empty).
    * `writtenAfter` set: only values whose field_sources row was written after it (OD-163(a)).
@@ -78,6 +80,8 @@ export type AnswersRoundResult = {
   recorded: number;
   notRecorded: number;
   skippedNotCompared: number;
+  /** Section 1.11: values whose field the manifest's `na` list excludes for this offering type; never asked. */
+  skippedNotApplicable: number;
   stoppedAtDeadline: boolean;
   roundStamped: boolean;
 };
@@ -100,6 +104,7 @@ export async function runAnswersOnlyRound(
     recorded: 0,
     notRecorded: 0,
     skippedNotCompared: 0,
+    skippedNotApplicable: 0,
     stoppedAtDeadline: false,
     roundStamped: false,
   };
@@ -124,7 +129,14 @@ export async function runAnswersOnlyRound(
       result.stoppedAtDeadline = true;
       break;
     }
-    const family = manifest.fields[`${c.tableName}.${c.fieldName}`]?.comparisonFamily;
+    const entry = manifest.fields[`${c.tableName}.${c.fieldName}`];
+    if (ipo.offeringType && (entry?.na ?? []).includes(ipo.offeringType)) {
+      // #1493, section 1.11: the plan generator plans no row for a not-applicable field, but a plan row
+      // written before it honoured `na` (PR #1327) can remain; the round never asks such a field.
+      result.skippedNotApplicable += 1;
+      continue;
+    }
+    const family = entry?.comparisonFamily;
     if (!family || family === 'ABSTAIN') {
       // The verdict writer stores no witnesses for a field that is never compared (same rule as the
       // walk and the held read); not asked, so no fetch is spent on it.
@@ -188,10 +200,16 @@ export function buildAnswersRoundStore(db: NodePgDatabase<typeof schema>): Answe
   return {
     async readIpo(ipoId) {
       const [row] = await db
-        .select({ status: ipos.status, answersRoundAt: ipos.answersRoundAt })
+        .select({ status: ipos.status, answersRoundAt: ipos.answersRoundAt, offeringType: ipos.offeringType })
         .from(ipos)
         .where(eq(ipos.id, ipoId));
-      return row ? { status: (row.status as string | null) ?? null, answersRoundAt: row.answersRoundAt ?? null } : null;
+      return row
+        ? {
+            status: (row.status as string | null) ?? null,
+            answersRoundAt: row.answersRoundAt ?? null,
+            offeringType: (row.offeringType as string | null) ?? null,
+          }
+        : null;
     },
     async listUnanswered(ipoId, writtenAfter) {
       const plans = await db

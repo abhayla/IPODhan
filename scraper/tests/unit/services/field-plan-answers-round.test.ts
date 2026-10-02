@@ -17,12 +17,18 @@ const openBudget = () => ({ deadlineMs: Number.MAX_SAFE_INTEGER, now: () => 0 })
 
 type Row = { source: string; value: unknown; witnesses: unknown; verdict: string | null };
 
-function setup(opts: { status?: string; roundAt?: Date | null; candidates?: AnswersRoundCandidate[] } = {}) {
+function setup(
+  opts: { status?: string; roundAt?: Date | null; candidates?: AnswersRoundCandidate[]; offeringType?: string | null } = {}
+) {
   // One stored value written by SYSTEM (consolidation), with no other-source answers (F-226).
   const rows = new Map<string, Row>([
     ['ipos||issueSize', { source: 'CHITTORGARH', value: 1_000_000_000, witnesses: null, verdict: null }],
   ]);
-  const ipoState = { status: opts.status ?? 'OPEN', answersRoundAt: opts.roundAt ?? null };
+  const ipoState = {
+    status: opts.status ?? 'OPEN',
+    answersRoundAt: opts.roundAt ?? null,
+    offeringType: opts.offeringType === undefined ? 'IPO' : opts.offeringType,
+  };
   const candidates = opts.candidates ?? [{ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' }];
   const store: AnswersRoundStore & { stamps: number } = {
     stamps: 0,
@@ -215,5 +221,27 @@ describe('item 42: answers-only round (OD-163)', () => {
     expect(r.mode).toBe('SKIPPED');
     expect(s.nse).not.toHaveBeenCalled();
     expect(s.store.stamps).toBe(0);
+  });
+
+  // #1493, section 1.11: the round runs on CLOSED/UPCOMING non-IPO offerings from the 22:00 job. A plan row
+  // written before the generator honoured the manifest `na` list (PR #1327) must not make the round ask a
+  // field that does not apply to the offering type (issue size on a TENDER is NOT_APPLICABLE, OD-77).
+  it('never asks a field the manifest marks not applicable for the offering type; the round still stamps', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const s = setup({ status: 'CLOSED', offeringType: 'TENDER' });
+
+    const r = await runAnswersOnlyRound(IPO_ID, s.deps, s.store, openBudget(), { listedAllowed: true });
+
+    expect(r).toMatchObject({ mode: 'ROUND', asked: 0, skippedNotApplicable: 1, roundStamped: true });
+    expect(s.nse).not.toHaveBeenCalled();
+    expect(s.doc).not.toHaveBeenCalled();
+    expect(s.rows.get('ipos||issueSize')!.witnesses).toBeNull();
+  });
+
+  it('the same field on a CLOSED OFS (issue size applies to OFS) is asked as usual', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const s = setup({ status: 'CLOSED', offeringType: 'OFS' });
+    const r = await runAnswersOnlyRound(IPO_ID, s.deps, s.store, openBudget(), { listedAllowed: true });
+    expect(r).toMatchObject({ mode: 'ROUND', asked: 1, recorded: 1, skippedNotApplicable: 0, roundStamped: true });
   });
 });
