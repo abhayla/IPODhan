@@ -45,7 +45,7 @@ import { logger } from '../utils/logger.js';
 
 /** `${tableName}.${fieldName}` -> true when BSE's mapped ScrapedIPO actually carries it. */
 // Item 43 (OD-164(e), F-226): each pair below was decided on BSE's real JSON fetched 2026-10-02
-// (`IPO_HomePageDetail/w` board + `GetMkt_ISSUE_BBS_IPO/w` detail for IPO_NO 8022/8015/8004; fixtures
+// (`IPO_HomePageDetail/w` board + `GetMkt_ISSUE_BBS_IPO/w` detail for IPO_NO 8022/8015; fixtures
 // under tests/fixtures/bse/ with provenance meta). Values come from `mapBSEToScrapedIPO` — the SAME
 // mapping the BSE orchestrator writes — EXCEPT open/close dates, which that mapper defaults to today
 // when unparsable; here they are read straight off the board row (`Start_Dt` / `End_Dt`) so an
@@ -225,7 +225,11 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
     let value: unknown;
     if (camelFieldName === 'openDate') value = parseBSEDate(row.Start_Dt);
     else if (camelFieldName === 'closeDate') value = parseBSEDate(row.End_Dt);
-    else value = (mapBSEToScrapedIPO(row, detail) as unknown as Record<string, unknown>)[camelFieldName];
+    else if (camelFieldName === 'faceValue') {
+      // The shared mapper rounds (Rs 2.50 -> 3); keep the printed decimal value.
+      const printed = parseFloat(String(detail.Face_Value || ''));
+      value = Number.isFinite(printed) && printed > 0 ? printed : undefined;
+    } else value = (mapBSEToScrapedIPO(row, detail) as unknown as Record<string, unknown>)[camelFieldName];
     if (
       value === undefined ||
       value === null ||

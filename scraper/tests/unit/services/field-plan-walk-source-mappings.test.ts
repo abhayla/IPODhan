@@ -71,6 +71,34 @@ describe('BSE fetcher -- item 43 mappings on the live 2026-10-02 board + detail 
     expect(await ask('open_date')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
   });
 
+  describe('name matching is exact on the normalised name, never partial', () => {
+    const askAs = (name: string, field: string) =>
+      buildBseFetcher({ ipoRepository: repo(name), isBseCapable: () => true }, new BseFieldFetcherState())(IPO_ID, 'ipos', '', field);
+
+    it('"Dove Soft Technologies Limited" does not match the "Dove  Soft Limited" row', async () => {
+      expect(await askAs('Dove Soft Technologies Limited', 'lot_size')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    });
+
+    it('"Dove Soft Ltd" matches the "Dove  Soft Limited" row (spacing and suffix fold)', async () => {
+      const a = await askAs('Dove Soft Ltd', 'symbol');
+      expect(a.outcome).toBe('SUPPLIED');
+    });
+
+    it('two board rows with the same normalised name and no symbol fail closed (ambiguous)', async () => {
+      const board = asArray<any>(readJson('bse/bse-board-2026-10-02.json')).filter((r) => r.IPO_NO === 8015);
+      fetchBSEBoardMock.mockResolvedValue([board[0], { ...board[0], IPO_NO: 8022, Scrip_name: 'Dove Soft Ltd' }]);
+      expect(await askAs('Dove Soft Limited', 'lot_size')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    });
+  });
+
+  it('a decimal face value keeps its decimals (Rs 2.50 is 2.5, not 3)', async () => {
+    fetchBSEDetailMock.mockImplementation(async () => ({
+      ...asArray<any>(readJson('bse/bse-detail-8022-2026-10-02.json'))[0],
+      Face_Value: '2.50',
+    }));
+    expect(await ask('face_value')).toEqual({ outcome: 'SUPPLIED', value: 2.5 });
+  });
+
   it('a pair BSE does not print (listing_exchanges) stays a NO_MAPPING gap, not a guessed value', async () => {
     const a = await ask('listing_exchanges');
     expect(a).toMatchObject({ outcome: 'CHECK_FAILED', gap: 'NO_MAPPING', transient: true });
@@ -127,10 +155,19 @@ describe('CHITTORGARH fetcher -- item 43 mappings on live 2026-10-02 report 82 +
     expect(await ask('Runwal Enterprises Limited', field)).toEqual({ outcome: 'SUPPLIED', value: expected });
   });
 
-  it('detail page: registrar is read from the registrar-name anchor', async () => {
-    const a = await ask('Runwal Enterprises Limited', 'registrar');
-    expect(a.outcome).toBe('SUPPLIED');
-    expect(String((a as { value: unknown }).value)).toMatch(/^[A-Z][A-Za-z .&()-]+(Ltd\.|Limited)$/);
+  it('detail page: registrar is the registrar-name anchor text, not the lead manager', async () => {
+    expect(await ask('Runwal Enterprises Limited', 'registrar')).toEqual({
+      outcome: 'SUPPLIED',
+      value: 'MUFG Intime India Pvt. Ltd.',
+    });
+  });
+
+  it('detail page: a decimal face value keeps its decimals (Rs 2.50 is 2.5, not 3)', async () => {
+    const html = '<a href="#">Face Value</a><span>₹ 2.50 per share</span>';
+    expect(await ask('Runwal Enterprises Limited', 'face_value', vi.fn().mockResolvedValue(html))).toEqual({
+      outcome: 'SUPPLIED',
+      value: 2.5,
+    });
   });
 
   it('detail page fetch failure -> CHECK_FAILED transient with the cause', async () => {
@@ -149,5 +186,51 @@ describe('CHITTORGARH fetcher -- item 43 mappings on live 2026-10-02 report 82 +
 
   it('a pair CG does not print (status) stays a NO_MAPPING gap', async () => {
     expect(await ask('Runwal Enterprises Limited', 'status')).toMatchObject({ outcome: 'CHECK_FAILED', gap: 'NO_MAPPING' });
+  });
+
+  describe('name matching is exact on the normalised name, never partial', () => {
+    it('"Dove Soft Technologies Limited" does not match the "Dove Soft Ltd." row', async () => {
+      expect(await ask('Dove Soft Technologies Limited', 'segment')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    });
+
+    it('"Dove Soft Limited" matches the "Dove Soft Ltd." row (suffix folds)', async () => {
+      expect(await ask('Dove Soft Limited', 'segment')).toEqual({ outcome: 'SUPPLIED', value: 'SME' });
+    });
+
+    it('an SME and a mainboard twin with the same normalised name fail closed (ambiguous)', async () => {
+      const body = JSON.parse(report82);
+      const twin = { ...body.reportTableData[0], 'Issue Category': 'Mainboard' };
+      body.reportTableData = [body.reportTableData[0], twin];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }))
+      );
+      expect(await ask('Dove Soft Limited', 'segment')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    });
+  });
+
+  describe('a failed or empty list is a failed check, never "not published yet"', () => {
+    const expectCheckFailed = async () => {
+      const a = await ask('Runwal Enterprises Limited', 'open_date');
+      expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true });
+      expect((a as { reason: string }).reason).toMatch(/Chittorgarh list fetch failed/);
+    };
+
+    it('a list fetch error -> CHECK_FAILED transient with the cause', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('socket hang up'); }));
+      await expectCheckFailed();
+    }, 30000);
+
+    it('an empty list -> CHECK_FAILED transient', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify({ reportTableData: [] }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      );
+      await expectCheckFailed();
+    }, 30000);
+
+    it('a non-empty list without the IPO still answers not found (NOT_AVAILABLE_YET)', async () => {
+      expect(await ask('Totally Absent Company Limited', 'open_date')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    });
   });
 });

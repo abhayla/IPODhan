@@ -1,7 +1,7 @@
 {
   "_comment": "Fixture-provenance backfill allowlist (T-518). Shrink-only, same model as config/write-ratchet-baseline.json (T-316): a fixture that gains a valid <file>.meta.json (and, for HTML, a matching identity) becomes STALE here and must be removed via `node scripts/ci/require-fixture-provenance.mjs --update` (the gate FAILS on a stale entry, forcing the shrink to be committed rather than silently going stale). NEVER hand-add a new entry — route a new fixture through scripts/create-fixture-from-capture.mjs instead. `identitySkipCount` (round 3 review, MAJOR 1) is a second ratchet: the total number of fixtures skipping the identity check entirely (pageType:true, no extractable title/h1, or an unsupported fixture type) may only shrink or hold, never grow, without a committed --update. `filenameCheckSkipCount` is the same ratchet for the narrower meta.identitySkipReason escape (meta.company is still checked; only the filename comparison is skipped).",
   "generated_by": "scripts/ci/require-fixture-provenance.mjs --update",
-  "count": 57,
+  "count": 53,
   "files": [
     "scraper/tests/fixtures/anchor/deepa-anchor-report.json",
     "scraper/tests/fixtures/anubhav-rhp-financial-pages.json",
@@ -9,11 +9,7 @@
     "scraper/tests/fixtures/bse-mainboard-acqdisp.html",
     "scraper/tests/fixtures/bse-rights-issue-detail.html",
     "scraper/tests/fixtures/bse-test-urls.json",
-    "scraper/tests/fixtures/bse/bse-board-2026-10-02.json",
-    "scraper/tests/fixtures/bse/bse-detail-8015-2026-10-02.json",
-    "scraper/tests/fixtures/bse/bse-detail-8022-2026-10-02.json",
     "scraper/tests/fixtures/chittorgarh-modern-diagnostic-detail.html",
-    "scraper/tests/fixtures/chittorgarh/chittorgarh-report82-2026-10-02.json",
     "scraper/tests/fixtures/chittorgarh/deepa-company-cell.html",
     "scraper/tests/fixtures/documents/bse-ipo-homepage.json",
     "scraper/tests/fixtures/documents/bse-skyways-core.json",

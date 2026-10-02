@@ -23,7 +23,7 @@ import { scrapeChittorgarhIPOs } from '../scrapers/chittorgarh-scraper.js';
 import { extractSectorFromDetailHtml, fetchChittorgarhDetailHtml } from '../scrapers/chittorgarh-detail-sector.js';
 import {
   extractAllotmentDateFromDetailHtml,
-  extractFaceValueFromDetailHtml,
+  extractFaceValueDecimalFromDetailHtml,
   extractIsinFromDetailHtml,
   extractLotSizeFromDetailHtml,
   extractRegistrarFromDetailHtml,
@@ -65,7 +65,7 @@ const CHITTORGARH_DETAIL_EXTRACTORS: ReadonlyMap<string, (html: string) => strin
 >([
   ['ipos.isin', extractIsinFromDetailHtml],
   ['ipos.allotmentDate', extractAllotmentDateFromDetailHtml],
-  ['ipos.faceValue', extractFaceValueFromDetailHtml],
+  ['ipos.faceValue', extractFaceValueDecimalFromDetailHtml],
   ['ipos.lotSize', extractLotSizeFromDetailHtml],
   ['ipos.registrar', extractRegistrarFromDetailHtml],
 ]);
@@ -93,7 +93,7 @@ export interface ChittorgarhFetcherDeps {
 
 /** Per-cycle memo — one instance per document-cycle wake, shared across every IPO's walk. */
 export class ChittorgarhFieldFetcherState {
-  private list: Promise<ChittorgarhIPO[]> | null = null;
+  private list: Promise<{ ipos: ChittorgarhIPO[]; errors: string[] }> | null = null;
   private detailPages = new Map<string, Promise<string>>();
 
   getDetailHtml(url: string, fetchDetailHtml: (url: string) => Promise<string>): Promise<string> {
@@ -105,18 +105,22 @@ export class ChittorgarhFieldFetcherState {
     return page;
   }
 
-  private getList(): Promise<ChittorgarhIPO[]> {
+  private getList(): Promise<{ ipos: ChittorgarhIPO[]; errors: string[] }> {
     if (!this.list) {
-      this.list = scrapeChittorgarhIPOs().then((r) => r.ipos);
+      this.list = scrapeChittorgarhIPOs().then((r) => ({ ipos: r.ipos, errors: r.errors }));
     }
     return this.list;
   }
 
   /**
-   * Three outcomes, never a guess (review round 1, M1). Unlike BSE, the
-   * Chittorgarh list shape carries NO symbol/isin at all, so an ambiguous
-   * name match here has no fallback confirmation to try — any 2+ match is
-   * always `ambiguous`, never resolvable to `found`.
+   * Four outcomes, never a guess (review round 1, M1). The mapped list shape
+   * (`ChittorgarhIPO`) carries no symbol/isin (report 82 has `~nse_symbol` and
+   * `~isin` columns, but they are empty while an IPO is open, so nothing here
+   * reads them), so an ambiguous name match has no fallback confirmation to
+   * try — any 2+ match is always `ambiguous`, never resolvable to `found`.
+   * `source_failed` (fix round 1): `scrapeChittorgarhIPOs` swallows a fetch
+   * error and returns `ipos: []` with `errors` set; an errored or empty list
+   * says nothing about this IPO, so it must never read as "not published yet".
    */
   async resolveIPO(
     deps: ChittorgarhFetcherDeps,
@@ -125,13 +129,18 @@ export class ChittorgarhFieldFetcherState {
     | { status: 'found'; row: ChittorgarhIPO }
     | { status: 'not_found' }
     | { status: 'ambiguous'; cause: string }
+    | { status: 'source_failed'; cause: string }
   > {
     const ipo = await deps.ipoRepository.findById(ipoId);
     if (!ipo) return { status: 'not_found' };
     const companyName = (ipo as unknown as { companyName?: string | null }).companyName;
     if (!companyName) return { status: 'not_found' };
 
-    const list = await this.getList();
+    const { ipos: list, errors } = await this.getList();
+    if (errors.length > 0 || list.length === 0) {
+      const cause = errors.length > 0 ? errors.join('; ') : 'empty list';
+      return { status: 'source_failed', cause: `Chittorgarh list fetch failed: ${cause}` };
+    }
     const target = normalizeCompanyNameForMatching(companyName);
     const matches = list.filter((row) => normalizeCompanyNameForMatching(row.companyName) === target);
 
@@ -184,6 +193,9 @@ export function buildChittorgarhFetcher(
       resolved = await state.resolveIPO(deps, ipoId);
     } catch (error) {
       return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
+    }
+    if (resolved.status === 'source_failed') {
+      return { outcome: 'CHECK_FAILED', reason: resolved.cause, transient: true };
     }
     if (resolved.status === 'not_found') {
       return { outcome: 'NOT_AVAILABLE_YET' };

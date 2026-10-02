@@ -671,11 +671,17 @@ const MAX_FACE_VALUE = 1000;
  * plausible range, mirroring every other extractor in this file.
  */
 export function extractFaceValueFromDetailHtml(html: string): number | null {
+  const value = extractFaceValueDecimalFromDetailHtml(html);
+  return value === null ? null : Math.round(value);
+}
+
+/** The printed face value with its decimals kept (Rs 2.50 stays 2.5); the field-walk fetcher uses this. */
+export function extractFaceValueDecimalFromDetailHtml(html: string): number | null {
   if (!html) return null;
   const m = html.match(/Face\s*Value\s*<\/a>[\s\S]{0,200}?₹[\s\S]{0,40}?([\d,]+(?:\.\d+)?)[\s\S]{0,40}?per\s*share/i);
   if (!m) return null;
   const value = parseFloat(m[1].replace(/,/g, ''));
   if (!Number.isFinite(value)) return null;
   if (value < MIN_FACE_VALUE || value > MAX_FACE_VALUE) return null;
-  return Math.round(value);
+  return value;
 }
