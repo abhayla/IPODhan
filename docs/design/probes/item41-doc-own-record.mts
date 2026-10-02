@@ -4,13 +4,14 @@
 // only reads, and the admin listing is captured in memory (never inserted).
 // Run (from scraper/): npx tsx ../docs/design/probes/item41-doc-own-record.mts
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { loadFieldManifest } from '../../../scraper/src/config/field-manifest-loader.ts';
+import { registryRanksFor, resolveIpoTypeKey } from '@ipodhan/shared/services/field-plan-generator';
 import { buildDocFetcher } from '../../../scraper/src/services/field-plan-walk-doc-fetcher.ts';
 
 const libUrl = new URL('./_lib.mjs', import.meta.url).href; // file:/// URL
 const { openReadOnlyPool } = await import(libUrl);
 void createRequire;
-const manifest = JSON.parse(readFileSync(new URL('../../../scraper/config/field-manifest.json', import.meta.url), 'utf8'));
+const manifest = loadFieldManifest();
 const camel = (s: string) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 const snake = (s: string) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 const camelRow = (r: Record<string, unknown> | undefined) =>
@@ -69,7 +70,14 @@ const tally: Record<string, number> = {};
 for (const p of population) {
   const field = snake(String(p.field_name));
   const plan = (await q(`SELECT rank1_source, rank2_source, rank3_source FROM ipo_field_plan WHERE ipo_id=$1 AND table_name='ipos' AND row_key='' AND field_name=$2`, [p.ipo_id, field]))[0];
-  const ranks = plan ? [plan.rank1_source, plan.rank2_source, plan.rank3_source] : undefined;
+  // No plan row: take the rank list from the field manifest for the IPO's own type key (never copied).
+  let ranks: Array<string | null> | undefined;
+  if (plan) ranks = [plan.rank1_source, plan.rank2_source, plan.rank3_source];
+  else {
+    const ipo = camelRow((await q(`SELECT segment::text AS segment, listing_exchanges FROM ipos WHERE id=$1`, [p.ipo_id]))[0]) as any;
+    const entry = manifest.fields[`ipos.${field}`];
+    ranks = (entry && ipo ? registryRanksFor(entry as never, resolveIpoTypeKey(ipo)) : null) ?? undefined;
+  }
   const a: any = await fetcher(String(p.ipo_id), 'ipos', '', field, { ranks });
   const state =
     a.outcome === 'SUPPLIED' && a.credited ? 'CREDITED_EQUAL'
