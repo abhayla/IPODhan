@@ -43,7 +43,12 @@ export interface Witness {
   /** Absent on every witness written before OD-103; such a witness was always SUPPLIED. */
   outcome?: WitnessOutcome;
   /** Short cause token for a non-SUPPLIED answer (the same string the walk pushes to `failures`). */
-  cause?: string;
+  cause?: string;  /**
+   * Item 38: 'DOCUMENT_ROWS_STORED' = the document supplied rows already stored by their own writer;
+   * `value` is then null and is never a pickable value (the row count rides on `rowCount`).
+   */
+  credited?: 'DOCUMENT_ROWS_STORED';
+  rowCount?: number;
 }
 
 /** A witness with no `outcome` (written before OD-103) is read as SUPPLIED. */

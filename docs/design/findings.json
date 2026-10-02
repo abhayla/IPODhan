@@ -2193,6 +2193,15 @@
       "title": "Other sources' answers are kept only for values the field walk writes; most stored values are written by other paths that keep no witnesses",
       "detail": "CORRECTED 2026-10-02 after independent review. The walk's collect-all is built (field-plan-walk.ts ~1228: OD-103 'EVERY ranked answer this pass'); per OD-137 a SUPPLIED field keeps its witnesses on field_sources.witnesses and the plan row's answers stay null by design (the earlier '655 SUPPLIED rows, 0 answers' reading was the wrong column, not a defect). Measured on ipodhan_staging (read-only; ENABLE_VERDICT_WRITER=true): field_sources by writer — SYSTEM 18,396 rows, 516 with witnesses; FILING_PERSISTER 1,091 rows, 8 with; MIGRATION_SCRIPT 684, 0; CHITTORGARH_ISSUE_TYPE_FILL 234, 0. NSE (national-stock-exchange-of-india-ltd): 33 records, witnesses only on ipos.listingDate and ipos.sector (the two the walk wrote). So for most stored values no other source's answer is kept: values reach the row through write paths outside the walk. Separately, many listed source/field pairs have no mapping (NO_MAPPING), e.g. CHITTORGARH listing_exchanges 128 IPOs, status 126; BSE listing_exchanges 96. Owner direction 2026-10-02: no source may be ignored.",
       "phase1": false
+    },
+    {
+      "id": "F-227",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "§2.5.6 item 1 (OD-164(a)); OD-161(a); item 38 DOC child-table read",
+      "title": "Keyed child-table provenance rows carry no document lineage; only the table's IPO-level `rows` record names the document",
+      "detail": "Measured 2026-10-02 on ipodhan_staging (read-only, docs/design/probes/_lib.mjs openReadOnlyPool): field_sources rows with source DRHP, row_key <> '' on child tables: 11,020, of which 11,020 have data_lineage docType NULL and documentId NULL (updated_by SYSTEM only). The IPO-level section records (field_name 'rows', row_key ''): 288 on six tables (financial_statements 66, ipo_intermediaries 73, ipo_risk_factors 77, peer_companies 18, promoter_acquisition_ranges 2, promoters 52), 0 missing docType or documentId. Query: select count(*), count(*) filter (where data_lineage->>'docType' is null) from field_sources where source='DRHP' and row_key<>'' and table_name not in ('ipos','ipo_details'). So the DOC family check for a child-table plan row must read the `rows` record, never the keyed rows (item 38). Also measured: national-stock-exchange-of-india-ltd promoter_acquisition_ranges `rows` record comes from a PRICE_BAND_AD, outside the field's RHP family, so it stays CHECK_FAILED (not credited). Open for owner decision: none (no rule change).",
+      "phase1": false
     }
   ],
   "false_assertions": [

@@ -180,3 +180,21 @@ describe('item 13 / OD-109: the reader line of an admin value', () => {
     expect(p).toEqual({ key: 'ipos.sector', empty: true });
   });
 });
+
+describe('item 38 fix round 1: a credited DOC answer is "the document supplied rows", never a pickable value', () => {
+  it('a credited answer (even one carrying a stray value) shows no value and no pick, and names the stored rows', () => {
+    const w = buildWitnesses({
+      ranks: ['DOC', 'CHITTORGARH'],
+      witnesses: null,
+      planAnswers: [
+        { source: 'DOC', docType: 'RHP', value: 79, at: 'x', outcome: 'SUPPLIED', credited: 'DOCUMENT_ROWS_STORED', rowCount: 79 },
+        { source: 'CHITTORGARH', value: '1000000', at: 'x', outcome: 'SUPPLIED' },
+      ],
+      fsSource: null,
+      fsAt: null,
+      currentValue: null,
+    });
+    expect(w[0]).toMatchObject({ value: null, pickLabel: null, cause: 'the document supplied 79 stored row(s) (no single value)' });
+    expect(w[1]).toMatchObject({ status: 'value', value: '1000000', pickLabel: 'CHITTORGARH' });
+  });
+});

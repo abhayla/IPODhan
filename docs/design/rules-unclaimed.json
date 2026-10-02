@@ -3,7 +3,7 @@
   "_generated_by": "docs/design/apply-rule-ownership.mjs",
   "unclaimed": {
     "R-269": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",
-    "R-276": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",
+    "R-277": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",
     "R-271": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",
     "R-244": "2.7 — Admin data editing (spec §9, OD-102..OD-121) is not built yet (release-gate item 36, docs/design/pull-model-completion-state.md) — no build card owns it. Declared unclaimed until a card is created for it, per OD-52. Unrelated to #1106; added only so apply-rule-ownership.mjs can run to completion after spec §9 landed (#1107) without a matching card.",
     "R-119": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
