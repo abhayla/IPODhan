@@ -201,6 +201,57 @@ describe('item 41 the real walk over the real DOC fetcher', () => {
     expect(String((w.listDocDifferenceForAdmin.mock.calls[0] as any[])[0].failedCheck).length).toBeGreaterThan(0);
   });
 
+  const consolidatorRefusal = (reason: string) => ({
+    consolidation: { fieldResults: [{ fieldName: 'lotSize', chosenSource: 'NSE', finalValue: 1200, rejectedSources: [{ source: 'DRHP', value: 2400, reason }] }] },
+  });
+
+  it.each(['VALIDATION_RULE_FAILED:OD-21-lot', 'VALIDATION_FAILED'])('a consolidator validation refusal (%s) lists FAILED_VALIDATION', async (reason) => {
+    const w = walkSetup({ DOC: buildDocFetcher(deps()) }, ['DOC'], 'lot_size', consolidatorRefusal(reason));
+    await walkFieldPlanForIPO(IPO_ID, w.walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
+    expect(w.listDocDifferenceForAdmin).toHaveBeenCalledTimes(1);
+    expect((w.listDocDifferenceForAdmin.mock.calls[0] as any[])[0]).toMatchObject({ outcome: 'FAILED_VALIDATION', failedCheck: reason });
+  });
+
+  it.each(['REJECTED_INCAPABLE_SOURCE', 'DEGENERATE_PRICE_BAND', 'SOME_CODE_NOBODY_LISTED'])(
+    'a NON-validation refusal (%s) is refused but never listed as FAILED_VALIDATION',
+    async (reason) => {
+      const w = walkSetup({ DOC: buildDocFetcher(deps()) }, ['DOC'], 'lot_size', consolidatorRefusal(reason));
+      await walkFieldPlanForIPO(IPO_ID, w.walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
+      expect(w.recorded[0].state).not.toBe('SUPPLIED');
+      expect(w.listDocDifferenceForAdmin).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['VALIDATION_FAILED', 1],
+    ['REJECTED_INCAPABLE_SOURCE', 0],
+  ])('PROVISIONAL path (rank 1 not available yet, DOC refused with %s) lists %i FAILED_VALIDATION row(s)', async (reason, listed) => {
+    const w = walkSetup(
+      { CHITTORGARH: vi.fn(async () => ({ outcome: 'NOT_AVAILABLE_YET' as const })), DOC: buildDocFetcher(deps({ owner: 'BSE' })) },
+      ['CHITTORGARH', 'DOC'],
+      'lot_size',
+      consolidatorRefusal(reason)
+    );
+    await walkFieldPlanForIPO(IPO_ID, w.walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
+    expect(w.orchestrator.consolidatedUpsertIPO).toHaveBeenCalled();
+    expect(w.listDocDifferenceForAdmin).toHaveBeenCalledTimes(listed);
+    if (listed) expect((w.listDocDifferenceForAdmin.mock.calls[0] as any[])[0]).toMatchObject({ outcome: 'FAILED_VALIDATION' });
+  });
+
+  it('an identifier refusal is never listed as FAILED_VALIDATION', async () => {
+    const w = walkSetup({ DOC: buildDocFetcher(deps()) }, ['DOC'], 'lot_size', { refusedIdentifierFields: ['lotSize'] });
+    await walkFieldPlanForIPO(IPO_ID, w.walkDeps, { deadlineMs: 1_000_000, now: () => 0 });
+    expect(w.listDocDifferenceForAdmin).not.toHaveBeenCalled();
+  });
+
+  it('the dedupe key carries the outcome, so one listing never blocks another outcome of the same field and document', async () => {
+    const { docDifferenceKey } = await import('../../../src/services/field-plan-walk-deps.js');
+    const row = { ipoId: IPO_ID, tableName: 'ipos', rowKey: '', fieldName: 'lotSize', documentId: RHP_ID };
+    const keys = (['KEPT', 'REPLACED', 'FAILED_VALIDATION'] as const).map((outcome) => docDifferenceKey({ ...row, outcome }));
+    expect(new Set(keys).size).toBe(3);
+    expect(docDifferenceKey({ ...row, outcome: 'KEPT' })).toBe(keys[0]);
+  });
+
   it('FAILED_VALIDATION listing evidence names reason, rule, check, values and stored source', async () => {
     const { docDifferenceEvidence } = await import('../../../src/services/field-plan-walk-deps.js');
     const e = docDifferenceEvidence({

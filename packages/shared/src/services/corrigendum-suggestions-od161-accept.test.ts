@@ -52,14 +52,40 @@ describe('acceptCorrigendumSuggestion on OD-161 listings', () => {
     expect(d.error).toContain('REFUSED');
   });
 
-  it('a FAILED_VALIDATION listing accepts through the admin write with NO override reason, so the write own check refuses a failing value', async () => {
-    writeSpy.mockResolvedValue({ kind: 'INVALID', reason: 'ipos.lotSize fails its check: x. Save again with a written reason to keep it.' } as never);
-    const failing = { ...od161, reasonCode: 'FAILED_VALIDATION', check: 'lot rule' };
-    const d = await acceptCorrigendumSuggestion(stubDb({ ...base, fieldName: 'lotSize', value2: '-5', evidence: failing }), 'c1', 'a', undefined, 'tok', 'adm');
-    expect(d.ok).toBe(false);
-    expect(d.error).toContain('INVALID');
+  const failing = { ...od161, reasonCode: 'FAILED_VALIDATION', check: 'lot rule' };
+
+  it('a FAILED_VALIDATION accept without a written reason is refused and writes nothing', async () => {
+    for (const note of [undefined, '', '   ']) {
+      const db = stubDb({ ...base, fieldName: 'lotSize', value2: '-5', evidence: failing });
+      const d = await acceptCorrigendumSuggestion(db, 'c1', 'a', note, 'tok', 'adm');
+      expect(d.ok).toBe(false);
+      expect(d.error).toContain('written reason');
+      expect(writeSpy).not.toHaveBeenCalled();
+      expect((db as unknown as { transaction: ReturnType<typeof vi.fn> }).transaction).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a FAILED_VALIDATION accept with a written reason saves through the CHECKED (typed) path with that reason (OD-108)', async () => {
+    const d = await acceptCorrigendumSuggestion(stubDb({ ...base, fieldName: 'lotSize', value2: '-5', evidence: failing }), 'c1', 'a', 'RHP page 12 prints -5 lots', 'tok', 'adm');
+    expect(d.ok).toBe(true);
     expect(writeSpy).toHaveBeenCalledTimes(1);
-    expect((writeSpy.mock.calls[0][1] as unknown as Record<string, unknown>).overrideReason).toBeUndefined();
+    const input = writeSpy.mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(input).toMatchObject({ value: '-5', overrideReason: 'RHP page 12 prints -5 lots', mode: { kind: 'typed' } });
+  });
+
+  it('KEPT and REPLACED OD-161 rows keep the storedPick path and need no reason', async () => {
+    for (const origin of ['OD161_DOCUMENT_DIFFERENCE_KEPT', 'OD161_DOCUMENT_REPLACED_WEBSITE_VALUE']) {
+      writeSpy.mockClear();
+      const d = await acceptCorrigendumSuggestion(stubDb({ ...base, fieldName: 'lotSize', evidence: { ...od161, origin } }), 'c1', 'a', undefined, 'tok', 'adm');
+      expect(d.ok).toBe(true);
+      expect((writeSpy.mock.calls[0][1] as unknown as { mode: { kind: string } }).mode.kind).toBe('storedPick');
+    }
+  });
+
+  it('a corrigendum row is unaffected by the reason rule (no OD-161 rule, even with a reasonCode)', async () => {
+    const d = await acceptCorrigendumSuggestion(stubDb({ ...base, fieldName: 'closeDate', evidence: { reasonCode: 'FAILED_VALIDATION' } }), 'c1', 'a', undefined, 'tok', 'adm');
+    expect(d.ok).toBe(true);
+    expect((writeSpy.mock.calls[0][1] as unknown as { mode: { kind: string } }).mode.kind).toBe('storedPick');
   });
 
   it('the check the accept runs does fail a bad lot size (ipoFieldCheckFailure, the write own check)', () => {

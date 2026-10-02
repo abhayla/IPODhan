@@ -3,14 +3,11 @@
 // and prints the answer state per row. No write: the pool is default_transaction_read_only, the fetcher
 // only reads, and the admin listing is captured in memory (never inserted).
 // Run (from scraper/): npx tsx ../docs/design/probes/item41-doc-own-record.mts
-import { createRequire } from 'node:module';
 import { loadFieldManifest } from '../../../scraper/src/config/field-manifest-loader.ts';
 import { registryRanksFor, resolveIpoTypeKey } from '@ipodhan/shared/services/field-plan-generator';
 import { buildDocFetcher } from '../../../scraper/src/services/field-plan-walk-doc-fetcher.ts';
+import { openReadOnlyPool } from './_lib.mjs';
 
-const libUrl = new URL('./_lib.mjs', import.meta.url).href; // file:/// URL
-const { openReadOnlyPool } = await import(libUrl);
-void createRequire;
 const manifest = loadFieldManifest();
 const camel = (s: string) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 const snake = (s: string) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);

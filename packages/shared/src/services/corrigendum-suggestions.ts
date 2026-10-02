@@ -54,6 +54,12 @@ export function isDocumentOwnRecordListing(row: { evidence?: unknown } | null | 
   return !!e && e.rule === 'OD-161';
 }
 
+/** True for an OD-161 listing whose document value FAILED the field's checks (evidence.reasonCode FAILED_VALIDATION). */
+export function isFailedValidationListing(row: { evidence?: unknown } | null | undefined): boolean {
+  const e = row?.evidence as { reasonCode?: unknown } | null | undefined;
+  return isDocumentOwnRecordListing(row) && !!e && e.reasonCode === 'FAILED_VALIDATION';
+}
+
 /** True for an item 9 row (evidence.origin NEWER_DOCUMENT). */
 export function isNewerDocumentSuggestion(row: { evidence?: unknown } | null | undefined): boolean {
   const e = row?.evidence as { origin?: unknown } | null | undefined;
@@ -345,6 +351,18 @@ export async function acceptCorrigendumSuggestion(
     return { ok: false, conflictId, fieldName: row.fieldName, error: 'suggestion names no writable field; dismiss it or edit the field by hand' };
   }
   const value = row.value2;
+  // OD-108 (round 3 fix): a document value that FAILED the field's checks is saved only through the CHECKED
+  // (typed) path and only with a written reason (the accept note). KEPT / REPLACED rows and corrigendum rows
+  // are an admin picking a source's stored value (section 9) and keep the storedPick path.
+  const failedValidation = isFailedValidationListing(row);
+  if (failedValidation && !note?.trim()) {
+    return {
+      ok: false,
+      conflictId,
+      fieldName: row.fieldName,
+      error: 'INVALID: this document value failed the field check; accepting it needs a written reason in the note (OD-108). Nothing was written.',
+    };
+  }
   const alreadyDecided = new Error('corrigendum suggestion already decided');
   let refused: AdminFieldWriteResult | null = null;
   try {
@@ -374,7 +392,13 @@ export async function acceptCorrigendumSuggestion(
         ...(newerDocument && row.rowKey ? { row: { rowKey: row.rowKey } } : {}),
         fieldName: row.fieldName,
         // The document's value from the suggestion's own stored row, never from the request.
-        mode: { kind: 'storedPick', sourceLabel: 'DOC', readDate: null, value },
+        ...(failedValidation
+          ? {
+              value,
+              mode: { kind: 'typed' as const, sourceNote: `document ${row.documentId} (OD-161 value that failed its check, accepted with a written reason)` },
+              overrideReason: note,
+            }
+          : { mode: { kind: 'storedPick' as const, sourceLabel: 'DOC', readDate: null, value } }),
         expectedVersion,
         actor: { name: adminName, adminId },
         entryPoint: 'corrigendum-accept',

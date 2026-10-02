@@ -499,11 +499,11 @@ export function makeReceiptMarkReader(): (documentId: string, tableName: string,
 /**
  * Item 41 (OD-161(b), OD-61, §9.4): a document-versus-stored-value difference in the admin queue -- the
  * same `data_conflicts` document-listing shape OD-166 uses (document_id + evidence.origin, never a
- * behaviour conflict), deduped by `suggestion_key` to ONE row per (IPO, field, document), never per cycle.
+ * behaviour conflict), deduped by `suggestion_key` to ONE row per (IPO, field, document, outcome), never per cycle; the outcome is in the key so a KEPT listing never blocks a later FAILED_VALIDATION one.
  */
-export function docDifferenceKey(row: Pick<DocAdminListing, 'ipoId' | 'tableName' | 'rowKey' | 'fieldName' | 'documentId'>): string {
+export function docDifferenceKey(row: Pick<DocAdminListing, 'ipoId' | 'tableName' | 'rowKey' | 'fieldName' | 'documentId' | 'outcome'>): string {
   return createHash('sha256')
-    .update(`OD-161|${row.ipoId}|${row.tableName}|${row.rowKey}|${row.fieldName}|${row.documentId}`)
+    .update(`OD-161|${row.ipoId}|${row.tableName}|${row.rowKey}|${row.fieldName}|${row.documentId}|${row.outcome}`)
     .digest('hex');
 }
 

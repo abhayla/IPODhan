@@ -52,6 +52,7 @@ import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
 import { isHiddenIpo } from '@ipodhan/shared/services/scraper-write-block';
 import { normalizeChosen, isPriorityLossReason } from './data-consolidation-service.js';
+import { outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
@@ -713,8 +714,12 @@ type WriteVerdict =
   | { happened: true; accepted: true }
   /** `refused`: #1379 -- the write door REFUSED this value (an OD-21 validation rule, or the #1229
    *  merged-record date rule), as opposed to keeping a better-ranked source's value. */
-  | { happened: true; accepted: false; reason: string; refused?: boolean }
+  | { happened: true; accepted: false; reason: string; refused?: boolean; refusalKind?: RefusalKind }
   | { happened: false; skipReason: string };
+
+/** OD-161 (round 3 fix): `VALIDATION` = the write door's field-check refusal (OD-21 rule / matrix bounds), the only
+ *  refusal the admin queue lists as FAILED_VALIDATION. Set from the outcome-code table, never from message text. */
+type RefusalKind = 'VALIDATION';
 
 /**
  * Evidence is ALL-OR-NOTHING (item 5's contract): `chosen` provided at all
@@ -1510,7 +1515,7 @@ async function attemptOneField(
         const cause = refusalCause('', candidate.rank, candidate.source, candidateVerdict.reason, token, false);
         refusals.push(cause);
         markAnswerRefused(answers, candidate.rank, candidate.source, cause);
-        if (candidate.answer.adminListing) await listRefusedDocValue(deps, candidate.answer.adminListing, candidateVerdict.reason);
+        if (candidate.answer.adminListing && candidateVerdict.refusalKind === 'VALIDATION') await listRefusedDocValue(deps, candidate.answer.adminListing, candidateVerdict.reason);
         logger.warn(
           { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source: candidate.source, rank: candidate.rank, reason: candidateVerdict.reason },
           'PASS 3: the write door REFUSED this value (OD-21) -- dropped, the next rank answer of this pass is tried'
@@ -1979,7 +1984,7 @@ async function tryProvisional(
         const cause = refusalCause('provisional-', rank, source, verdict.reason, token, false);
         refusalCtx.refusals.push(cause);
         markAnswerRefused(answers, rank, source, cause);
-        if (answer.adminListing) await listRefusedDocValue(deps, answer.adminListing, verdict.reason);
+        if (answer.adminListing && verdict.refusalKind === 'VALIDATION') await listRefusedDocValue(deps, answer.adminListing, verdict.reason);
         continue;
       }
       if (verdict.happened === false) {
@@ -2101,7 +2106,7 @@ function checkConsolidatorAgreed(
   camelFieldName: string,
   source: string,
   suppliedValue: unknown
-): { accepted: true } | { accepted: false; reason: string; refused?: boolean } {
+): { accepted: true } | { accepted: false; reason: string; refused?: boolean; refusalKind?: RefusalKind } {
   const result = fieldResults?.find((f) => f.fieldName === camelFieldName);
   if (!result) {
     return { accepted: false, reason: NO_FIELD_RESULT_REASON };
@@ -2127,7 +2132,9 @@ function checkConsolidatorAgreed(
     // A rejection recorded for another source is not this write's (falls through to the priority message).
     const rejection = result.rejectedSources?.find((r) => r.source === wantedSource);
     if (rejection && !isPriorityLossReason(rejection.reason)) {
-      return { accepted: false, reason: String(rejection.reason), refused: true };
+      const codeName = outcomeCodeNameOf(rejection.reason);
+      const validation = codeName === 'VALIDATION_RULE_FAILED' || codeName === 'VALIDATION_FAILED';
+      return { accepted: false, reason: String(rejection.reason), refused: true, ...(validation ? { refusalKind: 'VALIDATION' as const } : {}) };
     }
     return {
       accepted: false,
@@ -2200,12 +2207,12 @@ async function runWrite(
       // (e.g. a listing date before the stored open date). Say so, rather than
       // the generic "no field result returned" the missing field result implies.
       if (Array.isArray(r?.refusedDateFields) && r.refusedDateFields.includes(camelFieldName)) {
-        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}`, refused: true };
+        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}`, refused: true, refusalKind: 'VALIDATION' };
       }
       // #721: the orchestrator's spec §1.2 row 4 lot rule refused this value (never written, no
       // provenance). A refusal, recorded as such, the same as the #1229 date refusal above.
       if (Array.isArray(r?.refusedLotFields) && r.refusedLotFields.includes(camelFieldName)) {
-        return { happened: true, accepted: false, reason: `${LOT_REFUSED_REASON}: ${camelFieldName}`, refused: true };
+        return { happened: true, accepted: false, reason: `${LOT_REFUSED_REASON}: ${camelFieldName}`, refused: true, refusalKind: 'VALIDATION' };
       }
       if (Array.isArray(r?.refusedIdentifierFields) && r.refusedIdentifierFields.includes(camelFieldName)) {
         return { happened: true, accepted: false, reason: `${IDENTIFIER_REFUSED_REASON}: ${camelFieldName}`, refused: true };
