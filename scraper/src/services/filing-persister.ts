@@ -33,6 +33,9 @@ import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '
 import {
   columnMark,
   documentMark,
+  fieldsMark,
+  INTERMEDIARY_ROLE_FIELDS,
+  ACQUISITION_PERIOD_FIELDS,
   ocrValueLoses,
   textValuesAtOrAboveRank,
   type OcrMark,
@@ -1042,16 +1045,49 @@ export async function persistFilingExtraction(
   // says what the document prints, not what won the write. Written by the
   // caller as document_field_receipts in the COMPLETED transaction.
   const receiptFields: ReceiptField[] = [];
-  const receipt = (tableName: string, fieldName: string, v: unknown): ReceiptField => {
-    const m = columnMark(extraction, tableName, fieldName);
+  // OD-97 (§2.2.1): every receipt carries its mark, computed from the pages of the extractor
+  // fields the value came from (`sources` when the row decides them, else the column map); the
+  // document-wide mark covers a value no mapped field produced (F-241 round 2, #1515).
+  const receipt = (
+    tableName: string,
+    fieldName: string,
+    v: unknown,
+    rowKey = '',
+    sources?: readonly string[]
+  ): ReceiptField => {
+    const m =
+      (sources ? fieldsMark(extraction, sources) : columnMark(extraction, tableName, fieldName)) ??
+      documentMark(extraction);
     return {
       tableName,
-      rowKey: '',
+      rowKey,
       fieldName,
       value: normalizeReceiptValue(v),
       sourceText: m?.sourceText ?? null,
       ocrConfidence: m?.confidence ?? null,
     };
+  };
+  /**
+   * F-241 (OD-91, OD-164(a)): the record of one child row this document produced, keyed by that
+   * row's OWN identity - the same row_key its keyed provenance and consolidation use - so the
+   * record covers every table the persister writes, not only `ipos` and `ipo_details`. Taken
+   * before any protection / replace-allowed drop, like the `ipos` receipt. A null or undefined
+   * column is not a value the document produced and leaves no receipt. A keyed child table never
+   * gets a '' receipt: its IPO-level plan row is answered by the section's `rows` record (item 38).
+   */
+  const childReceipts = (
+    tableName: string,
+    rowKey: string | null,
+    row: Record<string, unknown>,
+    fields: readonly string[],
+    sources?: readonly string[]
+  ): void => {
+    if (rowKey === null || rowKey === '') return;
+    for (const f of fields) {
+      const value = row[f];
+      if (value === null || value === undefined) continue;
+      receiptFields.push(receipt(tableName, f, value, rowKey, sources));
+    }
   };
 
   /**
@@ -1965,18 +2001,26 @@ export async function persistFilingExtraction(
   if (docWebsite !== null) {
     if (!documentMayWriteField('ipos', 'companyWebsite', options.docType)) {
       skippedNoColumn.push(`company_website: OD-96, ${options.docType} is outside the field's document family`);
-    } else if (existing.companyWebsite) {
-      skippedNoColumn.push('company_website: write-once, the column already holds a website');
-    } else if (normalizeCompanyUrl(docWebsite) === null) {
-      skippedFailedCheck.push('company_website: E7 host refused (not a public https issuer host)');
-    } else if (apply) {
-      await recordDocumentSourceHints(
-        deps.ipoRepository,
-        ipoId,
-        { companyWebsite: docWebsite },
-        { companyWebsite: existing.companyWebsite ?? null }
-      );
-      iposFields.push('companyWebsite');
+    } else {
+      const website = normalizeCompanyUrl(docWebsite);
+      if (website === null) {
+        skippedFailedCheck.push('company_website: E7 host refused (not a public https issuer host)');
+      } else {
+        // F-241 (OD-91, OD-161): the record holds the in-family, E7-passing website in the shape the
+        // writer stores, whether or not the write-once rule below lets it be written.
+        receiptFields.push(receipt('ipos', 'companyWebsite', website.slice(0, 255)));
+        if (existing.companyWebsite) {
+          skippedNoColumn.push('company_website: write-once, the column already holds a website');
+        } else if (apply) {
+          await recordDocumentSourceHints(
+            deps.ipoRepository,
+            ipoId,
+            { companyWebsite: docWebsite },
+            { companyWebsite: existing.companyWebsite ?? null }
+          );
+          iposFields.push('companyWebsite');
+        }
+      }
     }
   }
 
@@ -2548,11 +2592,14 @@ export async function persistFilingExtraction(
       // would let this source claim provenance for a number an earlier filing
       // supplied.
       const carried: Record<string, string> = {};
+      // F-241: what THIS document printed for the row, in the row's unit, before protection.
+      const printed: Record<string, string> = {};
       const perShare = (
         m: Record<string, number>,
         col: string,
         kept: string | null
       ): string | null => {
+        if (m[fy] !== undefined) printed[col] = m[fy].toString();
         if (prior && statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
           return kept;
         }
@@ -2561,6 +2608,10 @@ export async function persistFilingExtraction(
         return carried[col];
       };
       const s = (m: Record<string, number>, col: keyof typeof prior): string | null => {
+        if (m[fy] !== undefined) {
+          printed[col as string] =
+            rowUnit === unitEnum ? m[fy].toString() : round2(convertUnit(m[fy], unitEnum, rowUnit)).toString();
+        }
         if (prior && statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
           return (prior[col] as string | null) ?? null;
         }
@@ -2600,6 +2651,12 @@ export async function persistFilingExtraction(
         dscr: perShare(dscrW, 'dscr', prior?.dscr ?? null),
         rentExpense: s(rentW, 'rentExpense'),
       };
+      childReceipts(
+        'financial_statements',
+        financialStatementsRowKey(fiscalYear, basis),
+        { fiscalYear, basis, unit: rowUnit, ...printed },
+        ['fiscalYear', 'basis', 'unit', ...STATEMENT_COLUMNS]
+      );
       if (apply) {
         // Flag OFF: byte-identical to the pre-s5b write — `statementRow` is the
         // same object literal this module always built, and nothing else runs.
@@ -2741,6 +2798,7 @@ export async function persistFilingExtraction(
   if (Object.keys(valuation).length > 0) {
     const pricingEvent: 'PRICE_BAND_AD' | 'PROSPECTUS' =
       options.docType === 'PRICE_BAND_AD' ? 'PRICE_BAND_AD' : 'PROSPECTUS';
+    childReceipts('ipo_valuation', ipoValuationRowKey(pricingEvent), valuation, Object.keys(valuation));
     const valuationWritable = await filterFields('ipo_valuation', valuation);
     if (Object.keys(valuationWritable).length === 0) {
       skippedProtected.push('ipo_valuation (every field protected)');
@@ -2896,6 +2954,10 @@ export async function persistFilingExtraction(
       wacaLastYear: null,
       isPromoterGroup: false,
     }));
+    // isPromoterGroup is this module's default and sharesHeld is never per-person: not printed.
+    rows.forEach((row, i) =>
+      childReceipts('promoters', namesWithKeys[i].key, row as unknown as Record<string, unknown>, ['name', 'waca'])
+    );
     if (await replaceAllowed('promoters', { name: null, sharesHeld: null, waca: null })) {
       if (apply) {
         // Item 1 slice s7a. Row key = `rowKeyForName(name)`, matching
@@ -2953,6 +3015,14 @@ export async function persistFilingExtraction(
       priceLow: null,
       priceHigh: null,
     });
+  }
+  for (const row of acquisitionRows) {
+    // Row identity = the period (unique on ipo_id, period).
+    childReceipts('promoter_acquisition_ranges', row.period, row as unknown as Record<string, unknown>, [
+      'period',
+      'waca',
+      'capMultiple',
+    ], ACQUISITION_PERIOD_FIELDS[row.period] ?? []);
   }
   if (acquisitionRows.length > 0) {
     if (
@@ -3046,6 +3116,15 @@ export async function persistFilingExtraction(
     }
   }
 
+  // Row key = headingHashForRiskFactor(heading), first-wins like the repository; seq is the
+  // repository's display order, not a printed value.
+  const riskKeysSeen = new Set<string>();
+  for (const row of riskRows) {
+    const key = headingHashForRiskFactor(row.heading);
+    if (key === null || riskKeysSeen.has(key)) continue;
+    riskKeysSeen.add(key);
+    childReceipts('ipo_risk_factors', key, row as unknown as Record<string, unknown>, ['heading', 'body', 'kpis']);
+  }
   if (riskRows.length > 0) {
     if (!deps.riskFactors) {
       skippedNoColumn.push(
@@ -3103,6 +3182,7 @@ export async function persistFilingExtraction(
   if (rhpFilingDate !== undefined && ownCoverDate && !ownDocumentId && options.docType !== 'RHP') {
     skippedNoColumn.push(`rhp_filing_date (${options.docType} cover date with no document id; not written)`);
   } else if (rhpFilingDate !== undefined) {
+    receiptFields.push(receipt('documents', 'filingDate', rhpFilingDate));
     const documentsWritable = await filterFields('documents', { filingDate: rhpFilingDate });
     if ('filingDate' in documentsWritable) {
       if (!deps.documentFilingDateWriter) {
@@ -3239,6 +3319,24 @@ export async function persistFilingExtraction(
       return true;
     });
 
+  // A BRLM / REGISTRAR row is built from the value the column HOLDS (item 39), which can be another
+  // source's; this document's record names it only when the document's own read IS that value
+  // (OD-91: "the fields it produced").
+  const registrarReadIsHeld =
+    docRegistrarName !== null && !!registrarName && docRegistrarName.trim() === String(registrarName).trim();
+  for (const { row, key } of intermediariesWithKeys) {
+    if (row.role === 'BRLM' && !docBrlmsHeld) continue;
+    if (row.role === 'REGISTRAR' && !registrarReadIsHeld) continue;
+    childReceipts('ipo_intermediaries', `${row.role}:${key as string}`, row as unknown as Record<string, unknown>, [
+      'name',
+      'role',
+      'sebiRegNo',
+      'contactPerson',
+      'phone',
+      'email',
+      'grievanceEmail',
+    ], INTERMEDIARY_ROLE_FIELDS[row.role as string] ?? []);
+  }
   if (intermediariesWithKeys.length > 0) {
     if (
       await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
@@ -3278,6 +3376,23 @@ export async function persistFilingExtraction(
     issues3y: null,
     closedBelowIssuePrice: null,
   });
+  if (asOfDate) {
+    for (const row of trackRows) {
+      if (!row?.brlm) continue;
+      const nameKey = rowKeyForName(row.brlm);
+      childReceipts(
+        'brlm_track_record',
+        nameKey === null ? null : `${nameKey}:${asOfDate}`,
+        {
+          brlmName: row.brlm,
+          asOfDate,
+          issues3y: typeof row.issues_3y === 'number' ? row.issues_3y : null,
+          closedBelowIssuePrice: typeof row.closed_below === 'number' ? row.closed_below : null,
+        },
+        ['brlmName', 'asOfDate', 'issues3y', 'closedBelowIssuePrice']
+      );
+    }
+  }
   if (asOfDate && brlmAllowed) {
     let n = 0;
     for (const row of trackRows) {
@@ -3378,6 +3493,18 @@ export async function persistFilingExtraction(
     const nameOnly = peerRows.every((row) =>
       PEER_VALUE_COLUMNS.every((col) => row[col] === null || row[col] === undefined)
     );
+    for (const row of peerRows) {
+      childReceipts('peer_companies', row.normalizedName, row as unknown as Record<string, unknown>, [
+        'companyName',
+        'isListed',
+        'peRatio',
+        'eps',
+        'dilutedEps',
+        'ronw',
+        'nav',
+        'pbvRatio',
+      ]);
+    }
     if (peerRows.length > 0) {
       if (
         await replaceAllowed('peer_companies', {
@@ -3548,6 +3675,8 @@ export async function persistFilingExtraction(
     // financial_data is the table the admin editor protects field-by-field
     // (ronw, eps, marketCap ...), so an admin correction must survive a filing.
     const { ipoId: _fdIpoId, ...fdFieldsOnly } = fd as Record<string, unknown>;
+    // F-241: financial_data is one row per IPO, so its record is keyed '' like ipos/ipo_details.
+    for (const [col, value] of Object.entries(fdFieldsOnly)) receiptFields.push(receipt('financial_data', col, value));
     const fdWritable = await filterFields('financial_data', fdFieldsOnly);
     if (Object.keys(fdWritable).length === 0) {
       skippedProtected.push('financial_data (every field protected)');
