@@ -43,7 +43,9 @@ import type { DocumentRepository } from '@ipodhan/shared';
 // provenance reads use — see its doc comment ("field_sources.field_name is
 // camelCase (listingDate, bseIpoNo), not the snake_case column name").
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
-import { bestPlanDocument, isFixedPriceIssue, type PlanDocumentRef } from './document-state-machine.js';
+import { getTableColumns } from 'drizzle-orm';
+import { ipos as iposTable, ipoDetails as ipoDetailsTable } from '@ipodhan/shared/db/schema';
+import { bestPlanDocument, decidePlanRowSupersession, isFixedPriceIssue, type PlanDocumentRef } from './document-state-machine.js';
 import { logger } from '../utils/logger.js';
 import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, familyForField, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
@@ -555,6 +557,157 @@ async function answerFromOwnRecord(deps: DocFetcherDeps, a: OwnRecordArgs): Prom
   return { outcome: 'SUPPLIED', value: decoded.value, ...evidence, adminListing: { ...listing, outcome: 'REPLACED' } };
 }
 
+/**
+ * F-240: a value of the column's own shape for an EMPTY column, so `decodeReceiptForColumn` can decode a
+ * receipt without a stored value to copy the shape from. Read from the schema (the one source of the
+ * column types). Null = a shape this path does not write (a timestamp -- drizzle needs a Date there and
+ * the receipt is a day string -- or an unknown column or table): the caller keeps the column empty
+ * (B4(c)). An enum column carries its allowed values, so a receipt outside them is refused before the write.
+ */
+export function emptyColumnExemplar(
+  tableName: string,
+  camelFieldName: string
+): { exemplar: unknown; enumValues?: readonly string[] } | null {
+  const table = tableName === 'ipos' ? iposTable : tableName === 'ipo_details' ? ipoDetailsTable : null;
+  if (!table) return null;
+  const column = (getTableColumns(table) as Record<string, { dataType?: string; enumValues?: readonly string[] }>)[camelFieldName];
+  if (!column) return null;
+  switch (column.dataType) {
+    case 'json':
+      return { exemplar: {} };
+    case 'array':
+      return { exemplar: [] };
+    case 'number':
+      return { exemplar: 0 };
+    case 'boolean':
+      return { exemplar: false };
+    case 'string':
+      return column.enumValues && column.enumValues.length > 0 ? { exemplar: '', enumValues: column.enumValues } : { exemplar: '' };
+    default:
+      return null;
+  }
+}
+
+type EmptyColumnArgs = {
+  ipoId: string;
+  tableName: string;
+  camelFieldName: string;
+  manifestDocType: string;
+  family: ReadonlyArray<string>;
+  docs: MinimalDocument[];
+};
+
+/**
+ * F-240 answer-state table (OD-161 "the DOC fetcher reads a document's answer from its own record, never
+ * from who owns the stored value"; OD-96; OD-97; #684): a DOC-readable column that is EMPTY and has NO
+ * `field_sources` row. Nobody owns it, so there is nothing to credit, keep or replace: the document's own
+ * record is the answer.
+ *
+ * | state                                                        | outcome                                                  |
+ * | column not empty, unreadable table, or no receipt reader     | null -> the caller's next path (unchanged)               |
+ * | no non-empty receipt for the field                           | null -> today's answer (CHECK_FAILED NO_DOCUMENT_PROVENANCE) |
+ * | receipts only from documents OUTSIDE the family (OD-96)      | CHECK_FAILED transient, ignored, never written           |
+ * | two family receipts with different values that the OD-91     | CHECK_FAILED transient AMBIGUOUS, nothing written        |
+ * |   comparator cannot order (e.g. two RHPs, a filing date null)|                                                          |
+ * | mark OCR, MIXED or any other text (OD-97, B4(c))             | CHECK_FAILED transient, column kept empty; KEPT listing  |
+ * |                                                              |   for the admin (OD-61)                                  |
+ * | value does not decode to the column's shape or enum          | CHECK_FAILED transient, nothing written (fail closed)    |
+ * | mark TEXT, or null (read before the mark existed, OD-97(b)   | SUPPLIED with the decoded value and the document's       |
+ * |   "unknown"; an empty column has no disagreement to decide)  |   evidence -> the walk's normal write, which records the |
+ * |                                                              |   field_sources row (#684); its checks may refuse it     |
+ */
+async function answerEmptyUnownedColumn(deps: DocFetcherDeps, a: EmptyColumnArgs): Promise<FieldFetcherAnswer | null> {
+  if (!deps.receiptReader || !DOC_READABLE_TABLES.includes(a.tableName)) return null;
+  const read = await readColumnValue(deps, a.ipoId, a.tableName, a.camelFieldName);
+  if (read.status !== 'ok' || (read.value !== null && read.value !== undefined && read.value !== '')) return null;
+
+  let receipts: Map<string, ReadonlyMap<string, string | null>>;
+  try {
+    receipts = await deps.receiptReader(a.ipoId);
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+  const key = `${a.tableName}||${a.camelFieldName}`;
+  const printed = new Map<string, ReadonlyMap<string, string | null>>();
+  for (const [docId, byKey] of receipts) {
+    const v = byKey.get(key);
+    if (v !== null && v !== undefined && v !== '') printed.set(docId, new Map([[key, v]]));
+  }
+  if (printed.size === 0) return null;
+  const fixedPrice = await isFixedPriceFor(deps, a.ipoId);
+  const best = bestReceiptedDocument(a.docs, a.family, printed, key, fixedPrice);
+  if (!best) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `document receipt for ${a.camelFieldName} only from a document outside the ${a.manifestDocType} family (OD-96) — not written`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  const value = printed.get(best.id)!.get(key)!;
+
+  // B4(c): another family document whose receipt differs and that the comparator cannot rank below the
+  // chosen one -- the order between them is unknown, so no value is written.
+  const asRef = (d: MinimalDocument): PlanDocumentRef => ({
+    id: d.id,
+    docType: d.type,
+    filingDate:
+      d.filingDate == null ? null : d.filingDate instanceof Date ? d.filingDate.toISOString().slice(0, 10) : String(d.filingDate).slice(0, 10),
+  });
+  for (const d of a.docs) {
+    if (d.id === best.id || !a.family.includes(d.type) || d.extractionStatus !== 'COMPLETED' || d.isActive === false) continue;
+    const other = printed.get(d.id)?.get(key);
+    if (other === undefined || other === value) continue;
+    if (!decidePlanRowSupersession(asRef(d), asRef(best), { family: a.family, fixedPrice }).supersede) {
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `AMBIGUOUS: ${best.type} ${best.id} and ${d.type} ${d.id} print different values for ${a.camelFieldName} and cannot be ordered — not written`,
+        transient: true,
+        gap: 'NO_DOCUMENT_PROVENANCE',
+      };
+    }
+  }
+
+  let mark: string | null = null;
+  try {
+    mark = deps.receiptMarkReader ? await deps.receiptMarkReader(best.id, a.tableName, '', a.camelFieldName) : null;
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+  if (mark !== null && mark !== 'TEXT') {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `the ${best.type} value of empty ${a.camelFieldName} is not from a text page (mark ${mark}, OD-97) — kept empty, listed for the admin`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+      adminListing: {
+        ipoId: a.ipoId,
+        tableName: a.tableName,
+        rowKey: '',
+        fieldName: a.camelFieldName,
+        documentId: best.id,
+        documentType: best.type,
+        storedSource: null,
+        storedValue: null,
+        documentValue: value,
+        mark,
+        outcome: 'KEPT',
+      },
+    };
+  }
+  const shape = emptyColumnExemplar(a.tableName, a.camelFieldName);
+  const decoded = shape ? decodeReceiptForColumn(value, shape.exemplar) : null;
+  if (!shape || !decoded || (shape.enumValues && !shape.enumValues.includes(String(decoded.value)))) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `the ${best.type} value of empty ${a.camelFieldName} does not decode to the column shape — not written (fail closed)`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  return { outcome: 'SUPPLIED', value: decoded.value, documentId: best.id, documentType: best.type, sha256: best.sha256 ?? undefined };
+}
+
 export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
   return async function docFetcher(
     ipoId: string,
@@ -668,6 +821,11 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
     // family than the manifest wants, so DOC has no fresher document family
     // to check -- but that is STILL not a settled "not printed", because the
     // wanted family may simply not be extracted yet.
+    if (!provenance) {
+      // F-240 (OD-161): an empty column nobody owns -- the document's own record is the answer.
+      const fromRecord = await answerEmptyUnownedColumn(deps, { ipoId, tableName, camelFieldName, manifestDocType, family, docs });
+      if (fromRecord) return fromRecord;
+    }
     if (!provenance || provenance.source !== 'DRHP') {
       // Item 41 (OD-161): a website (or nobody) owns the stored value -- the document's answer is read
       // from its OWN record (`document_field_receipts`), never from who owns the column.

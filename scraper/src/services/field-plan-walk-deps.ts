@@ -570,7 +570,9 @@ export function makeDocDifferenceListing(): (row: DocAdminListing) => Promise<vo
         tableName: row.tableName,
         rowKey: row.rowKey,
         fieldName: row.fieldName,
-        source1: row.storedSource as never,
+        // NOT NULL in the conflicts table: with no provenance row (F-240) 'DRHP' stands in, as the
+        // corrigendum suggestions do; evidence.storedSource says null and value1 is null.
+        source1: (row.storedSource ?? 'DRHP') as never,
         value1: row.storedValue,
         source2: 'DRHP',
         value2: row.documentValue,
