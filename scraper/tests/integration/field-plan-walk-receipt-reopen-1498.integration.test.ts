@@ -1,4 +1,4 @@
-// implements: R-282
+// implements: R-285
 // #1498 -- spec data-sourcing-pull-model.md OD-171 (a newer document record re-opens a non-settled
 // DOC-ranked plan row once), OD-161 (the DOC answer is judged by the document's own record), §2.5.1 trigger 8.
 // REAL claim SQL + REAL walk + REAL DOC fetcher (receipts read by the production loader) on ipodhan_test.

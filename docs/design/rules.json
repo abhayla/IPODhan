@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-03T04:23:47.380Z",
+  "generated_at": "2026-10-03T08:34:30.626Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 221,
-    "retired": 63
+    "retired": 64
   },
-  "next_id": 285,
+  "next_id": 286,
   "rules": [
     {
       "id": "R-151",
@@ -882,11 +882,11 @@
       "retired": false
     },
     {
-      "id": "R-282",
-      "hash": "42a83b17b00a",
+      "id": "R-285",
+      "hash": "afc723985c8f",
       "section": "2.5.1 Every trigger that re-asks a field, in one place",
       "kind": "table-normative",
-      "text": "8 — A re-read of the document the DOC rank reads (OD-171) — the walk asked nityas-gems-and-jewellery-ltd's price band before the price band advert's re-read; the re-read (documents.extracted_at after the last attempt) holds a record of 70, so the row (16 attempts, past the cap) is asked once more and the document credited — Only a non-settled row (PENDING, NOT_AVAILABLE_YET, CHECK_FAILED); a SUPPLIED value is never reopened by a record",
+      "text": "8 — A re-read of the document the DOC rank reads, or a change to the DOC fetcher's answer logic (OD-171) — the walk asked nityas-gems-and-jewellery-ltd's price band before the price band advert's re-read; the re-read (documents.extracted_at after the last attempt) holds a record of 70, so the row (16 attempts, past the cap) is asked once more and the document credited — Only a non-settled row (PENDING, NOT_AVAILABLE_YET, CHECK_FAILED); a SUPPLIED value is never reopened by a record",
       "first_seen": "2026-10-03",
       "retired": false
     },
@@ -1996,6 +1996,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-282",
+      "hash": "42a83b17b00a",
+      "section": "2.5.1 Every trigger that re-asks a field, in one place",
+      "kind": "table-normative",
+      "text": "8 — A re-read of the document the DOC rank reads (OD-171) — the walk asked nityas-gems-and-jewellery-ltd's price band before the price band advert's re-read; the re-read (documents.extracted_at after the last attempt) holds a record of 70, so the row (16 attempts, past the cap) is asked once more and the document credited — Only a non-settled row (PENDING, NOT_AVAILABLE_YET, CHECK_FAILED); a SUPPLIED value is never reopened by a record",
+      "first_seen": "2026-10-03",
+      "retired": true
     },
     {
       "id": "R-283",

@@ -1,4 +1,4 @@
-// implements: R-281
+// implements: R-285
 // #1498 follow-up -- spec data-sourcing-pull-model.md OD-171 (amended: a change to the DOC fetcher's answer
 // logic, DOC_FETCHER_LOGIC_SINCE, counts like a re-read), §2.5.1 trigger 8, F-240.
 // REAL claim SQL + REAL walk + REAL DOC fetcher (receipts and versions read by the production queries) on ipodhan_test.

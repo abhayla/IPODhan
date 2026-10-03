@@ -111,3 +111,45 @@ export function versionAtLeast(recorded: string | null | undefined, floor: strin
   }
   return recorded.slice(EXTRACTOR_VERSION_PREFIX.length) >= floor.slice(EXTRACTOR_VERSION_PREFIX.length);
 }
+
+/**
+ * #1498 follow-up (OD-171 amended, SPEC CHANGE under owner delegation, reversible): the moment the DOC
+ * fetcher's CURRENT answer logic is considered live. A change to how the DOC fetcher answers from a
+ * document's record counts like a re-read of that document: a DOC-ranked plan row last attempted BEFORE
+ * this moment, whose document (of the type the DOC rank reads) holds a non-empty record read at or above
+ * its type's re-read floor, is offered once more by the claim query's receipt re-open leg. The attempt
+ * stamps last_attempt_at past this moment, so the row is offered at most once per value (no loop, no timer).
+ *
+ * Set to 2026-10-03T08:00:00Z (13:30 IST), the staging window that first served #1504 (F-240: an empty
+ * unowned column answered from the document's own record). Rows the older fetcher answered CHECK_FAILED
+ * from a record it could not use were never asked again, because #1501's leg fires only on a re-read
+ * after the last attempt (staging: nityas-gems-and-jewellery-ltd ipos.objectives).
+ *
+ * A future change to the DOC fetcher's answer logic bumps this value in the same change (an ISO UTC
+ * instant at or after the change reaches the environment); leaving it unchanged re-asks nothing.
+ */
+export const DOC_FETCHER_LOGIC_SINCE = '2026-10-03T08:00:00Z';
+
+/** The claim query's fetcher-change input: the marker and, per document type, the re-read floor a record must be read at. */
+export interface DocFetcherChangeReask {
+  since: Date;
+  /** Upper-case document type -> the oldest extractor version whose record counts as current. A type absent here re-asks nothing (fail closed). */
+  currentVersionFloors: Record<string, string>;
+}
+
+/**
+ * Builds the fetcher-change input for every document type the DOC rank reads (`receiptDocTypes`
+ * values). Pure: the floors are `rereadSinceFor`, the floor F-240's fetcher judges a record "current" by.
+ */
+export function buildDocFetcherChangeReask(
+  receiptDocTypes: Record<string, readonly string[]>,
+  since: string = DOC_FETCHER_LOGIC_SINCE
+): DocFetcherChangeReask {
+  const at = new Date(since);
+  if (Number.isNaN(at.getTime())) throw new Error(`DOC_FETCHER_LOGIC_SINCE is not an ISO instant: ${since}`);
+  const currentVersionFloors: Record<string, string> = {};
+  for (const types of Object.values(receiptDocTypes)) {
+    for (const t of types) currentVersionFloors[t.toUpperCase()] = rereadSinceFor(t);
+  }
+  return { since: at, currentVersionFloors };
+}
