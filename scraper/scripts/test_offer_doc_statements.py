@@ -175,3 +175,130 @@ def test_extract_rhp_path_calls_the_offer_doc_readers():
     src = open(os.path.join(HERE, "extract_filing.py"), encoding="utf-8").read()
     body = src[src.index("def extract_rhp("):src.index("def _stop_reason_for(")]
     assert "_read_offer_doc_statements(" in body
+
+
+# ---------------------------------------------------------------- step-3a review fixes (A1-A5)
+# Every edit below is a MINIMAL EDIT of real page text for a shape no fixture document prints;
+# each says which line it changes.
+ORIENT_FY = [2025, 2024, 2023]
+
+
+def _edit(name, page, old, new):
+    out = []
+    for i, t in pages(name):
+        if i == page:
+            assert old in t, old
+            t = t.replace(old, new, 1)
+        out.append((i, t))
+    return out
+
+
+def test_a1_dash_on_a_total_borrowings_subheading_is_never_zero():
+    # Minimal edit: Orient p334's bare "Total Borrowings" sub-heading printed with a dash. The
+    # totals row below it (1,134.50) is the value; the heading's dash is not a nil total.
+    p = _edit("orient-cables-drhp-capitalisation", 334, "Total Borrowings\n", "Total Borrowings –\n")
+    got = O.read_capitalisation(p, ORIENT_FY, "millions")
+    assert got["total_borrowing"] == (1134.5, 334, None)
+    assert got["debt_to_equity"] == (0.63, 334, None)
+
+
+def test_a1_dash_heading_without_a_two_cell_totals_row_is_null():
+    p = _edit("orient-cables-drhp-capitalisation", 334, "Total Borrowings\n", "Total Borrowings –\n")
+    p = [(i, t.replace("Total Borrowings (B) 1,134.50 [●]", "Total (B) 1,134.50 [●]")) for i, t in p]
+    got = O.read_capitalisation(p, ORIENT_FY, "millions")
+    assert got["total_borrowing"][0] is None and got["debt_to_equity"][0] is None
+    assert got["total_borrowing"][2] == "total_borrowings_row_cells_do_not_fill_the_columns"
+
+
+def test_a1_nil_total_against_a_printed_component_is_refused():
+    # Minimal edit: NSE p393's current borrowings printed as 1,250.00 under a "-" total.
+    p = _edit("nse-drhp-pages", 393, "Current Borrowings (B) -", "Current Borrowings (B) 1,250.00")
+    got = O.read_capitalisation(p, NSE_FY, "millions")
+    assert got["total_borrowing"] == (None, 393, "total_borrowings_nil_with_non_nil_components")
+
+
+def test_a2_split_digit_join_only_for_the_exact_grouped_shape():
+    toks = "12 5 6.70".split()
+    assert O._map_cells([O._cell_value(t) for t in toks], [2025, 2024], toks) == {2025: 5.0, 2024: 6.7}
+    # Leading note numbers explain the surplus: "1 50,000.00" is never joined into 150,000.00.
+    toks = "12 1 50,000.00 40,000.00".split()
+    assert O._map_cells([O._cell_value(t) for t in toks], [2025, 2024], toks) == {2025: 50000.0, 2024: 40000.0}
+    toks = "3 5 120.5 110.2".split()
+    assert O._map_cells([O._cell_value(t) for t in toks], [2025, 2024], toks) == {2025: 120.5, 2024: 110.2}
+    # NSE RHP p326's real split cell is still joined (international grouping).
+    toks = "30,078.89 70,402.83 238,361.75 40,914.87 2 97,442.79".split()
+    got = O._map_cells([O._cell_value(t) for t in toks], [None, None, 2026, 2025, 2024], toks)
+    assert got == {2026: 238361.75, 2025: 40914.87, 2024: 297442.79}
+    # A tail that is not comma-grouped is never joined ("2 9742.79" is two cells, not 29,742.79).
+    toks = "30,078.89 70,402.83 238,361.75 40,914.87 2 9742.79".split()
+    assert O._map_cells([O._cell_value(t) for t in toks], [None, None, 2026, 2025, 2024], toks) is None
+
+
+def test_a3_rent_row_under_another_note_heading_is_not_read():
+    # Minimal edit: a "29 Leases" note heading inserted above NSE p324's rental charges row.
+    p = _edit("nse-drhp-pages", 324, "Rental charges 5", "29 Leases\nRental charges 5")
+    got = O.read_rent_expense(p, NSE_FY, 78, "millions")
+    assert got[0] is None and got[2] == "rent_expense_row_not_inside_its_note"
+
+
+def _bajaj_rows_without_pct():
+    return [(i, re.sub(r"(March 31, 20\d\d \d+\.\d)%", r"\1", t)) for i, t in pages("bajaj-housing-drhp-ronw")]
+
+
+def test_a4_ronw_rows_with_no_percent_anywhere_are_not_read():
+    # Minimal edit: Bajaj p107's rows AND its "RoNW (%)" column header printed without "%".
+    p = [(i, t.replace("RoNW (%)", "RoNW")) for i, t in _bajaj_rows_without_pct()]
+    assert O.read_ronw_block(p)["ronw_by_fy"][0] is None
+
+
+def test_a4_a_percent_column_header_covers_bare_rows():
+    # Studds p146 / Hyundai p123 print "RoNW (%)" in the header and bare numbers in the rows.
+    got = O.read_ronw_block(_bajaj_rows_without_pct())
+    assert got["ronw_by_fy"][0] == {"2024": 15.2, "2023": 14.6, "2022": 11.1}
+
+
+def test_a5_unit_is_the_line_heading_the_table_not_prose():
+    # Minimal edit: Orient p334 states its table "(in lakhs)" while an intro sentence says million.
+    p = _edit("orient-cables-drhp-capitalisation", 334, "(in   million)", "(in   lakhs)")
+    p = [(i, "Amounts in this chapter are in million unless stated otherwise in the table heading below.\n" + t)
+         for i, t in p]
+    got = O.read_capitalisation(p, ORIENT_FY, "millions")
+    assert got["total_borrowing"][0] == pytest.approx(113.45)
+
+
+def test_a5_unit_line_of_an_earlier_table_on_the_page_is_not_this_tables():
+    # Minimal edit: Orient p334's table states "(in lakhs)"; an earlier table's own unit line
+    # "(in million)" is printed at the top of the page.
+    p = _edit("orient-cables-drhp-capitalisation", 334, "(in   million)", "(in   lakhs)")
+    p = [(i, "(in million)\nRevenue from operations 1,000.00\n" + t) for i, t in p]
+    got = O.read_capitalisation(p, ORIENT_FY, "millions")
+    assert got["total_borrowing"][0] == pytest.approx(113.45)
+
+
+def test_a5_debt_to_equity_is_null_whenever_total_borrowing_is_null():
+    emit = EF.Emitter("DRHP-d88fad44.pdf")
+    EF._read_offer_doc_statements(pages("nse-drhp-pages"), emit, NSE_FY, 78, None)
+    assert emit.fields["total_borrowing"]["value"] is None
+    assert emit.fields["debt_to_equity"]["value"] is None
+
+
+def test_a5_d13_consolidated_capitalisation_statement_wins():
+    # Minimal edit: a standalone copy of p393 (page 394) printing 1,250.00 borrowings.
+    base = pages("nse-drhp-pages")
+    p393 = dict(base)[393]
+    standalone = (p393.replace("Restated Consolidated", "Restated Standalone")
+                  .replace("Total Borrowings (C) = (A)+(B) -", "Total Borrowings (C) = (A)+(B) 1,250.00"))
+    got = O.read_capitalisation(base + [(394, standalone)], NSE_FY, "millions")
+    assert got["total_borrowing"] == (0.0, 393, None)
+
+
+def test_a5_d13_consolidated_ronw_block_wins_over_a_disagreeing_standalone_one():
+    # Minimal edits: NSE p119's heading labelled "(Consolidated)", plus a standalone block (p120)
+    # with its own rows: (30*3 + 40*2 + 35*1) / 6 = 34.17.
+    p = _edit("nse-drhp-pages", 119, "4. Return on Net Worth (“RoNW”)", "4. Return on Net Worth (“RoNW”) (Consolidated)")
+    p.append((120, "5. Return on Net Worth (“RoNW”) (Standalone)\nFinancial Year ended RoNW % Weight\n"
+                   "March 31, 2026 30.00% 3\nMarch 31, 2025 40.00% 2\nMarch 31, 2024 35.00% 1\n"
+                   "Weighted Average 34.17% -"))
+    got = O.read_ronw_block(p)
+    assert got["ronw_by_fy"] == ({"2026": 33.21, "2025": 45.14, "2024": 37.6}, 119, None)
+    assert got["weighted_average_ronw"][0] == 37.92

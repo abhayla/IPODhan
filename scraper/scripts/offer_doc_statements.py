@@ -34,13 +34,29 @@ _UNIT_RX = re.compile(
 _UNIT_RUPEES = {"lakhs": 1e5, "millions": 1e6, "crores": 1e7}
 
 
-def page_unit(text):
-    """The unit THIS page states ("(in million, unless otherwise stated)"), or None."""
-    m = _UNIT_RX.search(re.sub(r"[`₹’]", " ", text or ""))
-    if not m:
+def _unit_of(line):
+    """The unit a UNIT LINE states ("(in million, unless otherwise stated)", "(Amount in Rs.
+    lakhs)"), or None. A prose sentence that happens to say "in millions" is not a unit line: the
+    line must open with "(" or be short enough to be a caption, never a wrapped paragraph."""
+    s = re.sub(r"[`₹’]", " ", line or "").strip()
+    m = _UNIT_RX.search(s)
+    if not m or not (s.startswith("(") or len(s) <= 60):
         return None
     u = m.group(1).lower()
     return "lakhs" if u.startswith("la") else "crores" if u.startswith("cr") else "millions"
+
+
+def page_unit(text, row=None):
+    """The unit stated by the unit line that HEADS the table holding line `row`: the nearest unit
+    line above it (step-3a review A5: never the first prose mention anywhere on the page). With
+    no `row`, the page's first unit line. None when no unit line qualifies."""
+    lines = (text or "").split("\n")
+    order = range(min(row, len(lines)) - 1, -1, -1) if row is not None else range(len(lines))
+    for k in order:
+        u = _unit_of(lines[k])
+        if u:
+            return u
+    return None
 
 
 def _convert(value, from_unit, to_unit):
@@ -71,11 +87,14 @@ def _cell_value(tok):
     return None
 
 
+def _row_tokens(tail):
+    return _normalize_numbers(_PAREN_NOTE.sub(" ", tail)).split()
+
+
 def _row_cells(tail):
     """The cells of a row's tail after its label, or None when the tail holds anything that is
     not a cell (a word, a sentence): such a line is prose, not a table row."""
-    tail = _normalize_numbers(_PAREN_NOTE.sub(" ", tail))
-    toks = tail.split()
+    toks = _row_tokens(tail)
     cells = [_cell_value(t) for t in toks]
     if not toks or any(c is None for c in cells):
         return None
@@ -133,30 +152,45 @@ def header_columns(lines, row_index, reach=60):
     return None
 
 
-def _rejoin_split_cells(cells, ncols):
-    """pdfplumber splits the first digit off a single cell ("2 97,442.79" for 297,442.79, NSE RHP
-    p326) where _normalize_numbers' two-split rule cannot fire. A lone one-digit cell that is NOT
-    the row's first cell (a note number only ever leads) is joined to the decimal cell after it -
-    only while the row has more cells than the header has columns, never to make a row fit."""
+_SPLIT_HEAD_TOK = re.compile(r"^\d{1,3}$")
+_SPLIT_TAIL_TOK = re.compile(r"^\d{1,3}(?:,\d{2,3})+\.\d+$")
+_GROUPED_NUMBER = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})\.\d+$")
+_NOTE_TOK = re.compile(r"^\d{1,2}$")
+
+
+def _rejoin_split_cells(cells, ncols, toks=None):
+    """pdfplumber splits the first digits off a single cell ("2 97,442.79" for 297,442.79, NSE RHP
+    p326) where _normalize_numbers' two-split rule cannot fire. Step-3a review A2: only that exact
+    shape is joined - a 1-3 digit token followed by a comma-grouped decimal token whose joined text
+    is itself a validly grouped number (international 297,442.79 or Indian 2,97,442.79) - and only
+    while the row has more cells than the header has columns. Never the row's first cell, and never
+    when the surplus is explained by leading note numbers ("Rent 12 5 6.70": note 12, not 56.70)."""
     out = list(cells)
+    if toks is None or len(toks) != len(cells) or len(out) <= ncols:
+        return out
+    toks = list(toks)
+    lead = 0
+    while lead < min(2, len(toks)) and _NOTE_TOK.match(toks[lead]):
+        lead += 1
+    if lead and len(out) - lead <= ncols:
+        return out
     i = 1
     while len(out) > ncols and i < len(out) - 1:
-        kind, v = out[i]
-        nk, nv = out[i + 1]
-        if kind == "num" and v == int(v) and 0 <= v <= 9 and nk == "num" and nv != int(nv):
-            digits = len(str(int(abs(nv))))
-            joined = int(v) * 10 ** digits + abs(nv)
-            out[i:i + 2] = [("num", -joined if nv < 0 else joined)]
+        a, b = toks[i], toks[i + 1]
+        if _SPLIT_HEAD_TOK.match(a) and _SPLIT_TAIL_TOK.match(b) and _GROUPED_NUMBER.match(a + b):
+            joined = float((a + b).replace(",", ""))
+            out[i:i + 2] = [("num", joined)]
+            toks[i:i + 2] = [a + b]
             continue
         i += 1
     return out
 
 
-def _map_cells(cells, column_fy):
+def _map_cells(cells, column_fy, toks=None):
     """{fy: value} for the annual columns, or None when the cell count does not match the header
     (up to two leading note-number cells allowed). A "-" cell is a column that holds nothing for
     that year: it keeps the alignment and contributes no value."""
-    cells = _rejoin_split_cells(cells, len(column_fy))
+    cells = _rejoin_split_cells(cells, len(column_fy), toks)
     extra = len(cells) - len(column_fy)
     if extra < 0 or extra > 2:
         return None
@@ -182,6 +216,40 @@ RENT_LABEL = re.compile(
     r"|rent\s+expenses?|rent)\b(?!\s*(?:income|received|receivable|concession|deposit|,|and\b|&|including))",
     re.I)
 RENT_PAGE = re.compile(r"\bother\s+expenses\b", re.I)
+# Step-3a review A3: the rent row must sit INSIDE the "Other expenses" note (the P&L-linked note),
+# not merely on a page that mentions other expenses (a lease or related-party table below it).
+_OTHER_EXP_HEAD = re.compile(
+    r"^\s*(?:note\s*)?(?:\d{1,3}(?:\.\d{1,2})?[.):]?\s*)?(?:\(?[a-z]\)\s*)?other\s+expenses?\b", re.I)
+_NOTE_HEAD = re.compile(r"^\s*(?:note\s*)?\d{1,3}(?:\.\d{1,2})?[.):]?\s+\(?[A-Za-z]")
+_NOTE_NUM = re.compile(r"^\s*(?:note\s*)?\d{1,3}(?:\.\d{1,2})?[.):]?\s+")
+_HEAD_WORDS = re.compile(r"^[A-Za-z(][A-Za-z ,&()/'’\-.]*$")
+
+
+def _is_note_heading(line):
+    """A numbered note's title line ("28 Other expenses For the year ended", "35. Related party
+    transactions"): a note number, then words only - no amount cell, so never a table row."""
+    if not _NOTE_HEAD.match(line) or _trailing_cells(line):
+        return False
+    title = _NOTE_NUM.sub("", line, count=1).strip()
+    return bool(_HEAD_WORDS.match(title)) and len(title.split()) <= 14
+
+
+def _in_other_expenses_note(by_page, idx, lines, j):
+    """True when the nearest note heading above line j (this page, then the previous page) is the
+    "Other expenses" note's own heading; any other note heading in between is a different table."""
+    def scan(ls, start):
+        for k in range(start, -1, -1):
+            ln = ls[k]
+            if _OTHER_EXP_HEAD.match(ln) and not _trailing_cells(ln):
+                return True
+            if _is_note_heading(ln):
+                return False
+        return None
+    got = scan(lines, j - 1)
+    if got is None and (idx - 1) in by_page:
+        prev = (by_page[idx - 1] or "").split("\n")
+        got = scan(prev, len(prev) - 1)
+    return bool(got)
 
 
 def _heading_lines(text, n=10):
@@ -189,7 +257,7 @@ def _heading_lines(text, n=10):
 
 
 def read_statement_row(page_texts, label_rx, page_rx, what, fiscal_years, pnl_page, doc_unit,
-                       heading_only=True):
+                       heading_only=True, in_section=None):
     """(series {str(fy): value in doc_unit}, page, reason). See the module docstring."""
     if not fiscal_years:
         return None, None, "fiscal_years_unknown"
@@ -198,7 +266,7 @@ def read_statement_row(page_texts, label_rx, page_rx, what, fiscal_years, pnl_pa
     by_page = dict(page_texts)
     pnl_text = by_page.get(pnl_page) if pnl_page is not None else None
     want = issuer_balance_rows._basis(pnl_text) if pnl_text is not None else None
-    found, unmapped, unitless, other_basis = [], None, None, None
+    found, unmapped, unitless, other_basis, outside = [], None, None, None, None
     for idx, text in page_texts:
         text = text or ""
         if not page_rx.search(_heading_lines(text) if heading_only else text):
@@ -211,12 +279,15 @@ def read_statement_row(page_texts, label_rx, page_rx, what, fiscal_years, pnl_pa
             cells = _row_cells(ln[m.end():])
             if not cells or not any(k == "num" for k, _v in cells):
                 continue
+            if in_section is not None and not in_section(by_page, idx, lines, j):
+                outside = idx if outside is None else outside
+                continue
             cols = header_columns(lines, j)
-            series = _map_cells(cells, cols) if cols else None
+            series = _map_cells(cells, cols, _row_tokens(ln[m.end():])) if cols else None
             if not series:
                 unmapped = idx if unmapped is None else unmapped
                 continue
-            unit = page_unit(text)
+            unit = page_unit(text, j)
             if unit is None:
                 unitless = idx if unitless is None else unitless
                 continue
@@ -241,6 +312,8 @@ def read_statement_row(page_texts, label_rx, page_rx, what, fiscal_years, pnl_pa
             return None, unitless, "%s_page_unit_not_stated" % what
         if unmapped is not None:
             return None, unmapped, "%s_row_columns_do_not_match_the_header" % what
+        if outside is not None:
+            return None, outside, "%s_row_not_inside_its_note" % what
         return None, None, "%s_row_not_in_document" % what
     for n, (_p, s) in enumerate(found[1:], start=1):
         for y in s:
@@ -263,7 +336,8 @@ def read_op_cash_flow(page_texts, fiscal_years, pnl_page, doc_unit):
 
 def read_rent_expense(page_texts, fiscal_years, pnl_page, doc_unit):
     return read_statement_row(page_texts, RENT_LABEL, RENT_PAGE, "rent_expense", fiscal_years,
-                              pnl_page, doc_unit, heading_only=False)
+                              pnl_page, doc_unit, heading_only=False,
+                              in_section=_in_other_expenses_note)
 
 
 # ---------------------------------------------------------------------------- RoNW block
@@ -275,7 +349,7 @@ _RONW_PERIOD = re.compile(
     r"|(?P<d2>\d{1,2})(?:st|nd|rd|th)?\s+(?P<dm>%s),?\s*(?P<y2>20\d{2})"
     r"|(?P<y3>20\d{2})\s*[-–]\s*(?P<e3>\d{2})(?!\d)"
     r"|(?P<y4>20\d{2})(?![\d,]))\s*"
-    r"(?P<val>\(?-?\d+(?:\.\d+)?\)?)\s*%%?\s*(?:\(?[a-z*#^]\)?\s*)?(?P<w>\d{1,2})?\s*[*#^]*\s*$"
+    r"(?P<val>\(?-?\d+(?:\.\d+)?\)?)\s*(?P<pct>%%)?\s*(?:\(?[a-z*#^]\)?\s*)?(?P<w>\d{1,2})?\s*[*#^]*\s*$"
     % (_MONTH_RX, _MONTH_RX), re.I)
 _WEIGHTED = re.compile(r"^\s*weighted\s+average\b", re.I)
 _PCT_TOKEN = re.compile(r"\(?-?\d+\.\d+\)?%?|\(?-?\d+\)?%")
@@ -291,8 +365,14 @@ def _pct(tok):
 def _parse_ronw_block(lines, start):
     """(rows {fy: pct}, weights {fy: w}, weighted, stop_index) from the lines after a heading."""
     rows, weights, weighted = {}, {}, None
+    # Step-3a review A4: a period row is a RoNW percentage only when "%" is printed - on the row
+    # itself, or on the block's own column header (the heading or a line before the first row,
+    # "RoNW (%)"). A bare number under no percent sign is some other column.
+    header_pct = "%" in lines[start]
     for j in range(start + 1, min(len(lines), start + 14)):
         ln = lines[j]
+        if not rows and "%" in ln and not _RONW_PERIOD.match(ln) and not _WEIGHTED.match(ln):
+            header_pct = True
         if _WEIGHTED.match(ln):
             tail = _WEIGHTED.sub("", ln)
             m = _PCT_TOKEN.search(tail)
@@ -301,6 +381,8 @@ def _parse_ronw_block(lines, start):
             return rows, weights, (weighted, decimals), j
         m = _RONW_PERIOD.match(ln)
         if not m:
+            continue
+        if not m.group("pct") and not header_pct:
             continue
         if m.group("md") or m.group("dm"):
             mon = (m.group("md") or m.group("dm")).lower()
@@ -338,16 +420,30 @@ def read_ronw_block(page_texts):
             # A block is the rows ABOVE its own "Weighted Average" line; period rows a stray
             # heading mention happens to precede (a later table's dates) are never a RoNW block.
             if rows and stop is not None:
-                blocks.append((idx, rows, weights, weighted, decimals))
+                basis = issuer_balance_rows._basis("\n".join(lines[max(0, i - 1):stop + 1]))
+                blocks.append((idx, rows, weights, weighted, decimals, basis))
     if not blocks:
         why = "ronw_year_table_not_in_document"
         return {"ronw_by_fy": (None, None, why), "weighted_average_ronw": (None, None, why)}
-    page, rows, weights, weighted, weighted_decimals = blocks[0]
-    for _p, r, _w, wa, _d in blocks[1:]:
-        if any(abs(r[y] - rows[y]) > 0.005 for y in r if y in rows) or (
-                wa is not None and weighted is not None and abs(wa - weighted) > 0.005):
+
+    def disagree(bs):
+        _p0, r0, _w0, wa0, _d0, _b0 = bs[0]
+        return any(any(abs(r[y] - r0[y]) > 0.005 for y in r if y in r0) or (
+            wa is not None and wa0 is not None and abs(wa - wa0) > 0.005)
+            for _p, r, _w, wa, _d, _b in bs[1:])
+
+    # Step-3a review A5 / D13: a document printing a consolidated and a standalone block reads the
+    # consolidated one; blocks that disagree with no consolidated label to decide are refused.
+    cons = [b for b in blocks if b[5] == "consolidated"]
+    if disagree(blocks):
+        if not cons or disagree(cons):
+            page = blocks[0][0]
             why = "ronw_blocks_disagree"
             return {"ronw_by_fy": (None, page, why), "weighted_average_ronw": (None, page, why)}
+        blocks = cons
+    elif cons:
+        blocks = cons + [b for b in blocks if b[5] != "consolidated"]
+    page, rows, weights, weighted, weighted_decimals, _basis = blocks[0]
     if any(not -1000 <= v <= 1000 for v in rows.values()):
         why = "ronw_outside_minus_1000_to_1000"
         return {"ronw_by_fy": (None, page, why), "weighted_average_ronw": (None, page, why)}
@@ -409,12 +505,10 @@ def read_capitalisation(page_texts, fiscal_years, doc_unit, total_assets_latest=
     reads = []
     for idx, text in pages:
         lines = text.split("\n")
-        # The row that carries cells: a bare "Total Borrowings" sub-heading (Orient Cables p334)
-        # is followed by its components and then the totals row.
-        bi = next((j for j, ln in enumerate(lines)
-                   if BORROWING_LABEL.match(ln) and _trailing_cells(ln)), None)
-        if bi is None:
+        cands = [j for j, ln in enumerate(lines) if BORROWING_LABEL.match(ln) and _trailing_cells(ln)]
+        if not cands:
             continue
+        bi = cands[0]
         # The column header is the nearest line above the row naming the pre-offer column (the
         # intro paragraph above it says "as adjusted for the Offer" too, so it is not read).
         ki = next((k for k in range(bi - 1, -1, -1) if _PRE_FIRST.search(lines[k])), None)
@@ -436,13 +530,32 @@ def read_capitalisation(page_texts, fiscal_years, doc_unit, total_assets_latest=
             return both("capitalisation_as_at_date_not_found", idx)
         if dates[0] != latest:
             return both("capitalisation_date_is_not_the_latest_fiscal_year_end", idx)
+        # Step-3a review A1: the table's own column count is what its value rows print (two: pre-
+        # and post-offer; one when the post-offer column is blank on every row, NSE DRHP p393). A
+        # total-borrowings line whose cells do not fill those columns - a sub-heading
+        # "Total Borrowings -" over its component rows - is not the totals row.
+        counts = [len(c) for c in (_trailing_cells(ln) for ln in lines[ki + 1:])
+                  if c and any(k == "num" for k, _v in c)]
+        ncols = max(set(counts), key=lambda n: (counts.count(n), n)) if counts else None
+        rows = [j for j in cands if ncols is not None and len(_trailing_cells(lines[j])) == ncols]
+        if not rows:
+            return both("total_borrowings_row_cells_do_not_fill_the_columns", idx)
+        bi = rows[0]
         cells = _trailing_cells(lines[bi])
-        if not cells or len(cells) > 2:
-            return both("total_borrowings_row_cells_not_read", idx)
         kind, value = cells[0]
         if kind not in ("num", "dash"):
             return both("total_borrowings_pre_offer_cell_not_a_number", idx)
-        unit = page_unit(text)
+        if kind == "dash":
+            # A nil total against a printed non-nil borrowing component (current / non-current
+            # borrowings, any row below the header naming borrowings) is a misread, not 0 (D10).
+            for j, ln in enumerate(lines[ki + 1:], start=ki + 1):
+                if j == bi or "/" in ln or not re.search(r"borrowing", ln, re.I):
+                    continue
+                c = _trailing_cells(ln)
+                if len(c) == ncols and c[0][0] == "num" and c[0][1] != 0:
+                    return both("total_borrowings_nil_with_non_nil_components", idx)
+        # The unit line that heads THIS table (A5), never the first prose mention on the page.
+        unit = page_unit(text, ki)
         if value != 0:
             if unit is None:
                 return both("capitalisation_page_unit_not_stated", idx)
@@ -454,11 +567,15 @@ def read_capitalisation(page_texts, fiscal_years, doc_unit, total_assets_latest=
         if ri is not None:
             rcells = _trailing_cells(lines[ri])
             ratio = rcells[0] if rcells else ("unread", None)
-        reads.append((idx, value, ratio))
+        reads.append((idx, value, ratio, issuer_balance_rows._basis(text)))
     if not reads:
         return both("total_borrowings_row_not_in_capitalisation_statement")
-    page, value, ratio = reads[0]
-    for _p, v, _r in reads[1:]:
+    # D13: a consolidated statement and a standalone one -> the consolidated one is read.
+    cons = [r for r in reads if r[3] == "consolidated"]
+    if cons and len(cons) < len(reads):
+        reads = cons
+    page, value, ratio, _b = reads[0]
+    for _p, v, _r, _bb in reads[1:]:
         if abs(v - value) > 0.011:
             return both("capitalisation_statements_disagree", page)
     if value < 0:

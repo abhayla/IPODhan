@@ -2941,7 +2941,11 @@ def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):
                          "total_borrowing_capitalisation_statement",
                          (True, "pre-offer total borrowings as at March 31, %s" % latest))
     value, page, why = cap["debt_to_equity"]
-    if value is None:
+    if (emit.fields.get("total_borrowing") or {}).get("value") is None and value is not None:
+        # Step-3a review A5: debt_to_equity never stands without the total borrowing it was read
+        # with (D10's 0 is defined by it); a total nulled here (unit unknown) nulls the ratio too.
+        emit.null("debt_to_equity", "debt_to_equity_without_total_borrowing", page)
+    elif value is None:
         emit.null("debt_to_equity", why, page)
     else:
         emit.put("debt_to_equity", value, page, "debt_to_equity_capitalisation_statement",
