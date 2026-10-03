@@ -803,10 +803,10 @@ becomes the source of truth and `financial_data` becomes a derived view of its t
 | 63 | `pe_ratio` | 135 | ratio (keep) | A9 | `= cap ÷ post-issue EPS ±1%`; loss-making → null with reason, never 0 | CG. A PE where EPS ≤ 0 is a defect, not a disagreement. |
 | 64 | `eps` | 149 | ₹/share (keep) | C6 | sign matches PAT | CG |
 | 65 | `roe` | 123 | % (keep) | — | −100 ≤ x ≤ 100 outside a loss year | CG |
-| 66 | `debt_to_equity` | 115 | ratio (keep) | — | 0 ≤ x ≤ 50 | CG |
+| 66 | `debt_to_equity` | 115 | ratio (keep) | — | 0 ≤ x ≤ 50; **D10 (owner decision, delegated 2026-10-04):** 0 ONLY when `total_borrowing` is 0 by row 69's D10 rule; a printed "NA" / "N.A." alone is never turned into a number | CG |
 | 67 | `reserves_and_surplus` | 140 | crore (keep) | C2 | with 62 | CG |
 | 68 | `total_assets` | 144 | crore (keep) | C2 | `≥ net_worth` | CG |
-| 69 | `total_borrowing` | 133 | crore (keep) | C2 | `≤ total_assets` | CG |
+| 69 | `total_borrowing` | 133 | crore (keep) | C2 | `≤ total_assets`; **D10 (owner decision, delegated 2026-10-04):** in a balance-sheet / capitalisation / ratio table a "-" or "Nil" in the total-borrowings row is 0 (Indian table convention; NSE DRHP printed p388 "Total Borrowings (C) = (A)+(B) -" -> 0); a blank or unreadable cell is not 0 | CG |
 | 70–71 | `promoter_holding_pre/post_issue` | 140 / 136 | % (keep) | D8 | `post < pre` when there is a fresh issue; `post = pre × pre_shares ÷ (pre_shares + fresh) ±1%` | CG |
 | 72 | `market_cap` | 142 | crore (keep) | A8 | `= post-issue shares × cap ±0.5%` | CG. Must agree with `ipo_valuation.mcap_at_cap` after that field's unit conversion — today they are in different units (§0.8). |
 | 73–74 | `pre_ipo_eps`, `post_ipo_eps` | 140 / 133 | ₹/share (keep) | C6 | `post ≤ pre` when fresh shares are issued | CG |
