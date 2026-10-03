@@ -27,6 +27,7 @@ import type { IPORepository } from '@ipodhan/shared';
 import { E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
 import { readListingSentence, toScrapedListingExchange, type DocumentListingExchange } from './listing-sentence.js';
 import { listingClaimOutranked, type ListingDocumentRef } from '../../config/listing-sentence-precedence.mjs';
+import { compareDocumentsForField } from '../../config/document-field-order.mjs';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import type { PageTextCarrier } from './document-page-text.js';
 import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
@@ -1413,6 +1414,42 @@ export async function persistFilingExtraction(
       return true;
     }
   };
+  // Round 4 item 4 (OD-30, OD-154, D7): the cover-block columns are written only into an EMPTY
+  // column (PR #1460) to protect a website's or the admin's value. A value an EARLIER offer document
+  // of this IPO put there is not that: within the document family a later filing supersedes an
+  // earlier one (OD-30) and these fields follow the final post-issue order PROSPECTUS > CORRIGENDUM >
+  // PRICE_BAND_AD > RHP > DRHP (OD-154; none is a price field). So the stored value is replaced when
+  // its provenance is a document source with a known document type that this document outranks.
+  // Everything else is kept: no provenance, a website or ADMIN source, an unknown document type, the
+  // same document, an equal rank without both filing dates, or a provenance read that fails.
+  const laterDocumentSupersedes = async (tableName: string, column: string): Promise<string | null> => {
+    try {
+      const prior = await deps.fieldSources.findByField(ipoId, tableName, column);
+      if (!prior || !DOCUMENT_PATH_SOURCES.has(String(prior.source))) return null;
+      const lin = (prior.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null };
+      let storedType = lin.docType ?? null;
+      let storedFiling: string | Date | null = null;
+      let selfFiling: string | Date | null = null;
+      if (deps.listingPrecedence) {
+        const { selfFilingDate, others } = await deps.listingPrecedence.listingDocuments(ipoId, options.documentId ?? null);
+        selfFiling = selfFilingDate;
+        const doc = lin.documentId ? others.find((o) => o.id === lin.documentId) : undefined;
+        if (doc) {
+          storedType ??= doc.docType;
+          storedFiling = doc.filingDate;
+        }
+      }
+      if (!storedType) return null;
+      const { outranks, reason } = compareDocumentsForField(
+        { docType: storedType, documentId: lin.documentId ?? null, filingDate: storedFiling },
+        { docType: options.docType, documentId: options.documentId ?? null, filingDate: selfFiling },
+        'POST_ISSUE'
+      );
+      return outranks === true ? reason : null;
+    } catch {
+      return null;
+    }
+  };
   const dropOutranked = async (
     tableName: string,
     candidate: Record<string, unknown>,
@@ -1919,6 +1956,13 @@ export async function persistFilingExtraction(
       (Array.isArray(stored) ? stored.length === 0 : String(stored).trim() === '');
     if (storedEmpty) continue;
     const same = normalizeReceiptValue(stored) === normalizeReceiptValue(iposCandidate[col]);
+    if (!same) {
+      const supersedes = await laterDocumentSupersedes('ipos', col);
+      if (supersedes) {
+        logger.info({ ipoId, docType: options.docType, column: col, why: supersedes }, 'ipos cover column replaces an earlier offer document value (OD-30, OD-154)');
+        continue;
+      }
+    }
     delete iposCandidate[col];
     skippedLowerPriority.push(
       same
@@ -2305,12 +2349,17 @@ export async function persistFilingExtraction(
       skippedLowerPriority.push('ipo_details.leadManagers (stored row unreadable; withheld, filled only when empty, D7)');
     } else if (!heldEmpty) {
       const same = normalizeReceiptValue(held) === normalizeReceiptValue(details.leadManagers);
-      delete details.leadManagers;
-      skippedLowerPriority.push(
-        same
-          ? 'ipo_details.leadManagers (equal to the stored value: credited by the receipt, not re-written, OD-73)'
-          : 'ipo_details.leadManagers (differs from the stored value: receipt filed, the walk decides under OD-161, D7)'
-      );
+      const supersedes = same ? null : await laterDocumentSupersedes('ipo_details', 'leadManagers');
+      if (supersedes) {
+        logger.info({ ipoId, docType: options.docType, why: supersedes }, 'ipo_details.leadManagers replaces an earlier offer document value (OD-30, OD-154)');
+      } else {
+        delete details.leadManagers;
+        skippedLowerPriority.push(
+          same
+            ? 'ipo_details.leadManagers (equal to the stored value: credited by the receipt, not re-written, OD-73)'
+            : 'ipo_details.leadManagers (differs from the stored value: receipt filed, the walk decides under OD-161, D7)'
+        );
+      }
     }
   }
   if (Object.keys(details).length > 0 && deps.ocrPrecedence) {

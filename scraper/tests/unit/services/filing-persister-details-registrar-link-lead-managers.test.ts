@@ -134,8 +134,10 @@ describe('filing-persister - ipo_details.registrar_link and ipo_details.lead_man
 
   // D7 (owner decision, delegated 2026-10-04; step-1 review Medium): ipo_details.lead_managers is filled
   // ONLY when empty, exactly like ipos.lead_managers (PR #1460 rule). A held list (a website's, an
-  // ADMIN's, an earlier document's) is never replaced by the persister; the receipt is still filed
-  // and a differing value is the walk's to decide under OD-161.
+  // ADMIN's, or one with no provenance, as here) is never replaced by the persister; the receipt is
+  // still filed and a differing value is the walk's to decide under OD-161. Round 4 item 4: a list an
+  // EARLIER offer document wrote is replaced by a later one (OD-30, OD-154), see
+  // filing-persister-later-document-supersedes.test.ts.
   const withStored = (stored: Record<string, unknown> | null, fail = false) => {
     const h = makeDeps();
     (h.deps as unknown as Record<string, unknown>).ocrPrecedence = {
