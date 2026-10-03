@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-03T01:59:01.010Z",
+  "generated_at": "2026-10-03T04:00:40.990Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 220,
+    "live": 221,
     "retired": 62
   },
-  "next_id": 283,
+  "next_id": 284,
   "rules": [
     {
       "id": "R-151",
@@ -843,6 +843,15 @@
       "kind": "prose",
       "text": "OD-161 (2026-10-02, F-225): the DOC fetcher takes a document's answer from that record, never from who owns the stored value. When a lower-ranked website owns the column: an equal value credits the document and writes nothing; a different value replaces the website's only when the document outranks it for the field and the value is read from a text page and passes the field's checks (an OCR-only value never replaces; the difference goes to the admin conflicts list); exchange-first timetable fields and ADMIN values are unchanged. A text value that fails the field's checks is not written; the stored value stays (§3.2) and the document's value is listed for the admin under FAILED_VALIDATION with the failed check (OD-62, OD-63, OD-95(b)). OD-162: ipos.lead_managers read from the document's own cover page is a document answer with a record (OD-91(4) no longer applies to it).",
       "first_seen": "2026-10-02",
+      "retired": false
+    },
+    {
+      "id": "R-283",
+      "hash": "bdf2ec9df5ce",
+      "section": "2.5 When a supplied value is asked for again",
+      "kind": "prose",
+      "text": "F-240 (2026-10-03, under OD-161): An ipos or ipo_details column that is EMPTY and has no provenance row is answered from the same record: nobody owns the value, so the best in-family document's value is written through the walk's normal write (which records the provenance row). Only a read at or above its document type's re-read floor counts (the floor item 45's re-read uses), and the value must pass the column's real SQL type: a plain non-negative decimal for a numeric column, a whole number for an integer column, a real YYYY-MM-DD day for a date column, an enum member, and for objectives, lead_managers and listing_exchanges a list of the expected items; anything else is not written. Two current family records that the comparator cannot order and that differ are not written. SPEC CHANGE (reversible, supervisor under owner delegation): an OCR-only or MIXED value is not written into an empty column, although OD-97(b) says its rule \"does not fire on MIXED or unknown\" and fires only against a stored text value; reason: with nothing stored and no other source to compare, a value no text page backs would be the first and only value a reader sees (the F-231 class of OCR misreads). It is not listed for the admin either, since nothing is stored to conflict with; the plan row's cause names it. A record read before OD-97's mark existed (mark unknown) is written.",
+      "first_seen": "2026-10-03",
       "retired": false
     },
     {

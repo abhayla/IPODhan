@@ -64,6 +64,17 @@ const fetcher = buildDocFetcher({
     }
     return m;
   },
+  recordedVersionReader: async (ipoId: string) =>
+    new Map(
+      (await q(
+        `SELECT d.id, COALESCE(
+                  (SELECT s.extractor_version FROM document_fetch_state s WHERE s.document_id = d.id LIMIT 1),
+                  (SELECT s.extractor_version FROM document_fetch_state s WHERE s.ipo_id = d.ipo_id AND s.doc_type::text = d.type::text LIMIT 1)
+                ) AS v
+           FROM documents d WHERE d.ipo_id = $1`,
+        [ipoId]
+      )).map((r) => [String(r.id), (r.v as string | null) ?? null])
+    ),
   receiptMarkReader: async (docId, t, rk, f) =>
     (await q(`SELECT source_text FROM document_field_receipts WHERE document_id=$1 AND table_name=$2 AND row_key=$3 AND field_name=$4`, [docId, t, rk, f]))[0]?.source_text ?? null,
 });

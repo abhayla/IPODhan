@@ -52,7 +52,7 @@ import {
 } from '@ipodhan/shared';
 import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { dataConflicts, documentFieldReceipts } from '@ipodhan/shared/db/schema';
 import type { DocAdminListing } from './field-plan-walk.js';
 import { makeChildColumnCounter } from './field-plan-walk-child-rows-reader.js';
@@ -236,6 +236,8 @@ export function buildFieldPlanWalkFetchers(
     // Item 38: IPO-level child-table answers (stored rows + the open stated-absence failures).
     // Item 41 (OD-97, OD-161(b)): the receipt's own mark decides whether a different value may replace.
     receiptMarkReader: makeReceiptMarkReader(),
+    // F-240 round 2 (B8): the version each document was last read at, for the re-read floor.
+    recordedVersionReader: makeRecordedVersionReader(),
     childColumnCounter: makeChildColumnCounter(db),
     openFailuresReader: (ipoId: string) => new FieldExtractionFailuresRepository(db, redis).findUnresolvedForIPO(ipoId),
   });
@@ -561,6 +563,27 @@ export function docDifferenceEvidence(
   };
 }
 
+/**
+ * F-240 round 2: document id -> the extractor version that last read it, read exactly as item 45's
+ * re-read selection reads it (`document-cycle.ts` loadRereadCandidates): `document_fetch_state` by
+ * document id, else by IPO + document type. Read-only.
+ */
+export function makeRecordedVersionReader(): (ipoId: string) => Promise<ReadonlyMap<string, string | null>> {
+  return async (ipoId) => {
+    const result = await db.execute(sql`
+      SELECT d.id AS "documentId",
+             COALESCE(
+               (SELECT s.extractor_version FROM document_fetch_state s WHERE s.document_id = d.id LIMIT 1),
+               (SELECT s.extractor_version FROM document_fetch_state s
+                 WHERE s.ipo_id = d.ipo_id AND s.doc_type::text = d.type::text LIMIT 1)
+             ) AS "recordedVersion"
+        FROM documents d
+       WHERE d.ipo_id = ${ipoId}`);
+    const rows = ((result as unknown as { rows?: unknown[] }).rows ?? []) as Array<{ documentId: string; recordedVersion: string | null }>;
+    return new Map(rows.map((r) => [String(r.documentId), r.recordedVersion ?? null]));
+  };
+}
+
 export function makeDocDifferenceListing(): (row: DocAdminListing) => Promise<void> {
   return async (row) => {
     await db
@@ -570,9 +593,7 @@ export function makeDocDifferenceListing(): (row: DocAdminListing) => Promise<vo
         tableName: row.tableName,
         rowKey: row.rowKey,
         fieldName: row.fieldName,
-        // NOT NULL in the conflicts table: with no provenance row (F-240) 'DRHP' stands in, as the
-        // corrigendum suggestions do; evidence.storedSource says null and value1 is null.
-        source1: (row.storedSource ?? 'DRHP') as never,
+        source1: row.storedSource as never,
         value1: row.storedValue,
         source2: 'DRHP',
         value2: row.documentValue,

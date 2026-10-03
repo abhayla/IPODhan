@@ -328,8 +328,8 @@ export interface DocAdminListing {
   fieldName: string;
   documentId: string;
   documentType: string;
-  /** field_sources.source of the stored value (scraper_source enum); null = no provenance row (F-240, empty column). */
-  storedSource: string | null;
+  /** field_sources.source of the stored value (scraper_source enum). */
+  storedSource: string;
   storedValue: string | null;
   documentValue: string;
   /** OD-97 mark of the document's receipt; null = unknown. */

@@ -7,7 +7,10 @@
 // Fixture: nityas-gems-and-jewellery-ltd ipos.objectives NULL; its RHP (2026-09-24) and DRHP (no filing date)
 // receipts, verbatim from ipodhan_staging 2026-10-03 (mark NULL = read before OD-97's mark existed).
 import { describe, it, expect, vi } from 'vitest';
-import { buildDocFetcher, emptyColumnExemplar, type DocFetcherDeps } from '../../../src/services/field-plan-walk-doc-fetcher.js';
+import { buildDocFetcher, validateReceiptForEmptyColumn, type DocFetcherDeps } from '../../../src/services/field-plan-walk-doc-fetcher.js';
+import { EXTRACTOR_VERSION } from '../../../src/services/filing-auto-persist.js';
+
+const STALE_PBA_VERSION = 'extract_filing.py@2026-10-02'; // below PRICE_BAND_AD's floor (2026-10-04, #1477 glyph-slot fix)
 import { walkFieldPlanForIPO, type FieldPlanWalkDeps } from '../../../src/services/field-plan-walk.js';
 
 const IPO_ID = '00000000-0000-4000-8000-000000000240';
@@ -29,6 +32,7 @@ type Over = {
   receipts?: Array<[string, string, string | null]>;
   mark?: string | null;
   docs?: unknown[];
+  versions?: Record<string, string | null>;
 };
 
 function deps(o: Over = {}): DocFetcherDeps {
@@ -50,6 +54,12 @@ function deps(o: Over = {}): DocFetcherDeps {
     ipoDetailsReader: { findByIpoId: vi.fn().mockResolvedValue({ issueType: 'BOOK_BUILDING', faceValue: null }) } as any,
     receiptReader: vi.fn().mockResolvedValue(receiptMap),
     receiptMarkReader: vi.fn().mockResolvedValue(o.mark === undefined ? null : o.mark),
+    recordedVersionReader: vi.fn(async () => {
+      const m = new Map<string, string | null>();
+      for (const d of (o.docs ?? DOCS) as Array<{ id: string }>) m.set(d.id, EXTRACTOR_VERSION);
+      for (const [id, v] of Object.entries(o.versions ?? {})) m.set(id, v);
+      return m;
+    }),
   };
 }
 
@@ -71,10 +81,12 @@ describe('F-240 DOC answer for an EMPTY column with no provenance row -- the rea
   });
 
   for (const mark of ['OCR', 'MIXED', 'WEIRD']) {
-    it(`mark ${mark} -> column kept empty (CHECK_FAILED transient), KEPT listing with no stored source, never SUPPLIED`, async () => {
+    it(`mark ${mark} -> column kept empty (CHECK_FAILED transient), no listing, never SUPPLIED`, async () => {
       const a: any = await buildDocFetcher(deps({ mark }))(IPO_ID, 'ipos', '', 'objectives');
       expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true, gap: 'NO_DOCUMENT_PROVENANCE' });
-      expect(a.adminListing).toMatchObject({ outcome: 'KEPT', storedSource: null, storedValue: null, documentValue: RHP_OBJECTIVES, mark, documentId: RHP_ID });
+      expect(a.reason).toMatch(/not from a text page/);
+      // Nothing is stored, so there is no conflict row: never a listing that names a document as the stored source.
+      expect(a.adminListing).toBeUndefined();
     });
   }
 
@@ -111,10 +123,10 @@ describe('F-240 DOC answer for an EMPTY column with no provenance row -- the rea
     expect(a.documentType).toBe('RHP');
   });
 
-  it('a value that does not decode to the column shape -> CHECK_FAILED, never SUPPLIED', async () => {
+  it('a value that is not JSON for a jsonb column -> CHECK_FAILED, never SUPPLIED', async () => {
     const a: any = await buildDocFetcher(deps({ receipts: [[RHP_ID, 'ipos||objectives', '{broken']] }))(IPO_ID, 'ipos', '', 'objectives');
     expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true });
-    expect(a.reason).toMatch(/does not decode/);
+    expect(a.reason).toMatch(/fails the column type: not JSON/);
   });
 
   it('ipo_details: empty numeric column (face_value), TEXT receipt -> SUPPLIED as the numeric text drizzle stores', async () => {
@@ -148,11 +160,62 @@ describe('F-240 DOC answer for an EMPTY column with no provenance row -- the rea
     expect(a.reason).toMatch(/no document provenance/);
   });
 
-  it('emptyColumnExemplar: json, text, unknown column and unknown table', () => {
-    expect(emptyColumnExemplar('ipos', 'objectives')).toEqual({ exemplar: {} });
-    expect(emptyColumnExemplar('ipos', 'companyDescription')).toEqual({ exemplar: '' });
-    expect(emptyColumnExemplar('ipos', 'noSuchColumn')).toBeNull();
-    expect(emptyColumnExemplar('promoters', 'name')).toBeNull();
+  it('validateReceiptForEmptyColumn: json, text, unknown column and unknown table', () => {
+    expect(validateReceiptForEmptyColumn('ipos', 'objectives', RHP_OBJECTIVES)).toEqual({ value: JSON.parse(RHP_OBJECTIVES) });
+    expect(validateReceiptForEmptyColumn('ipos', 'companyDescription', ' Jewellery ')).toEqual({ value: 'Jewellery' });
+    expect(validateReceiptForEmptyColumn('ipos', 'noSuchColumn', 'x')).toHaveProperty('refused');
+    expect(validateReceiptForEmptyColumn('promoters', 'name', 'x')).toHaveProperty('refused');
+    expect(validateReceiptForEmptyColumn('ipos', 'openDate', '2026-02-30')).toHaveProperty('refused');
+    expect(validateReceiptForEmptyColumn('ipos', 'leadManagers', '["A Ltd"]')).toEqual({ value: ['A Ltd'] });
+    expect(validateReceiptForEmptyColumn('ipos', 'leadManagers', '[""]')).toHaveProperty('refused');
+  });
+
+  // Tier A review probes: drizzle reports numeric/date as strings, so the column's SQL type decides.
+  for (const [probe, table, field, camelField, receipt] of [
+    ['P2', 'ipos', 'issue_size', 'issueSize', '1,234'],
+    ['P3', 'ipos', 'issue_size', 'issueSize', '500 crore'],
+    ['P5', 'ipos', 'issue_size', 'issueSize', '-5'],
+    ['P7', 'ipos', 'open_date', 'openDate', '03 Oct 2026'],
+    ['P14', 'ipos', 'objectives', 'objectives', '5'],
+  ] as const) {
+    it(`${probe}: ${table}.${field} receipt '${receipt}' fails the column type -> CHECK_FAILED with the reason, never SUPPLIED`, async () => {
+      const a: any = await buildDocFetcher(deps({ mark: 'TEXT', receipts: [[RHP_ID, `${table}||${camelField}`, receipt]] }))(IPO_ID, table, '', field);
+      expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true });
+      expect(a.reason).toMatch(/fails the column type/);
+    });
+  }
+
+  it('numeric issue_size "500.5" and date open_date "2026-10-03" pass their column types', async () => {
+    const a: any = await buildDocFetcher(deps({ mark: 'TEXT', receipts: [[RHP_ID, 'ipos||issueSize', '500.5']] }))(IPO_ID, 'ipos', '', 'issue_size');
+    expect(a).toMatchObject({ outcome: 'SUPPLIED', value: '500.5' });
+    const b: any = await buildDocFetcher(deps({ mark: 'TEXT', receipts: [[RHP_ID, 'ipos||openDate', '2026-10-03']] }))(IPO_ID, 'ipos', '', 'open_date');
+    expect(b).toMatchObject({ outcome: 'SUPPLIED', value: '2026-10-03' });
+  });
+
+  describe('B8: only a read at or above its type re-read floor fills an empty column (F-231 class)', () => {
+    const PBA_ID = '00000000-0000-4000-8000-0000000240b1';
+    const docs = [{ id: PBA_ID, type: 'PRICE_BAND_AD', extractionStatus: 'COMPLETED', isActive: true, sha256: 'b'.repeat(64), filingDate: '2026-09-30' }];
+    const run = (versions?: Record<string, string | null>) =>
+      buildDocFetcher({
+        ...deps({ mark: 'TEXT', docs, versions, receipts: [[PBA_ID, 'ipos||priceRangeMax', '82']] }),
+        manifestDocumentType: () => 'PRICE_BAND_AD',
+      })(IPO_ID, 'ipos', '', 'price_range_max');
+
+    it('stale-version PRICE_BAND_AD receipt "82" + empty price_range_max -> not written', async () => {
+      const a: any = await run({ [PBA_ID]: STALE_PBA_VERSION });
+      expect(a).toMatchObject({ outcome: 'CHECK_FAILED', transient: true });
+      expect(a.reason).toMatch(/below its type's re-read floor/);
+    });
+
+    it('no recorded version -> not written (fail closed)', async () => {
+      const a: any = await run({ [PBA_ID]: null });
+      expect(a.outcome).toBe('CHECK_FAILED');
+    });
+
+    it('current-version receipt -> written', async () => {
+      const a: any = await run();
+      expect(a).toMatchObject({ outcome: 'SUPPLIED', value: 82, documentId: PBA_ID }); // ipos.price_range_max is an integer column
+    });
   });
 });
 
