@@ -229,3 +229,96 @@ describe('filing-persister - the record covers every table it writes (F-241, OD-
     expect(websiteReceipts(summary)).toEqual([]);
   });
 });
+
+/**
+ * OD-97 (§2.2.1 "Image-only pages go to OCR, marked"): every receipt the persister writes carries
+ * its mark - TEXT / OCR / MIXED - computed from the pages of the extractor fields the value came
+ * from, the same mechanism as the `ipos` / `ipo_details` receipts. A null mark on a child receipt
+ * made an OCR-only value indistinguishable from a text read (PR #1515 CI, the SteamHouse OCR ad).
+ */
+describe('filing-persister - every receipt carries its OD-97 mark (F-241 round 2)', () => {
+  const marks = (receipts: ReceiptField[] | undefined) =>
+    (receipts ?? []).map((r) => `${r.tableName}.${r.fieldName}=${r.sourceText}`).sort();
+
+  it('the real SteamHouse price band ad (every page OCR) marks every receipt OCR with its page confidence', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const envelope = JSON.parse(
+      readFileSync(resolve(__dirname, '../../fixtures/ocr/steamhouse-price-band-ad.envelope.json'), 'utf-8')
+    ) as FilingExtraction;
+    const summary = await persistFilingExtraction(IPO_ID, envelope, { docType: 'PRICE_BAND_AD', apply: true }, makeDeps());
+    const receipts = summary.receipt_fields ?? [];
+    expect(receipts.filter((r) => r.sourceText === null).map((r) => `${r.tableName}.${r.fieldName}`)).toEqual([]);
+    expect(receipts.every((r) => r.sourceText === 'OCR')).toBe(true);
+    const child = receipts
+      .filter((r) => r.tableName !== 'ipos' && r.tableName !== 'ipo_details')
+      .map((r) => `${r.tableName}|${r.rowKey}|${r.fieldName}=${r.value}|${r.sourceText}|${r.ocrConfidence}`)
+      .sort();
+    expect(child).toEqual(STEAMHOUSE_CHILD_RECEIPTS);
+  });
+
+  it('a document with no value on an OCR page marks every receipt, child tables included, TEXT', async () => {
+    const x = { ...nseDrhp(), ocr_pages: [400] } as FilingExtraction;
+    const summary = await persistFilingExtraction(IPO_ID, x, { docType: 'DRHP', apply: true }, makeDeps());
+    const all = marks(summary.receipt_fields);
+    expect(all.length).toBeGreaterThan(30);
+    expect(all.filter((m) => !m.endsWith('=TEXT'))).toEqual([]);
+  });
+
+  it('a value read off an OCR page is marked OCR on its own child receipts only', async () => {
+    const base = nseDrhp();
+    const x = {
+      ...base,
+      ocr_pages: [40],
+      fields: { ...base.fields, risk_factors: { ...base.fields.risk_factors, page: 40, ocr_confidence: 0.81 } },
+    } as FilingExtraction;
+    const summary = await persistFilingExtraction(IPO_ID, x, { docType: 'DRHP', apply: true }, makeDeps());
+    const receipts = summary.receipt_fields ?? [];
+    expect(receipts.filter((r) => r.sourceText === 'OCR').map((r) => `${r.tableName}.${r.fieldName}|${r.ocrConfidence}`).sort()).toEqual(
+      ['ipo_risk_factors.body|0.81', 'ipo_risk_factors.body|0.81', 'ipo_risk_factors.heading|0.81', 'ipo_risk_factors.heading|0.81']
+    );
+    expect(receipts.filter((r) => r.sourceText !== 'OCR').every((r) => r.sourceText === 'TEXT')).toBe(true);
+  });
+});
+
+/** The real SteamHouse ad's child receipts: values on OCR page 0 (0.7456), 1 (0.7497) and 3 (0.761). */
+const STEAMHOUSE_CHILD_RECEIPTS: string[] = [
+  "financial_data||revenueFy2024=3.77|OCR|0.7497",
+  "financial_statements|2024:RESTATED|basis=RESTATED|OCR|0.7497",
+  "financial_statements|2024:RESTATED|fiscalYear=2024|OCR|0.7497",
+  "financial_statements|2024:RESTATED|revenue=37.74|OCR|0.7497",
+  "financial_statements|2024:RESTATED|unit=MILLION|OCR|0.7497",
+  "financial_statements|2025:RESTATED|basis=RESTATED|OCR|0.7497",
+  "financial_statements|2025:RESTATED|fiscalYear=2025|OCR|0.7497",
+  "financial_statements|2025:RESTATED|revenue=70.79|OCR|0.7497",
+  "financial_statements|2025:RESTATED|unit=MILLION|OCR|0.7497",
+  "financial_statements|2026:RESTATED|basis=RESTATED|OCR|0.7497",
+  "financial_statements|2026:RESTATED|fiscalYear=2026|OCR|0.7497",
+  "financial_statements|2026:RESTATED|revenue=74.29|OCR|0.7497",
+  "financial_statements|2026:RESTATED|unit=MILLION|OCR|0.7497",
+  "ipo_intermediaries|SUB_SYNDICATE:axis capital|name=Axis Capital Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:axis capital|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:hdfc securities|name=HDFC Securities Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:hdfc securities|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:iifl capital services|name=IIFL Capital Services Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:iifl capital services|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:jm financial serviceslimited|name=JM Financial ServicesLimited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:jm financial serviceslimited|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:kotak securities|name=Kotak Securities Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:kotak securities|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:lkp securities|name=LKP Securities Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:lkp securities|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:motilal oswal financial services|name=Motilal Oswal Financial Services Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:motilal oswal financial services|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:sbicap secunities|name=SBICAP Secunities Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:sbicap secunities|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:sharekhan|name=Sharekhan Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:sharekhan|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:smc global securities|name=SMC Global Securities Limited|OCR|0.761",
+  "ipo_intermediaries|SUB_SYNDICATE:smc global securities|role=SUB_SYNDICATE|OCR|0.761",
+  "ipo_valuation|PRICE_BAND_AD|faceValueMultipleCap=40.5|OCR|0.7456",
+  "ipo_valuation|PRICE_BAND_AD|faceValueMultipleFloor=38.5|OCR|0.7456",
+  "ipo_valuation|PRICE_BAND_AD|priceCap=81|OCR|0.7456",
+  "ipo_valuation|PRICE_BAND_AD|priceFloor=77|OCR|0.7456",
+  "ipo_valuation|PRICE_BAND_AD|ronwWeighted3y=24.14|OCR|0.7456",
+];

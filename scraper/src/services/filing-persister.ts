@@ -33,6 +33,9 @@ import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '
 import {
   columnMark,
   documentMark,
+  fieldsMark,
+  INTERMEDIARY_ROLE_FIELDS,
+  ACQUISITION_PERIOD_FIELDS,
   ocrValueLoses,
   textValuesAtOrAboveRank,
   type OcrMark,
@@ -1037,8 +1040,19 @@ export async function persistFilingExtraction(
   // says what the document prints, not what won the write. Written by the
   // caller as document_field_receipts in the COMPLETED transaction.
   const receiptFields: ReceiptField[] = [];
-  const receipt = (tableName: string, fieldName: string, v: unknown, rowKey = ''): ReceiptField => {
-    const m = columnMark(extraction, tableName, fieldName);
+  // OD-97 (§2.2.1): every receipt carries its mark, computed from the pages of the extractor
+  // fields the value came from (`sources` when the row decides them, else the column map); the
+  // document-wide mark covers a value no mapped field produced (F-241 round 2, #1515).
+  const receipt = (
+    tableName: string,
+    fieldName: string,
+    v: unknown,
+    rowKey = '',
+    sources?: readonly string[]
+  ): ReceiptField => {
+    const m =
+      (sources ? fieldsMark(extraction, sources) : columnMark(extraction, tableName, fieldName)) ??
+      documentMark(extraction);
     return {
       tableName,
       rowKey,
@@ -1060,13 +1074,14 @@ export async function persistFilingExtraction(
     tableName: string,
     rowKey: string | null,
     row: Record<string, unknown>,
-    fields: readonly string[]
+    fields: readonly string[],
+    sources?: readonly string[]
   ): void => {
     if (rowKey === null || rowKey === '') return;
     for (const f of fields) {
       const value = row[f];
       if (value === null || value === undefined) continue;
-      receiptFields.push(receipt(tableName, f, value, rowKey));
+      receiptFields.push(receipt(tableName, f, value, rowKey, sources));
     }
   };
 
@@ -2973,7 +2988,7 @@ export async function persistFilingExtraction(
       'period',
       'waca',
       'capMultiple',
-    ]);
+    ], ACQUISITION_PERIOD_FIELDS[row.period] ?? []);
   }
   if (acquisitionRows.length > 0) {
     if (
@@ -3269,7 +3284,7 @@ export async function persistFilingExtraction(
       'phone',
       'email',
       'grievanceEmail',
-    ]);
+    ], INTERMEDIARY_ROLE_FIELDS[row.role as string] ?? []);
   }
   if (intermediariesWithKeys.length > 0) {
     if (
