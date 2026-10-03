@@ -53,6 +53,18 @@ NSE_BRLMS = [
     "SBI Capital Markets Limited",
 ]
 
+# NSE DRHP p.10-11 Definitions row, in its printed order (20 names; no separate M-BRLM row).
+NSE_DRHP_BRLMS = [
+    "Kotak Mahindra Capital Company Limited", "JM Financial Limited",
+    "Morgan Stanley India Company Private Limited", "Citigroup Global Markets India Private Limited",
+    "HSBC Securities and Capital Markets (India) Private Limited", "J.P. Morgan India Private Limited",
+    "SBI Capital Markets Limited", "Anand Rathi Advisors Limited", "Avendus Capital Private Limited",
+    "Axis Capital Limited", "DAM Capital Advisors Limited", "Equirus Capital Limited", "HDFC Bank Limited",
+    "ICICI Securities Limited", "IDBI Capital Markets & Securities Limited", "IIFL Capital Services Limited",
+    "Motilal Oswal Investment Advisors Limited", "Nuvama Wealth Management Limited",
+    "Pantomath Capital Advisors Private Limited", "360 ONE WAM Limited",
+]
+
 # name -> {field: (value, page)}; page None = any page
 EXPECTED = {
     "nse-mainboard-rhp": {
@@ -67,6 +79,17 @@ EXPECTED = {
         "compliance_officer": ("Prajakta Powle", 2),
         "compliance_officer_email": ("nse_ipo@nse.co.in", 0),
         "compliance_officer_phone": ("+91 22 2659 8100", 2),
+    },
+    # F-243: the NSE DRHP. Its Definitions BRLM row (p.10) crosses the page break into p.11, and
+    # its cover registrar cell (p.2) wraps over three lines in a multi-column table.
+    "nse-mainboard-drhp": {
+        "lead_managers": (NSE_DRHP_BRLMS, 9),
+        "registrar_name": ("MUFG Intime India Private Limited", 91),
+        "registrar_email": ("nse.ipo@in.mpms.mufg.com", 91),
+        "registrar_phone": ("+91 810 811 4949", 91),
+        "registrar_website": ("www.in.mpms.mufg.com", 91),
+        "registrar_contact_person": ("Shanti Gopalkrishnan", 91),
+        "registrar_sebi_reg": ("INR000004058", 91),
     },
     "nityas-mainboard-drhp": {
         "lead_managers": (["Choice Capital Advisors Private Limited"], 1),
@@ -353,3 +376,196 @@ def test_a_ltd_sentence_end_mid_line_cuts_the_row_before_the_footnote():
     rec = _brlm(_nse_with("and 360 ONE WAM Limited.\n*Morgan", "and 360 ONE WAM Ltd. Morgan"))
     assert rec["state"] == answer_states.VALUE, rec
     assert rec["value"] == NSE_BRLMS[:18] + ["360 ONE WAM Ltd.", "SBI Capital Markets Limited"]
+
+
+# ---- F-243: multi-column cover text (NSE DRHP) ------------------------------------------------ #
+REGISTRAR_CONTACTS = ("registrar_email", "registrar_phone", "registrar_website",
+                      "registrar_contact_person", "registrar_sebi_reg")
+# real-text mutations on the NSE DRHP pages (0-based page index)
+DIFFERENT_COVER_REGISTRAR = ("India Private Limited)\nBID", "Bigshare Services Private Limited)\nBID", 1)
+NO_GI_REGISTRAR_BLOCK = ("Registrar to the Offer\nMUFG", "Registrar office\nMUFG", 91)
+
+
+def _drhp_with(old, new, page=None):
+    pages, hits = [], 0
+    for i, t in load("nse-mainboard-drhp"):
+        if page is None or i == page:
+            hits += t.count(old)
+            t = t.replace(old, new)
+        pages.append((i, t))
+    assert hits >= 1, "mutation did not apply: %r" % old
+    return pages
+
+
+def _read_pages(pages):
+    emit = Emitter("x")
+    cover_block.read_cover_block(pages, emit)
+    return emit.fields
+
+
+def test_a_definitions_row_split_by_a_page_break_is_read_whole():
+    # p.10 ends "IIFL Capital Services Limited (formerly known as IIFL" and its page number "4";
+    # p.11 opens with the column header "Term Description" and then "Securities Limited), Motilal Oswal ...".
+    defs = cover_block._definition_rows(load("nse-mainboard-drhp"))
+    assert "brlm_fail" not in defs, defs
+    assert defs["brlm"] == (NSE_DRHP_BRLMS, 9)
+
+
+def test_a_running_title_at_the_continuation_page_head_fails_closed():
+    # B4(c): text at the next page's head that is neither furniture nor row text (a capitals
+    # running title) means the row cannot be said to end: overrun, never a guessed list.
+    pages = _drhp_with("Term Description\nSecurities Limited)",
+                       "Term Description\nNATIONAL STOCK EXCHANGE OF INDIA LIMITED\nSecurities Limited)", page=10)
+    rec = _read_pages(pages)["lead_managers"]
+    assert rec["value"] is None and rec["state"] == answer_states.MISSED, rec
+    assert rec["check"]["detail"] == "lead_managers_row_overrun"
+
+
+def test_a_row_cut_by_a_missing_next_page_still_fails_closed():
+    pages = [(i, t) for i, t in load("nse-mainboard-drhp") if i != 10]
+    rec = _read_pages(pages)["lead_managers"]
+    assert rec["value"] is None and rec["check"]["detail"] == "lead_managers_row_overrun", rec
+
+
+@pytest.mark.parametrize("foot", ["\n4", ""], ids=["page-number-at-foot", "no-page-number"])
+def test_a_row_ending_at_the_page_foot_on_a_bare_suffix_reads_its_continuation(foot):
+    # the hole the continuation also closes: a page foot ending on a bare firm suffix ("...IIFL
+    # Capital Services Limited" and nothing after it) read as the row's end (DEF_ROW_END_AT_EOT)
+    # and kept a truncated list of 16
+    pages = _drhp_with("Limited (formerly known as IIFL\n4", "Limited" + foot, page=9)
+    pages = [(i, t.replace("Securities Limited), Motilal", "Motilal", 1) if i == 10 else t) for i, t in pages]
+    rec = _read_pages(pages)["lead_managers"]
+    assert rec["state"] == answer_states.VALUE, rec
+    assert rec["value"] == NSE_DRHP_BRLMS
+
+
+@pytest.mark.parametrize("fragment,full,want", [
+    ("India Private Limited", "MUFG Intime India Private Limited", True),   # the NSE DRHP p.2 tail
+    ("Intime India Private Limited", "MUFG Intime India Private Limited", True),
+    ("dia Private Limited", "MUFG Intime India Private Limited", False),    # mid-word cut
+    ("MUFG Intime India Private Limited", "MUFG Intime India Private Limited", False),  # not shorter
+    ("Link Intime India Private Limited", "MUFG Intime India Private Limited", False),  # a different name
+    ("Bigshare Services Private Limited", "MUFG Intime India Private Limited", False),
+    ("MUFG Intime India", "MUFG Intime India Private Limited", False),     # a head is not a tail
+])
+def test_a_fragment_agrees_only_as_a_word_boundary_tail(fragment, full, want):
+    assert cover_block._is_fragment_of(fragment, full) is want
+
+
+def test_the_cover_registrar_cell_is_read_as_a_fragment():
+    _brlm, reg = cover_block._cover_tables(load("nse-mainboard-drhp"))
+    assert reg["name"] == "India Private Limited" and reg["fragment"] is True and reg["page"] == 1
+
+
+def test_a_cover_that_names_a_different_registrar_still_fails_closed():
+    fields = _read_pages(_drhp_with(*DIFFERENT_COVER_REGISTRAR))
+    assert fields["registrar_name"]["value"] is None
+    assert fields["registrar_name"]["check"]["detail"] == "registrar_sources_disagree"
+    for name in REGISTRAR_CONTACTS:
+        assert fields[name]["value"] is None and fields[name]["state"] == answer_states.MISSED, name
+
+
+def test_a_fragment_alone_is_never_a_value():
+    rec = _read_pages(_drhp_with(*NO_GI_REGISTRAR_BLOCK))["registrar_name"]
+    assert rec["value"] is None and rec["state"] == answer_states.MISSED, rec
+    assert rec["check"]["detail"] == "registrar_block_unresolved"
+
+
+def test_mutation_without_the_fragment_rule_the_drhp_registrar_is_lost(monkeypatch):
+    # the reviewer's mutation: drop the rule and the real document's registrar goes back to
+    # registrar_sources_disagree, its contacts to registrar_block_not_found
+    monkeypatch.setattr(cover_block, "_is_fragment_of", lambda _f, _n: False)
+    fields = read("nse-mainboard-drhp")
+    assert fields["registrar_name"]["check"]["detail"] == "registrar_sources_disagree"
+    assert fields["registrar_email"]["check"]["detail"] == "registrar_block_not_found"
+
+
+def test_mutation_without_the_page_continuation_the_drhp_brlms_are_lost(monkeypatch):
+    monkeypatch.setattr(cover_block, "_continue_row", lambda *_a: None)
+    rec = read("nse-mainboard-drhp")["lead_managers"]
+    assert rec["value"] is None and rec["check"]["detail"] == "lead_managers_row_overrun"
+
+
+def test_a_fragment_lends_no_text_support_to_an_ocr_value():
+    # no OCR value outranks text: the value's pages are the full readings only, so a GI page OCR'd
+    # below the floor drops the value even though the cover's text fragment agreed with it
+    import ocr_pages
+    fields = read("nse-mainboard-drhp")
+    rec = fields["registrar_name"]
+    assert rec["pages"] == [91], rec
+    ocr_pages.annotate_fields(fields, {91: 0.10})
+    assert rec["value"] is None and rec["state"] == answer_states.LOW_CONFIDENCE_OCR
+
+
+# B4(d): every answer state of the registrar reader and what it emits, on the real NSE DRHP text.
+# "stated not printed" is never emitted (asserted in every row); "unreadable" is the OCR floor above.
+ANSWER_STATES = [
+    ("printed value / fragment agrees", None, answer_states.VALUE, "MUFG Intime India Private Limited"),
+    ("disagreement", DIFFERENT_COVER_REGISTRAR, answer_states.MISSED, "registrar_sources_disagree"),
+    ("fragment alone", NO_GI_REGISTRAR_BLOCK, answer_states.MISSED, "registrar_block_unresolved"),
+    ("not found", "drop", answer_states.MISSED, "registrar_not_found"),
+]
+
+
+@pytest.mark.parametrize("state,mutation,want_state,want", ANSWER_STATES, ids=[r[0] for r in ANSWER_STATES])
+def test_registrar_answer_states(state, mutation, want_state, want):
+    if mutation is None:
+        pages = load("nse-mainboard-drhp")
+    elif mutation == "drop":
+        pages = [(i, t) for i, t in load("nse-mainboard-drhp") if i not in (1, 91)]
+    else:
+        pages = _drhp_with(*mutation)
+    rec = _read_pages(pages)["registrar_name"]
+    assert rec["state"] == want_state, rec
+    assert (rec["value"] if want_state == answer_states.VALUE else rec["check"]["detail"]) == want
+    assert rec["state"] != answer_states.STATED_NOT_PRINTED
+    if rec["value"] is None:
+        assert rec["check"]["detail"] not in answer_states.STATED_ABSENCE_REASONS
+
+
+# ---- F-243: the side-by-side Definitions layout (Orient Cables DRHP p.9) ------------------------ #
+# "or “BRLMs” IIFL Securities Limited) and JM Financial Limited" is followed, with no full stop, by
+# the next row printed unquoted: "Broker Centres The broker centres notified by the Stock Exchanges ...".
+ORIENT_ROW_END = "and JM Financial Limited\nBroker Centres"
+
+
+def _orient_with(old, new):
+    pages, hits = [], 0
+    for i, t in load("orient-mainboard-drhp"):
+        hits += t.count(old)
+        pages.append((i, t.replace(old, new)))
+    assert hits >= 1, "mutation did not apply: %r" % old
+    return pages
+
+
+def test_orient_drhp_values():
+    fields = read("orient-mainboard-drhp")
+    assert fields["lead_managers"]["state"] == answer_states.VALUE, fields["lead_managers"]
+    assert fields["lead_managers"]["value"] == ["IIFL Capital Services Limited", "JM Financial Limited"]
+    assert fields["lead_managers"]["page"] == 8
+    assert fields["registrar_name"]["value"] == "KFin Technologies Limited"
+    assert fields["registrar_email"]["value"] == "orient.ipo@kfintech.com"
+    assert fields["registrar_phone"]["value"] == "+91 40 6716 2222"
+    assert fields["registrar_website"]["value"] == "www.kfintech.com"
+    assert fields["registrar_sebi_reg"]["value"] == "INR000000221"
+
+
+def test_a_short_wrapped_name_line_is_not_read_as_the_next_row():
+    # a name wrapped onto a short line keeps the list going: never a truncated list of two
+    pages = _orient_with(ORIENT_ROW_END, "and JM Financial Limited\nJ.P. Morgan India Private\nLimited.\nBroker Centres")
+    rec = _read_pages(pages)["lead_managers"]
+    assert rec["state"] == answer_states.VALUE, rec
+    assert rec["value"] == ["IIFL Capital Services Limited", "JM Financial Limited", "J.P. Morgan India Private Limited"]
+
+
+def test_a_prose_line_naming_a_firm_does_not_end_the_row():
+    # B4(c): the next line names a firm, so it is not a clean new-row line; the row runs on and fails closed
+    pages = _orient_with(ORIENT_ROW_END, "and JM Financial Limited\nBroker Centres The broker centres of Axis Capital Limited where Bidders")
+    rec = _read_pages(pages)["lead_managers"]
+    assert rec["value"] is None and rec["state"] == answer_states.MISSED, rec
+
+
+def test_mutation_without_the_unquoted_row_end_the_orient_brlms_are_lost(monkeypatch):
+    monkeypatch.setattr(cover_block, "_starts_unquoted_row", lambda _p, _l: False)
+    rec = read("orient-mainboard-drhp")["lead_managers"]
+    assert rec["value"] is None and rec["check"]["detail"] == "lead_managers_row_overrun"
