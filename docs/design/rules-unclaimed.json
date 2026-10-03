@@ -2,6 +2,7 @@
   "_why": "OD-52. A rule that no build item implements is allowed — the deploy cadence, the honest uncertainties, the language-model constraint are rules about how we WORK, not code. What is not allowed is silence. D19 fails on any rule id that is neither claimed by a card nor listed here with a reason.",
   "_generated_by": "docs/design/apply-rule-ownership.mjs",
   "unclaimed": {
+    "R-281": "2.5.1 — OD-171 (2026-10-03, #1498): a newer document record re-opens a non-settled DOC-ranked plan row once; built by the #1498 fix (claim leg receipt_newer in ipo-field-plan-repository.ts), which has no build card; declared here until a card owns it, per OD-52.",
     "R-269": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",
     "R-280": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",
     "R-271": "2.5.6 — OD-164/OD-165 (2026-10-02): owned by build items 37 to 46, which have no build cards yet; each rule is declared in rules-unclaimed.json until its item is contracted and its card written.",

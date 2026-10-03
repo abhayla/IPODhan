@@ -241,6 +241,21 @@ export interface FieldPlanWalkResult {
   }>;
   /** Identities behind `fieldsExhausted` — the exact class RCA2's 13 wrongly-retired rows sat in. */
   exhaustedFields: Array<{ tableName: string; rowKey: string; fieldName: string }>;
+  /**
+   * #1498 (OD-171): rows a newer document record re-opened this walk, with the outcome the walk
+   * recorded (`<state>` plus `+written` when a value was written -- a credited equal answer is the
+   * bare state --, or `released` when the claim was
+   * released unrecorded, or `not-claimed` when the walk stopped before reaching it). Present only
+   * when the repository lists them (`listReceiptNewerRows`).
+   */
+  receiptReopened?: Array<{
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+    stateBefore: string;
+    attemptsBefore: number;
+    outcome: string;
+  }>;
 }
 
 export type FieldFetcherAnswer =
@@ -451,6 +466,11 @@ export interface FieldPlanWalkRepository {
     rowKey: string;
     fieldName: string;
   }): Promise<string | null>;
+  /** #1498 (OD-171): this IPO's rows a newer document record makes due (read only). Optional so a
+   *  mock without it walks exactly as before. */
+  listReceiptNewerRows?(params: {
+    ipoId: string;
+  }): Promise<Array<{ id: string; tableName: string; rowKey: string; fieldName: string; state: string; attempts: number }>>;
   restoreSettledAfterReopen?(params: {
     planRowId: string;
     claimToken: string;
@@ -795,6 +815,13 @@ export async function walkFieldPlanForIPO(
    * them.
    */
   const settledThisWalk = new Set<string>();
+
+  // #1498 (OD-171): name every row a newer document record re-opens and the outcome recorded for
+  // it. Read once per walk; a failed read only loses the identity line (the claim leg itself does
+  // the re-opening), so it is logged and the walk goes on.
+  if (deps.fieldPlanRepository.listReceiptNewerRows) {
+    deps = trackReceiptReopened(ipoId, deps, result);
+  }
 
   // #884 review round 2: this IPO's per-field gap keys, resolved ONCE per walk
   // (the documents part reads the IPO's documents). Unresolvable → null: gap
@@ -2463,6 +2490,74 @@ function unwind(result: FieldPlanWalkResult, params: RecordOutcomeCallParams): v
  * `fieldsCheckFailed`/`outcomesFailed` here would hide exactly the two states
  * that say the pass went badly (signal-ownership R1/R3).
  */
+/**
+ * #1498 (OD-171): wraps the repository so the outcome of every receipt-re-opened row is recorded on
+ * `result.receiptReopened` whichever settle path the walk takes (recordOutcome, a held read, an
+ * unrecorded release). The rows are listed lazily on the first claim so a walk with nothing due
+ * pays nothing beyond the one read.
+ */
+function trackReceiptReopened(ipoId: string, deps: FieldPlanWalkDeps, result: FieldPlanWalkResult): FieldPlanWalkDeps {
+  const repo = deps.fieldPlanRepository;
+  const byId = new Map<string, NonNullable<FieldPlanWalkResult['receiptReopened']>[number]>();
+  let listed: Promise<void> | null = null;
+  const list = () =>
+    (listed ??= repo.listReceiptNewerRows!({ ipoId }).then(
+      (rows) => {
+        result.receiptReopened = [];
+        for (const r of rows) {
+          const entry = {
+            tableName: r.tableName,
+            rowKey: r.rowKey,
+            fieldName: r.fieldName,
+            stateBefore: r.state,
+            attemptsBefore: r.attempts,
+            outcome: 'not-claimed',
+          };
+          byId.set(r.id, entry);
+          result.receiptReopened.push(entry);
+        }
+      },
+      (err: unknown) => {
+        logger.warn(
+          { ipoId, err: causeOf(err) },
+          'PASS 3: listing receipt-reopened rows failed — the rows are still offered, only their identity line is lost'
+        );
+      }
+    ));
+  const mark = (planRowId: string, outcome: string) => {
+    const e = byId.get(planRowId);
+    if (e) e.outcome = outcome;
+  };
+  const wrapped: FieldPlanWalkRepository = Object.create(repo);
+  wrapped.claimNextDueField = async (params) => {
+    await list();
+    return repo.claimNextDueField(params);
+  };
+  wrapped.recordOutcome = async (params) => {
+    const res = await repo.recordOutcome(params);
+    if (res.written !== false || res.skipped) {
+      // A value was written only when the walk records no per-rank answers (OD-137: `answers` null =
+      // the value's witnesses hold them); a credited equal answer (OD-161(a)) keeps its answers.
+      const written = params.writeHappened && params.answers === null;
+      mark(params.planRowId, `${params.state ?? (params.writeHappened ? 'SUPPLIED' : 'PENDING')}${written ? '+written' : ''}`);
+    }
+    return res;
+  };
+  wrapped.releaseClaimUnrecorded = async (params) => {
+    const res = await repo.releaseClaimUnrecorded(params);
+    mark(params.planRowId, 'released');
+    return res;
+  };
+  if (repo.recordHeldFieldRead) {
+    wrapped.recordHeldFieldRead = async (params) => {
+      const res = await repo.recordHeldFieldRead!(params);
+      mark(params.planRowId, 'held-read');
+      return res;
+    };
+  }
+  return { ...deps, fieldPlanRepository: wrapped };
+}
+
 function countsOf(r: FieldPlanWalkResult) {
   return {
     fieldsAttempted: r.fieldsAttempted,
