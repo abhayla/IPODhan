@@ -215,6 +215,14 @@ def _record_pages(emit, name, cands):
         rec["pages"] = sorted({p for _v, p in cands if p is not None})
 
 
+def _is_fragment_of(fragment, full):
+    """True only when `fragment` is the full name's tail at a word boundary and strictly shorter:
+    'India Private Limited' of 'MUFG Intime India Private Limited'. Anything else (a different
+    name, a mid-word cut, an equal name) is not a fragment (B4(c): it still disagrees)."""
+    f, n = _canon_firm(fragment), _canon_firm(full)
+    return len(f) < len(n) and n.endswith(" " + f)
+
+
 def _agree(cands, canon):
     """cands: [(value, page), ...]. -> (value, page, None) when every candidate
     agrees, (None, None, reason) otherwise."""
@@ -232,7 +240,7 @@ def _agree(cands, canon):
 def _cover_tables(page_texts):
     """The cover's BRLM table and registrar table (single-column layouts)."""
     brlm = {"names": None, "page": None, "unresolved": False, "lines": []}
-    reg = {"name": None, "page": None, "unresolved": False, "lines": []}
+    reg = {"name": None, "page": None, "unresolved": False, "lines": [], "fragment": False}
     for idx, text in page_texts[:COVER_PAGES]:
         lines = (text or "").splitlines()
         b = next((k for k, l in enumerate(lines) if BRLM_COVER_HEADING.match(l)), -1)
@@ -259,15 +267,19 @@ def _cover_tables(page_texts):
         # single-firm table is read here, the Definitions row reads the rest.
         brlm.update(names=names or None, page=idx, lines=lines[b + 1:r],
                     unresolved=unresolved or len(names) > 1)
-        rnames, runresolved = [], False
+        rnames, runresolved, fragment = [], False, False
         for line in lines[r + 1:end]:
             n, two = _firm_line(line)
             runresolved |= two
             if n:
                 rnames.append(n)
+                # F-243: a name line that closes a bracket it never opened is the tail of a cell
+                # wrapped over several lines (NSE DRHP p.2: "MUFG Intime India Private" /
+                # "Limited (Formerly Link Intime" / "India Private Limited)").
+                fragment |= line.count(")") > line.count("(")
         reg.update(page=idx, lines=lines[r + 1:end],
                    unresolved=runresolved or len(rnames) > 1,
-                   name=rnames[0] if len(rnames) == 1 else None)
+                   name=rnames[0] if len(rnames) == 1 else None, fragment=fragment)
         return brlm, reg
     return brlm, reg
 
@@ -288,10 +300,13 @@ def _definition_rows(page_texts):
             if not m:
                 continue
             body = [line[m.end():]]
-            for nxt in lines[k + 1:k + 14]:
-                if DEF_NEXT_ROW.match(nxt) or DEF_FOOTNOTE_LINE.match(nxt):
-                    break
-                body.append(nxt)
+            closed = _collect_row(lines[k + 1:k + 14], body)
+            # F-243: a row that runs to the foot of its page without a closing row, footnote or
+            # full stop continues on the next page (NSE DRHP p.10 -> p.11, the BRLM list split at
+            # "IIFL Capital Services Limited (formerly known as IIFL"). Read it on; a page head
+            # that is not known furniture (a running title) fails closed as an overrun.
+            if not closed and k + 14 >= len(lines) and not DEF_ROW_END.search(" ".join(body)):
+                closed = _continue_row(page_texts, idx, body)
             blob = " ".join(DEF_TERM_TAIL.sub("", b) for b in body)
             blob = DEF_TERM_TAIL.sub("", blob)
             blob = re.sub(r"\s+", " ", blob)
@@ -299,7 +314,7 @@ def _definition_rows(page_texts):
             # the row ends at its sentence: a firm suffix in any case and style, then a full stop
             # (or the end of the row's text, when a footnote line or the next row closed it)
             end = DEF_ROW_END.search(blob)
-            ended = end is not None or DEF_ROW_END_AT_EOT.search(blob.strip()) is not None
+            ended = end is not None or (closed is not False and DEF_ROW_END_AT_EOT.search(blob.strip()) is not None)
             if end is not None:
                 blob = blob[:end.end()]
             term = m.group(1).lower()
@@ -328,6 +343,58 @@ def _definition_rows(page_texts):
         seen = {_canon_firm(n) for n in names}
         out["brlm"] = (names + [n for n in dict.fromkeys(marketing) if _canon_firm(n) not in seen], idx)
     return out
+
+
+# Furniture at the head of a Definitions page: blank lines, the page number and the repeated
+# "Term / Description" column header (NSE DRHP p.11: " ", "5", "Term", "Description").
+DEF_PAGE_FURNITURE = re.compile(r"^\s*(?:\d{1,4}|Terms?|Description|Particulars|Terms?\s+Description)?\s*$", re.I)
+# A running title in capitals (an issuer's name printed at the top of every page) is not row text.
+RUNNING_TITLE = re.compile(r"^[^a-z]*[A-Z]{3,}[^a-z]*$")
+
+
+# Side-by-side layout (Orient Cables DRHP p.9): the next row's term is printed unquoted at the start
+# of a line ("Broker Centres The broker centres notified by ..."), so DEF_NEXT_ROW never sees it.
+NOT_A_NEW_ROW_START = re.compile(r"^\s*(?:and\b|&|,|\(|[a-z])")
+
+
+def _starts_unquoted_row(prev, line):
+    """The row's last line ended on a firm suffix and this line is a whole sentence of prose with no
+    firm name in it: the next (unquoted) row. A short line, a connector, a bracket or a firm name
+    keeps the list going (a wrapped name like "J.P. Morgan India Private" is under six words)."""
+    return (DEF_ROW_END_AT_EOT.search(prev.strip()) is not None and not NOT_A_NEW_ROW_START.match(line)
+            and len(line.split()) >= 6 and not FIRM_ANYWHERE.search(line))
+
+
+def _collect_row(lines, body):
+    """Append a Definitions row's lines to body until the next row or a footnote line.
+    -> True when one of those closed the row, None when the lines ran out first."""
+    for nxt in lines:
+        if DEF_NEXT_ROW.match(nxt) or DEF_FOOTNOTE_LINE.match(nxt) or _starts_unquoted_row(body[-1], nxt):
+            return True
+        body.append(nxt)
+    return None
+
+
+def _continue_row(page_texts, idx, body):
+    """The row reached the foot of page idx unclosed: read its continuation on page idx + 1.
+    -> True (closed on the next page), None (lines ran out), or False (B4(c): the next page
+    opens with text that is neither furniture nor row text, so the row cannot be said to end)."""
+    nxt_text = next((t for i, t in page_texts if i == idx + 1), None)
+    if nxt_text is None:
+        return None
+    while body and DEF_PAGE_FURNITURE.match(body[-1]):
+        body.pop()  # the page number at the foot of the row's page is not row text
+    lines = (nxt_text or "").splitlines()
+    k = 0
+    while k < len(lines) and DEF_PAGE_FURNITURE.match(lines[k]):
+        k += 1
+    if k >= len(lines):
+        return None
+    if DEF_NEXT_ROW.match(lines[k]) or DEF_FOOTNOTE_LINE.match(lines[k]):
+        return True
+    if RUNNING_TITLE.match(lines[k].strip()):
+        return False
+    return _collect_row(lines[k:k + 14], body)
 
 
 def _gi_registrar(page_texts):
@@ -412,12 +479,22 @@ def read_cover_block(page_texts, emit):
 
     # ---- registrar ---------------------------------------------------------- #
     cands = []
-    if cover_reg["name"] and not cover_reg["unresolved"]:
-        cands.append((cover_reg["name"], cover_reg["page"]))
     if "registrar" in defs:
         cands.append(defs["registrar"])
     if gi_reg:
         cands.append((gi_reg["name"], gi_reg["page"]))
+    cover_name = cover_reg["name"] if not cover_reg["unresolved"] else None
+    full, _p, _w = _agree(cands, _canon_firm)
+    if cover_name and full is not None and _is_fragment_of(cover_name, full):
+        cover_name = None  # F-243: the cover cell's tail agrees with the full name; not a veto
+    elif cover_name and cover_reg["fragment"]:
+        cover_name = None  # a wrapped-cell tail that matches nothing read elsewhere: never a value
+        if not cands:
+            cover_reg["unresolved"] = True
+        else:
+            cands.append((cover_reg["name"], cover_reg["page"]))  # still disagrees (B4(c))
+    if cover_name:
+        cands.insert(0, (cover_name, cover_reg["page"]))
     rname, rpage, why = _agree(cands, _canon_firm)
     if rname is None:
         emit.null("registrar_name", "registrar_sources_disagree" if why == "sources_disagree"
