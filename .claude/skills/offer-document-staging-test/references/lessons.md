@@ -2,6 +2,9 @@
 
 ## 2026-10-04 — laptop loop replaces staging-only (owner)
 
+- **Merging mid-loop is waste.** After the owner moved testing to the laptop, I still merged #1517 and #1518 to main: each
+  merge re-ran ~20 min of CI on the next PR and queued code for the staging windows. The fix loop is local only (C10).
+
 - **The weekend gate keeps listed IPOs out of the scheduled cycle on Saturday and Sunday** (D-13; staging log
   `reason: saturday, calendarSkipped 32, eligible 13`). A staging deploy alone never re-reads a listed IPO's document
   on a weekend. Do not wait on it; the laptop loop needs no cycle.

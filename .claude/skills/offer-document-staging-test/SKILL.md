@@ -35,6 +35,7 @@ written into "The owner's contract" below in the same turn, with the date.
 | C7 | The fix loop runs ON THE LAPTOP: the real read-and-save code of the branch under test, saved into the existing test DB `ipodhan_test` (never a new DB), report read from `ipodhan_test`. Staging is used once per finished batch of fixes to confirm (deploy, re-read, re-measure). Never write unmerged code's results into `ipodhan_staging`. Never production. | "Laptop -> ipodhan_test" (2026-10-04, replaced "Staging only" of 2026-10-03); "don't stage for each and every fix" (2026-10-03) |
 | C8 | Each fix is proven on the subject document plus at least two other real documents of the same type (one other mainboard, one SME). | assistant recommendation, owner accepted the process |
 | C9 | Report: short summary in chat (counts plus top causes) and the full field table on one Artifact page, updated in place after each document. | assistant default, reversible |
+| C10 | The fix loop is LOCAL ONLY, on this PC: fix on one local branch, test with the laptop loop (STEP 3), move to the next fix. No `git push`, no pull request, no `gh pr merge`, no deploy, no GitHub CI until the owner says the document works and asks for it. A builder brief repeats this ban. | "when we are fixing the code, it should be completely local and on the PC itself. Fix it, test it, and then proceed" (2026-10-04, after 2 merges and 40 min of CI were spent mid-loop) |
 
 Standing rules that also apply (read, not repeated here): `.claude/rules/defect-fix-contract.md` (six items per
 fix), `.claude/rules/staging-is-the-release-gate.md` (OD-146: nothing to production), `.claude/rules/
@@ -137,7 +138,7 @@ PDF text as fixture, a class-level fix, proof on 3 documents of the type (C8), a
 grep `docs/design/data-sourcing-pull-model.md` by the field names. If a fix needs a behaviour the spec does not
 state, that is an owner question (SPEC CHANGE label), not a builder's guess.
 Builders work in a worktree (`wt-new.ps1`); route models per the global rules (`model` and `Budget:` on every
-Agent brief). Test every fix with the laptop loop (STEP 3) before merging; bundle a good chunk of merged fixes into one staging round (C7).
+Agent brief). Test every fix with the laptop loop (STEP 3) on the local branch; nothing is pushed or merged until the owner says the document works (C10).
 
 ## STEP 7: Confirm the finished batch on staging, then mark the document done
 
@@ -166,6 +167,7 @@ before/after counts in `references/progress.md`, then go to the next document (C
 
 ## MUST NOT DO
 
+- MUST NOT push, open a pull request, merge, or deploy while the fix loop runs (C10); work on one local branch and test locally. — Why: on 2026-10-04 merging each fix cost ~20 min of CI per PR and sent code toward staging the owner had not asked for.
 - MUST NOT read or write production, MUST NOT run anything on the VPS host, and MUST NOT write unmerged code's results into `ipodhan_staging` (the laptop loop writes `ipodhan_test` only). — Why: owner rules (OD-146, "VPS is production").
 - MUST NOT hand-edit staging rows to make a field CORRECT. Fix the code and re-extract with the productized tool. — Why: a hand fix proves nothing for the next IPO.
 - MUST NOT call a field MISSED when the document does not print it. Mark it NOT PRINTED. — Why: C5; chasing fields that were never in the file wastes rounds.
