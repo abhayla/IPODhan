@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "stored copy D:/Abhay/Ventures/IPODhan-doc-cache/national-stock-exchange-of-india-ltd/RHP-3cb0ba27-4ec8-4b65-bb2a-e6ee74492120.pdf",
+  "capturedAt": "2026-10-04",
+  "pages": "0-based: 87 P&L, 137 RoNW block (with a June 30 stub row), 326 restated cash flows (5 columns, two stub), 362 note 28 other expenses (no rent line), 391 discontinued-operations note with its own operating cash line, 442 capitalisation statement as at June 30, 2026",
+  "extraction": "pdfplumber page text as extract_filing page_texts (--no-ocr)"
+}

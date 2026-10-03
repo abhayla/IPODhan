@@ -89,6 +89,7 @@ try:
         check_cross_document_agreement,
     )
     import issuer_balance_rows  # OD-165 item 46: reuses the financials module's column helpers
+    import offer_doc_statements  # rows 66/69 (D10), 75, 92, 102 and rent expense, offer documents
 except BaseException as _import_exc:  # noqa: BLE001
     _emit_memory_ceiling_and_exit(_import_exc)
 
@@ -2900,6 +2901,53 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
              share_check)
 
 
+def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):
+    """RoNW (year rows + weighted average), operating cash flow, rent expense, and the
+    capitalisation statement's total borrowing / debt-to-equity. Each a value or a named reason."""
+    ronw = offer_doc_statements.read_ronw_block(cleaned)
+    series, page, why = ronw["ronw_by_fy"]
+    if series is None:
+        emit.null("ronw_by_fy", why, page)
+    else:
+        emit.put("ronw_by_fy", series, page, "ronw_block_rows",
+                 (True, "%d fiscal years %s" % (len(series), sorted(series))))
+    value, page, why = ronw["weighted_average_ronw"]
+    if value is None:
+        emit.null("weighted_average_ronw", why, page)
+    else:
+        emit.put("weighted_average_ronw", value, page, "weighted_ronw_matches_year_rows",
+                 (True, "printed %s reproduced from the year rows and weights" % value))
+    for name, reader in (("op_cash_flow_by_fy", offer_doc_statements.read_op_cash_flow),
+                         ("rent_by_fy", offer_doc_statements.read_rent_expense)):
+        if unit is None:
+            emit.null(name, "unit_unknown")
+            continue
+        series, page, why = reader(cleaned, fiscal_years, pnl_page, unit)
+        if series is None:
+            emit.null(name, why, page)
+        else:
+            emit.put_c_money(unit, name, series, page, "%s_year_series" % name,
+                             check_fy_series(series, fiscal_years))
+    assets = (emit.fields.get("total_assets_by_fy") or {}).get("value") or {}
+    latest = str(max(fiscal_years)) if fiscal_years else None
+    cap = offer_doc_statements.read_capitalisation(
+        cleaned, fiscal_years, unit, total_assets_latest=assets.get(latest) if latest else None)
+    value, page, why = cap["total_borrowing"]
+    if value is None:
+        emit.null("total_borrowing", why, page)
+    else:
+        emit.put_c_money(unit, "total_borrowing", value, page,
+                         "total_borrowing_capitalisation_statement",
+                         (True, "pre-offer total borrowings as at March 31, %s" % latest))
+    value, page, why = cap["debt_to_equity"]
+    if value is None:
+        emit.null("debt_to_equity", why, page)
+    else:
+        emit.put("debt_to_equity", value, page, "debt_to_equity_capitalisation_statement",
+                 (True, "D10: %s" % ("0 because total borrowing is nil" if value == 0
+                                     else "printed ratio %s" % value)))
+
+
 def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
                 doc_type=None, tables_for_page=None):
     # Strip the rupee glyphs before the shared core: prospectuses write
@@ -3030,6 +3078,10 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     else:
         emit.put("roe_by_fy", roe, roe_page, "roe_by_fy_year_series",
                  (True, "%d years %s" % (len(roe), sorted(roe))))
+
+    # Spec rows 66/69 (D10), 75, 92, 102 and the rent-expense row: offer-document readers
+    # (offer_doc_statements.py), never the price band advertisement's flat-row readers.
+    _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl.get("pnlPage"), unit)
 
     # E5: objects of the offer — the price band advertisement has no objects
     # section at all, so this is an RHP-only field.

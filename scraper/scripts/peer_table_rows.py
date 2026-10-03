@@ -23,6 +23,7 @@ import re
 
 from peer_row_groups import group_of, split_issuer_and_peers
 from peer_table_columns import (
+    FINANCIAL_STATEMENT_TYPE,
     NAME,
     detect_header_row_count,
     divider_listed_status,
@@ -86,7 +87,8 @@ def parse_peer_table(table, issuer_name=None):
         record[NAME] = name
 
         real_values = sum(
-            1 for field, value in record.items() if field != NAME and value is not None
+            1 for field, value in record.items()
+            if field not in (NAME, FINANCIAL_STATEMENT_TYPE) and value is not None
         )
         if real_values < _MIN_VALUES:
             # A name-only row directly under a company row is the rest of that

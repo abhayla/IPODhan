@@ -268,3 +268,19 @@ def test_relocation_never_lands_on_a_separately_labelled_column():
     )
     assert m["eps_basic"] == 2, m
     assert m["nav"] == 6, m
+
+
+def test_nse_drhp_basis_column_is_mapped_by_its_own_header():
+    # NSE DRHP p121 (pdfplumber reconstructed headers): the second column is the peer's basis.
+    headers = ['Name of the company', 'Standalone /\nconsolidated',
+               'Total Revenue from operations (₹ in Million)', 'Face Value (₹ per equity\nshare)',
+               'P/E ratio (no. of times)', 'EPS Basic (₹)', 'Diluted (₹)', 'RoNW\n(%)',
+               'Net Asset Value per share (₹)']
+    from peer_table_columns import map_columns as _map
+    assert _map(headers)["financial_statement_type"] == 1
+
+
+def test_a_metric_header_mentioning_consolidated_is_not_the_basis_column():
+    from peer_table_columns import map_columns as _map
+    got = _map(['Name of the company', 'Total income (consolidated)'])
+    assert "financial_statement_type" not in got and got["total_income"] == 1

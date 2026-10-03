@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "D:/Abhay/Ventures/IPODhan/pdf-parser-test/drhps/bajaj-housing-drhp.pdf",
+  "capturedAt": "2026-10-04",
+  "pages": "0-based 107: RoNW block whose weighted average is printed to one decimal (14.3%)",
+  "extraction": "pdfplumber page text"
+}

@@ -44,6 +44,10 @@ PB = "pb"
 RONW_PCT = "ronw_pct"
 EV_EBITDA = "ev_ebitda"
 PROFIT_FOR_YEAR = "profit_for_year"
+# Appendix A row 176: which statements the peer's figures come from. A header that is ONLY the
+# basis words ("Standalone / consolidated", NSE DRHP p121), never a metric header that mentions
+# one ("Total income (consolidated)"), so it is matched after every metric pattern and anchored.
+FINANCIAL_STATEMENT_TYPE = "financial_statement_type"
 
 # Order matters: the FIRST pattern that matches a header wins, so the more
 # specific ones come first. `EPS (Basic)` must not be taken by the looser EPS
@@ -69,6 +73,9 @@ _PATTERNS = [
     (REVENUE_FROM_OPERATIONS, re.compile(r"revenue\s+from\s+operations", re.I)),
     (PROFIT_FOR_YEAR, re.compile(r"profit\s+for\s+the\s+(year|fiscal)", re.I)),
     (FACE_VALUE, re.compile(r"face\s+value", re.I)),
+    (FINANCIAL_STATEMENT_TYPE, re.compile(
+        r"^\s*(?:stand\s*-?\s*alone|consolidated)(?:\s*/\s*(?:stand\s*-?\s*alone|consolidated))?\s*$",
+        re.I)),
     (NAME, re.compile(r"name\s+of\s+(the\s+)?compan", re.I)),
 ]
 

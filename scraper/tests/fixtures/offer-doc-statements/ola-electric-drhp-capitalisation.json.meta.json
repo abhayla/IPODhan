@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "D:/Abhay/Ventures/IPODhan/pdf-parser-test/drhps/ola-electric-drhp.pdf",
+  "capturedAt": "2026-10-04",
+  "pages": "0-based 338: capitalisation statement as at June 30, 2023 (a stub date), header wrapped over two lines",
+  "extraction": "pdfplumber page text"
+}
