@@ -1,11 +1,12 @@
-// implements: #1498 -- spec data-sourcing-pull-model.md OD-171 (a newer document record re-opens a non-settled
+// implements: R-281
+// #1498 -- spec data-sourcing-pull-model.md OD-171 (a newer document record re-opens a non-settled
 // DOC-ranked plan row once), OD-161 (the DOC answer is judged by the document's own record), §2.5.1 trigger 8.
 // REAL claim SQL + REAL walk + REAL DOC fetcher (receipts read by the production loader) on ipodhan_test.
 //
 // The class: a DOC-ranked plan row that is not SUPPLIED while one of the IPO's documents holds a record for the
 // field newer than the row's last attempt. Before the fix no claim leg offered it once the row had hit the
-// CHECK_FAILED attempts cap or carried a gap stamp the re-read did not change (staging 2026-10-03: 231 rows /
-// 52 IPOs, e.g. nityas-gems-and-jewellery-ltd price_range_min at 16 attempts with a 70 record from 2026-10-03).
+// CHECK_FAILED attempts cap or carried a gap stamp the re-read did not change (staging 2026-10-03 06:40 IST: 232 DOC
+// rank-1 rows / 52 IPOs, e.g. nityas-gems-and-jewellery-ltd price_range_min at 16 attempts with a 70 record from 2026-10-03).
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { eq, sql } from 'drizzle-orm';
@@ -30,6 +31,8 @@ process.env.ENABLE_SOURCE_TRACKING = 'true';
 const IPO = '00000000-0000-4000-8000-000000149801';
 const DOC = '00000000-0000-4000-8000-0000001498d0';
 const SLUG = 'zzq1498-receipt-reopen-testco';
+
+const RECEIPT_DOC_TYPES = { 'ipos.price_range_min': ['RHP'], 'ipos.price_range_max': ['RHP'], 'ipos.lot_size': ['RHP'], 'ipos.cin': ['RHP'] };
 
 const noRedis = { get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0, keys: async () => [], scan: async () => ['0', []] };
 
@@ -107,6 +110,7 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
         findById: async (id: string) => (await db.select().from(schema.ipos).where(eq(schema.ipos.id, id)))[0] ?? null,
       } as never,
       resolvePolicy: (async () => ({ ranks: ['DOC'], documentType: 'RHP', origin: { kind: 'registry', version: 2 }, na: false })) as never,
+      receiptDocTypes: RECEIPT_DOC_TYPES,
     };
   }
   /** A plan row last attempted `lastAttemptAgo` ms before now (bound as an ISO string: naive column, ist-timezone rule). */
@@ -120,11 +124,11 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = ${last}::timestamp WHERE id = ${row.id}::uuid`);
     return row.id;
   }
-  async function seedReceipt(camelField: string, value: string, agoMs: number) {
+  async function seedReceipt(camelField: string, value: string, agoMs: number, documentId = DOC) {
     const at = new Date(Date.now() - agoMs).toISOString();
     await db.execute(sql`
       INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value, source_text, created_at)
-      VALUES (${DOC}::uuid, 'ipos', '', ${camelField}, ${value}, 'TEXT', ${at}::timestamp)`);
+      VALUES (${documentId}::uuid, 'ipos', '', ${camelField}, ${value}, 'TEXT', ${at}::timestamp)`);
   }
   async function plan(id: string) {
     return (await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id)))[0];
@@ -157,7 +161,7 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     );
     await seedReceipt('priceRangeMax', '75', 30_000);
 
-    const claimed = await planRepo.claimNextDueField({ ipoId: IPO, gapKeys: { 'ipos.price_range_max': ['eunchanged|f|xextract_filing.py@2026-10-04|p:none|o:none|d0'] } });
+    const claimed = await planRepo.claimNextDueField({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES, gapKeys: { 'ipos.price_range_max': ['eunchanged|f|xextract_filing.py@2026-10-04|p:none|o:none|d0'] } });
     expect(claimed?.id).toBe(id);
     await planRepo.releaseClaimUnrecorded({ planRowId: claimed!.id, claimToken: claimed!.claimToken });
   }, 60000);
@@ -182,7 +186,63 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     await seedPlan('lot_size', { rank1Source: 'NSE', attempts: 16 }, 3 * 86_400_000);
     await seedReceipt('lotSize', '200', 60_000);
 
-    expect(await planRepo.listReceiptNewerRows({ ipoId: IPO })).toEqual([]);
+    expect(await planRepo.listReceiptNewerRows({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toEqual([]);
+    expect(await planRepo.claimNextDueField({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toBeNull();
+  }, 60000);
+
+  it('only a record from the document type the DOC rank reads re-opens a row; no type map re-opens nothing', async () => {
+    const OTHER = '00000000-0000-4000-8000-0000001498d1';
+    await db.execute(sql`
+      INSERT INTO documents (id, ipo_id, type, title, url, extraction_status, sha256)
+      VALUES (${OTHER}::uuid, ${IPO}::uuid, 'PRICE_BAND_AD', 'Advert', 'https://example.invalid/ad.pdf', 'COMPLETED', ${'f'.repeat(64)})`);
+    const id = await seedPlan('lot_size', { attempts: 16 }, 3 * 86_400_000);
+    await seedReceipt('lotSize', '200', 60_000, OTHER);
+
+    // lot_size reads RHP here; the advert's record is not that document type.
+    expect(await planRepo.claimNextDueField({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toBeNull();
     expect(await planRepo.claimNextDueField({ ipoId: IPO })).toBeNull();
+    const claimed = await planRepo.claimNextDueField({ ipoId: IPO, receiptDocTypes: { 'ipos.lot_size': ['PRICE_BAND_AD'] } });
+    expect(claimed?.id).toBe(id);
+    await planRepo.releaseClaimUnrecorded({ planRowId: claimed!.id, claimToken: claimed!.claimToken });
+  }, 60000);
+
+  it('live tier first: with budget for ONE claim, the IPO's ordinary due row is asked before the receipt re-open', async () => {
+    const pendingId = await seedPlan('cin', { state: 'PENDING', attempts: 0 }, 3 * 86_400_000);
+    await db.execute(sql`UPDATE ipo_field_plan SET next_due_at = NULL WHERE id = ${pendingId}::uuid`);
+    const reopenId = await seedPlan('price_range_min', { attempts: 16 }, 3 * 86_400_000);
+    await seedReceipt('priceRangeMin', '70', 60_000);
+    let calls = 0;
+    const oneClaim = { deadlineMs: 1, now: () => (calls++ === 0 ? 0 : 2) };
+
+    const result = await walk(IPO, deps() as never, oneClaim);
+
+    expect(result.fieldsAttempted).toBe(1);
+    expect((await plan(pendingId)).lastAttemptAt).not.toBeNull();
+    const reopen = await plan(reopenId);
+    expect(reopen.state).toBe('CHECK_FAILED');
+    expect(reopen.attempts).toBe(16);
+    expect(result.receiptReopened?.[0]?.outcome).toBe('not-claimed');
+  }, 60000);
+
+  it('a dropped write on a receipt-re-opened row: the walk stamps the attempt, so the same record does not offer it again', async () => {
+    const id = await seedPlan('price_range_min', { attempts: 16 }, 3 * 86_400_000);
+    await seedReceipt('priceRangeMin', '71', 60_000);
+    const before = (await plan(id)).lastAttemptAt;
+    // A DOC answer that needs a write, and a write path that drops it (LOCK_NOT_ACQUIRED).
+    const docWrites: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 71, documentId: DOC, documentType: 'RHP' }) as never;
+    const dropping = {
+      consolidatedUpsertIPO: async () => ({ ipoId: '', isNew: false, locked: false, skipped: true, skipReason: 'LOCK_NOT_ACQUIRED' }),
+      consolidatedUpsertChildRows: async (_i: string, _t: string, rows: unknown[]) => ({
+        rowsProcessed: rows.length, rowsUpdated: 0, rowsSkipped: rows.length, conflictsDetected: 0, rows: [],
+      }),
+    };
+
+    const result = await walk(IPO, { ...deps(), orchestrator: dropping, sourceFetchers: { DOC: docWrites } } as never, budget());
+
+    expect(result.receiptReopened?.[0]?.outcome).toBe('write-dropped');
+    const after = await plan(id);
+    expect(after.state).toBe('PENDING');
+    expect(after.lastAttemptAt!.getTime()).toBeGreaterThan(before!.getTime());
+    expect(await planRepo.listReceiptNewerRows({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toEqual([]);
   }, 60000);
 });

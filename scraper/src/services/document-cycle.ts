@@ -76,6 +76,7 @@ import {
   buildFieldPlanWalkWitnessVerdictWriter,
   buildFieldPlanWalkReopenDeps,
   buildFieldPlanWalkHoldDeps,
+  buildFieldPlanReceiptDocTypes,
   fieldPlanWalkHasFetchers,
 } from './field-plan-walk-deps.js';
 import { initStepLedger } from './step-ledger.js';
@@ -2833,6 +2834,8 @@ export async function runDocumentCycle(
         const fieldPlanReopenDeps = buildFieldPlanWalkReopenDeps();
         // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
         const fieldPlanHoldDeps = buildFieldPlanWalkHoldDeps();
+        // #1498 (OD-171): the document types each DOC rank reads, so only such a record re-opens a row.
+        const fieldPlanReceiptDocTypes = buildFieldPlanReceiptDocTypes();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             fieldPlanWalkExhausted = true;
@@ -2863,6 +2866,7 @@ export async function runDocumentCycle(
                 trackWitnessVerdict: fieldPlanWitnessVerdictWriter,
                 ...fieldPlanReopenDeps,
                 ...fieldPlanHoldDeps,
+                receiptDocTypes: fieldPlanReceiptDocTypes,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );

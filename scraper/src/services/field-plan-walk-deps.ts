@@ -83,6 +83,7 @@ import {
 } from './field-plan-gap-keys.js';
 import {
   buildDocFetcher,
+  docTypeFamily,
   DOC_CHILD_ROWS_TABLES,
   DOC_READABLE_TABLES,
   type DocFetcherDeps,
@@ -193,6 +194,20 @@ function manifestFieldEntry(tableName: string, fieldName: string) {
  * whole-source fetch (ruling 33) happens at most once across every IPO's
  * walk in this wake, never once per field or once per IPO.
  */
+/**
+ * #1498 (OD-171): `table.field` -> the document types the DOC rank reads for it -- the family of the
+ * manifest entry's document type, the same family the DOC fetcher judges a record by. A field with
+ * no document type is left out, so a record for it re-opens nothing (fail closed).
+ */
+export function buildFieldPlanReceiptDocTypes(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [fieldKey, entry] of Object.entries(loadFieldManifest().fields)) {
+    const documentType = (entry as { documentType?: string }).documentType;
+    if (documentType) out[fieldKey] = [...docTypeFamily(documentType)];
+  }
+  return out;
+}
+
 export function buildFieldPlanWalkFetchers(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): Record<string, FieldFetcher> {

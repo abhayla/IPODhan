@@ -130,6 +130,7 @@ vi.mock('../../src/services/field-plan-walk-deps.js', () => ({
   buildFieldPlanWalkWitnessVerdictWriter: vi.fn(() => vi.fn()),
   buildFieldPlanWalkReopenDeps: vi.fn(() => ({})),
   buildFieldPlanWalkHoldDeps: vi.fn(() => ({ trackHeldFieldWitnesses: trackHeldFieldWitnessesStub })),
+  buildFieldPlanReceiptDocTypes: vi.fn(() => ({})),
 }));
 vi.mock('../../src/config/field-source-overrides-reader.js', () => ({ createFieldSourceOverridesReader: vi.fn(() => ({})) }));
 vi.mock('@ipodhan/shared/repositories/field-source-overrides-repository', () => ({

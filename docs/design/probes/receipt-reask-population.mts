@@ -4,7 +4,16 @@
 // Run (from scraper/, staging tunnel open): npx tsx ../docs/design/probes/receipt-reask-population.mts [slug]
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { IpoFieldPlanRepository } from '../../../packages/shared/src/repositories/ipo-field-plan-repository.ts';
+import { loadFieldManifest } from '../../../scraper/src/config/field-manifest-loader.ts';
+import { docTypeFamily } from '../../../scraper/config/plan-supersession-rule.mjs';
 import { openReadOnlyPool } from './_lib.mjs';
+
+// The same map PASS 3 passes (buildFieldPlanReceiptDocTypes): table.field -> the manifest document type's family.
+const receiptDocTypes: Record<string, string[]> = {};
+for (const [k, e] of Object.entries(loadFieldManifest().fields)) {
+  const t = (e as { documentType?: string }).documentType;
+  if (t) receiptDocTypes[k] = [...docTypeFamily(t)];
+}
 
 const pool = await openReadOnlyPool('ipodhan_staging');
 const repo = new IpoFieldPlanRepository(drizzle(pool) as never, {} as never);
@@ -21,7 +30,7 @@ let total = 0;
 let ipoCount = 0;
 let rank1DocBlank = 0;
 for (const ipo of ipos) {
-  const rows = await repo.listReceiptNewerRows({ ipoId: ipo.id });
+  const rows = await repo.listReceiptNewerRows({ ipoId: ipo.id, receiptDocTypes });
   if (rows.length === 0) continue;
   ipoCount++;
   total += rows.length;
