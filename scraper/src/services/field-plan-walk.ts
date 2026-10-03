@@ -2544,7 +2544,7 @@ function trackReceiptReopened(ipoId: string, deps: FieldPlanWalkDeps, result: Fi
     return repo.claimNextDueField(params);
   };
   // Review MINOR 3: a dropped write (skipped) keeps last_attempt_at by design and a throw writes
-  // nothing, so the same record would offer the row again every walk; stamp the attempt here.
+  // nothing, so the same re-read would offer the row again every walk; stamp the attempt here.
   const stamp = async (planRowId: string) => {
     if (!byId.has(planRowId) || !repo.stampReceiptReopenAttempt) return;
     try {

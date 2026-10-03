@@ -182,18 +182,22 @@ function heldReadCurrentSql() {
 export const FIELD_PLAN_RECEIPT_REOPEN_STATES = ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'] as const;
 
 /**
- * #1498 (OD-171): true when one of the IPO's documents has a record (`document_field_receipts`)
- * for this row's field, with a value, written AFTER the row's last attempt. That record is the
- * event that makes the row due once more, whatever its attempts count, gap stamp or slot: the DOC
- * fetcher answers from the record (OD-161) without any network call, and the attempt stamps
- * `last_attempt_at`, so the same record never offers the row twice (no loop, no timer).
+ * #1498 (OD-171): true when a document of the type the DOC rank reads for this row's field was
+ * (re-)read AFTER the row's last attempt (`documents.extracted_at`, which every COMPLETED read and
+ * re-read stamps) AND that document's record (`document_field_receipts`) holds a non-empty value
+ * for the field. The re-read is the event -- it covers a re-read that CHANGED the record's value
+ * (an upsert keeps the record's `created_at`, which `scripts/lib/doc-yield-checks.mjs` reads as
+ * "first record ever", so it is deliberately not used here) and one that did not. The row is due
+ * once more whatever its attempts count, gap stamp or slot; the DOC fetcher answers from the record
+ * (OD-161) without a network call, and the attempt stamps `last_attempt_at`, so one re-read offers
+ * the row at most once (no loop, no timer).
  *
- * Matched exactly on table, row_key and field; the record's camelCase field name is compared with
- * Only a record from a document type the DOC rank reads for the field counts (`receiptDocTypes`:
+ * Only a document of a type the DOC rank reads for the field counts (`receiptDocTypes`:
  * `table.field` -> the manifest document type's family, the family the DOC fetcher judges by); a
- * field absent from the map, or no map at all, re-opens nothing (fail closed).
- * The row's snake_case one is converted exactly as `columnToCamelCase` does (`_[a-z]` -> upper case,
- * any other `_` kept), the conversion the DOC fetcher reads records with. A record that
+ * field absent from the map, or no map at all, re-opens nothing (fail closed). Matched exactly on
+ * table, row_key and field; the record's camelCase field name is compared with the row's snake_case
+ * one converted exactly as `columnToCamelCase` does (`_[a-z]` -> upper case, any other `_` kept),
+ * the conversion the DOC fetcher reads records with. A record that
  * matches no plan row re-opens nothing (fail closed). Fresh fragment per call (see gapStampedSql).
  */
 function receiptNewerThanLastAttemptSql(receiptDocTypesJson: string) {
@@ -204,13 +208,15 @@ function receiptNewerThanLastAttemptSql(receiptDocTypesJson: string) {
                   JOIN documents d ON d.id = r.document_id
                  WHERE d.ipo_id = ipo_field_plan.ipo_id
                    AND d.is_active IS NOT FALSE
+                   AND d.extraction_status = 'COMPLETED'
+                   AND d.extracted_at > ipo_field_plan.last_attempt_at
                    AND d.type::text IN (
                      SELECT jsonb_array_elements_text((${receiptDocTypesJson}::jsonb) -> (ipo_field_plan.table_name || '.' || ipo_field_plan.field_name))
                    )
                    AND r.table_name = ipo_field_plan.table_name
                    AND r.row_key = ipo_field_plan.row_key
                    AND r.value IS NOT NULL
-                   AND r.created_at > ipo_field_plan.last_attempt_at
+                   AND r.value <> ''
                    AND r.field_name = (
                      SELECT string_agg(CASE WHEN t.o = 1 THEN t.w WHEN t.w ~ '^[a-z]' THEN upper(left(t.w, 1)) || substr(t.w, 2) ELSE '_' || t.w END, '' ORDER BY t.o)
                        FROM unnest(string_to_array(ipo_field_plan.field_name, '_')) WITH ORDINALITY AS t(w, o)
@@ -1006,12 +1012,12 @@ export class IpoFieldPlanRepository extends BaseRepository {
                      )${legFilter()}
                ORDER BY last_attempt_at ASC NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_gap_key_changed`,
-        // #1498 (OD-171): a newer document record for the field is the event that re-opens a
-        // non-settled DOC-ranked row ONCE -- past the attempts cap, the gap stamp and the slot.
+        // #1498 (OD-171): a re-read (after the last attempt) of the document the DOC rank reads, with a
+        // record for the field, is the event that re-opens a non-settled DOC-ranked row ONCE -- past the attempts cap, the gap stamp and the slot.
         // Measured on staging 2026-10-03 06:40 IST: 232 DOC rank-1 rows / 52 IPOs held a record newer
         // than their last attempt and were offered by no other leg (attempts >= cap, or a gap key the re-read under
         // the same extractor version did not change). The attempt stamps last_attempt_at, so the
-        // same record cannot offer the row again.
+        // same re-read cannot offer the row again.
         // pri 3: AFTER every normal due leg (pending 0, reclaim 1, gap-key 2), so the walk drains
         // the IPO's ordinary due work first inside the same shared deadline (B4(a)).
         sql`SELECT id, 3 AS pri, last_attempt_at AS ord FROM (
@@ -1106,7 +1112,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
   /**
    * #1498 (OD-171, review MINOR 3): stamp `last_attempt_at` on a row the receipt_newer leg offered
    * when the walk's settle did not (a dropped write keeps `last_attempt_at` by design, a
-   * recordOutcome that threw wrote nothing), so the same record cannot offer the row again every
+   * recordOutcome that threw wrote nothing), so the same re-read cannot offer the row again every
    * walk. Touches nothing else: state, attempts, evidence and the claim stay as the settle left them.
    */
   async stampReceiptReopenAttempt(params: { planRowId: string; now?: Date }): Promise<{ stamped: boolean }> {

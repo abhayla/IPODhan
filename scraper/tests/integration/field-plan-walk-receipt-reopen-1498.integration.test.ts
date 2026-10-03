@@ -1,4 +1,4 @@
-// implements: R-281
+// implements: R-282
 // #1498 -- spec data-sourcing-pull-model.md OD-171 (a newer document record re-opens a non-settled
 // DOC-ranked plan row once), OD-161 (the DOC answer is judged by the document's own record), §2.5.1 trigger 8.
 // REAL claim SQL + REAL walk + REAL DOC fetcher (receipts read by the production loader) on ipodhan_test.
@@ -124,11 +124,20 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = ${last}::timestamp WHERE id = ${row.id}::uuid`);
     return row.id;
   }
-  async function seedReceipt(camelField: string, value: string, agoMs: number, documentId = DOC) {
-    const at = new Date(Date.now() - agoMs).toISOString();
+  /**
+   * A (re-)read of `documentId` `agoMs` ago that recorded `value` for the field: the record is upserted the
+   * way writeReceiptAndReopen does (ON CONFLICT keeps created_at) and documents.extracted_at is stamped, as
+   * every COMPLETED read and re-read does. `createdAgoMs` places the record's created_at independently.
+   */
+  async function seedReceipt(camelField: string, value: string, agoMs: number, documentId = DOC, createdAgoMs = agoMs) {
+    const created = new Date(Date.now() - createdAgoMs).toISOString();
+    const read = new Date(Date.now() - agoMs).toISOString();
     await db.execute(sql`
       INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value, source_text, created_at)
-      VALUES (${documentId}::uuid, 'ipos', '', ${camelField}, ${value}, 'TEXT', ${at}::timestamp)`);
+      VALUES (${documentId}::uuid, 'ipos', '', ${camelField}, ${value}, 'TEXT', ${created}::timestamp)
+      ON CONFLICT (document_id, table_name, row_key, field_name) DO UPDATE
+        SET value = EXCLUDED.value, source_text = EXCLUDED.source_text, ocr_confidence = EXCLUDED.ocr_confidence`);
+    await db.execute(sql`UPDATE documents SET extracted_at = ${read}::timestamp WHERE id = ${documentId}::uuid`);
   }
   async function plan(id: string) {
     return (await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id)))[0];
@@ -178,8 +187,9 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     expect(second.receiptReopened).toEqual([]);
   }, 60000);
 
-  it('fail closed: a record OLDER than the last attempt, a SUPPLIED row, and a row with no DOC rank are never re-opened', async () => {
-    await seedPlan('price_range_min', { attempts: 16 }, 60_000);
+  it('fail closed: a document read BEFORE the last attempt, a SUPPLIED row, and a row with no DOC rank are never re-opened', async () => {
+    // Attempted 30 s ago: after every read below (the shared RHP's last read is the lot_size one, 60 s ago).
+    await seedPlan('price_range_min', { attempts: 16 }, 30_000);
     await seedReceipt('priceRangeMin', '70', 3 * 86_400_000);
     await seedPlan('price_range_max', { state: 'SUPPLIED', attempts: 1 }, 3 * 86_400_000);
     await seedReceipt('priceRangeMax', '75', 60_000);
@@ -244,5 +254,36 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     expect(after.state).toBe('PENDING');
     expect(after.lastAttemptAt!.getTime()).toBeGreaterThan(before!.getTime());
     expect(await planRepo.listReceiptNewerRows({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toEqual([]);
+  }, 60000);
+
+  it('a re-read that CHANGES an existing record re-opens the row once (created_at is unchanged by the upsert)', async () => {
+    const id = await seedPlan('price_range_min', { attempts: 16 }, 86_400_000);
+    await seedReceipt('priceRangeMin', '69', 2 * 86_400_000);
+    expect(await planRepo.listReceiptNewerRows({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toEqual([]);
+
+    await seedReceipt('priceRangeMin', '70', 60_000, DOC, 2 * 86_400_000); // re-read: value changed, record kept
+    const listed = await planRepo.listReceiptNewerRows({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES });
+    expect(listed.map((r) => r.id)).toEqual([id]);
+    expect((await walk(IPO, deps() as never, budget())).fieldsAttempted).toBe(1);
+    expect((await walk(IPO, deps() as never, budget())).fieldsAttempted).toBe(0);
+  }, 60000);
+
+  it('a re-read with the SAME value re-opens the row once, and not again at the next walk', async () => {
+    await seedPlan('price_range_min', { attempts: 16 }, 86_400_000);
+    await seedReceipt('priceRangeMin', '70', 2 * 86_400_000);
+    await seedReceipt('priceRangeMin', '70', 60_000, DOC, 2 * 86_400_000); // re-read, value unchanged
+    const first = await walk(IPO, deps() as never, budget());
+    expect(first.fieldsAttempted).toBe(1);
+    expect(first.receiptReopened?.[0]?.outcome).toBe('SUPPLIED');
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'CHECK_FAILED' WHERE ipo_id = ${IPO}::uuid`);
+    expect((await walk(IPO, deps() as never, budget())).fieldsAttempted).toBe(0);
+  }, 60000);
+
+  it('no re-read since the last attempt: not re-opened, even when the record row itself is newer', async () => {
+    await seedPlan('price_range_min', { attempts: 16 }, 86_400_000);
+    // The document was last read 2 days ago; a record row created a minute ago does not count.
+    await seedReceipt('priceRangeMin', '70', 2 * 86_400_000, DOC, 60_000);
+    expect(await planRepo.listReceiptNewerRows({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toEqual([]);
+    expect(await planRepo.claimNextDueField({ ipoId: IPO, receiptDocTypes: RECEIPT_DOC_TYPES })).toBeNull();
   }, 60000);
 });
