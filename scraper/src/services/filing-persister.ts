@@ -3275,7 +3275,14 @@ export async function persistFilingExtraction(
       return true;
     });
 
+  // A BRLM / REGISTRAR row is built from the value the column HOLDS (item 39), which can be another
+  // source's; this document's record names it only when the document's own read IS that value
+  // (OD-91: "the fields it produced").
+  const registrarReadIsHeld =
+    docRegistrarName !== null && !!registrarName && docRegistrarName.trim() === String(registrarName).trim();
   for (const { row, key } of intermediariesWithKeys) {
+    if (row.role === 'BRLM' && !docBrlmsHeld) continue;
+    if (row.role === 'REGISTRAR' && !registrarReadIsHeld) continue;
     childReceipts('ipo_intermediaries', `${row.role}:${key as string}`, row as unknown as Record<string, unknown>, [
       'name',
       'role',

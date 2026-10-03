@@ -223,6 +223,22 @@ describe('filing-persister - the record covers every table it writes (F-241, OD-
     expect(hintsMock).not.toHaveBeenCalled();
   });
 
+  it('BRLM and REGISTRAR rows held from another source are written but never recorded as this document\'s (OD-91)', async () => {
+    const x = nseDrhp();
+    const noCoverRead = { ...x, fields: { ...x.fields, lead_managers: v(null) } } as FilingExtraction;
+    const deps = makeDeps();
+    (deps.ipoRepository.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: IPO_ID, companyName: 'National Stock Exchange of India Limited', slug: 'national-stock-exchange-of-india-ltd',
+      segment: 'MAINBOARD', offeringType: 'IPO', status: 'UPCOMING', listingExchanges: [],
+      leadManagers: ['Other Source Capital Limited'], registrar: 'Other Source Registrar Private Limited',
+    });
+    const summary = await persistFilingExtraction(IPO_ID, noCoverRead, { docType: 'DRHP', apply: true }, deps);
+    const written = (deps.intermediaries.replaceForIpo as ReturnType<typeof vi.fn>).mock.calls.flat(2) as Array<{ role?: string; name?: string }>;
+    expect(written.some((r) => r?.role === 'BRLM' && r?.name === 'Other Source Capital Limited')).toBe(true);
+    const intermediaryReceipts = (summary.receipt_fields ?? []).filter((r) => r.tableName === 'ipo_intermediaries');
+    expect(intermediaryReceipts.filter((r) => r.rowKey.startsWith('BRLM:') || r.rowKey.startsWith('REGISTRAR:'))).toEqual([]);
+  });
+
   it('a price band advert outside the website family leaves no website receipt (OD-96)', async () => {
     const x = withWebsite();
     const summary = await persistFilingExtraction(IPO_ID, { ...x, doc_type: 'PRICE_BAND_AD' } as FilingExtraction, { docType: 'PRICE_BAND_AD', apply: false }, makeDeps());
