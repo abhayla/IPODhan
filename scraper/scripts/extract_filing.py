@@ -29,6 +29,7 @@ import answer_states  # noqa: E402 — pure-python, stdlib only (#1420)
 import bid_limits  # noqa: E402 — pure-python, stdlib only (rows 73-74)
 import cover_block  # noqa: E402 — pure-python, stdlib only (item 39)
 import objects_of_offer  # noqa: E402 — pure-python, stdlib only (item 40)
+import offer_doc_terms  # noqa: E402 — pure-python, stdlib only (F-242)
 from answer_states import judge, missed, refused  # noqa: E402
 
 # W-178c round 2: how long this process waits to acquire the box lock before
@@ -3198,6 +3199,10 @@ def read_advert_cover_fields(page_texts, emit):
             emit.fields[name] = field
 
 
+# F-242: the offer documents in the PRICE_BAND_AD field family (document-families.json).
+OFFER_TERM_DOC_TYPES = ("DRHP", "RHP", "PROSPECTUS")
+
+
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
         issue_size_rupees=None, tables_for_page=None, unread_pages=None,
         ocr_render=None):
@@ -3225,6 +3230,12 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
                            segment=segment, doc_type=doc_type,
                            tables_for_page=tables_for_page)
+        # F-242 / OD-164: an offer document prints the offer terms the advert reader reads
+        # (designated exchange, book-building regulation, UPI mandate end time, allocation
+        # portions), and those fields' manifest family includes it. Read with the offer
+        # document's own sentences, fail closed (offer_doc_terms.py); never the advert reader.
+        if doc_type in OFFER_TERM_DOC_TYPES:
+            offer_doc_terms.read_offer_terms(page_texts, emit, check_allocation)
 
     # W-133 MAJOR-3: fold the shared core's own financial-completeness verdict
     # (pnl["status"], surfaced above as meta["financial_status"]) into the

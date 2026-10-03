@@ -76,6 +76,7 @@ export const NOT_ONE_TO_ONE_COLUMNS: Readonly<Record<string, string>> = {
   'ipos.issueSize': 'derived: fresh + OFS at cap (OD-160, §2.6)',
   'ipos.listingExchanges': 'read from the listing sentence (#1233 answer states), not one extractor field',
   'ipos.segment': 'read from the listing sentence (#1233 answer states), not one extractor field',
+  'ipo_details.exchanges': 'read from the listing sentence (#1233 answer states), the same set as ipos.listingExchanges (spec row 41)',
   'ipo_details.allocationPct': 'three fields (qib/nii/retail) in one column',
   'ipo_details.ofsIssue': 'one of several fields (ofs_amount_at_cap / ofs_amount / ofs_shares), withheld with freshIssue (F-51)',
   'ipo_details.issueType': 'decided from two fields (regulation + cover price type), or from the band (min === max)',

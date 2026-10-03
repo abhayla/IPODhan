@@ -134,7 +134,7 @@ describe('filing-persister - the record covers every table it writes (F-241, OD-
 
   for (const apply of [true, false]) {
     it(`child tables and side writers are in the record, keyed by the child row (apply=${apply})`, async () => {
-      const summary = await persistFilingExtraction(IPO_ID, nseDrhp(), { docType: 'DRHP', apply }, makeDeps());
+      const summary = await persistFilingExtraction(IPO_ID, nseDrhp(), { docType: 'DRHP', apply, documentId: 'd88fad44-75ce-4d90-aec7-2bb9f97aa734' }, makeDeps());
       const t = byTable(summary.receipt_fields);
 
       expect(t.financial_statements).toEqual(
