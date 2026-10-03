@@ -662,7 +662,7 @@ def _iso_ocr(text):
 # mangles (a leading digit dropped, a share count split across a space) while the
 # sentence survives — so it is the fallback source for exactly those two figures.
 _PROSE_FRESH_RX = re.compile(
-    r"FRESH ISSUE OF UP TO[^\n]{0,300}?AGGREGATING UP TO\s*[^\d\n]{0,4}"
+    r"FRESH ISSUE OF UP TO[^\n]{0,120}?AGGREGATING UP TO\s*[^\d\n]{0,4}"
     r"([\d,]+(?:\.\d+)?)\s*MILLION", re.I)
 _PROSE_OFS_SHARES_RX = re.compile(
     r"OFFER FOR SALE OF UP TO\s+(\d[\d,\s]{4,14}?)\s*EQUITY SHARES", re.I)
@@ -2499,62 +2499,127 @@ def _offer_sentence(blob):
 _HEADLINE_MONEY_FIELDS = ("fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
                           "total_offer_amount_at_cap")
 
-# F-244: the draft's "DETAILS OF THE OFFER/ISSUE" table. pdfplumber interleaves its
-# columns, so the reader keys on three things that survive the interleave: the TYPE
-# cell (the first line after the ELIGIBILITY header that starts with a type), the
-# "up to N" share counts, and a NIL / "Not applicable" leg.
+# F-244: the draft's "DETAILS OF THE OFFER/ISSUE" table (SEBI ICDR cover format: Type |
+# Fresh | OFS | Total | Eligibility). pdfplumber interleaves its columns, so the reader
+# keys on what survives the interleave: the TYPE cell on the first DATA row after the
+# ELIGIBILITY header (a wrapped header line such as "FRESH ISSUE OFFER FOR SIZE" is not a
+# data row), the "up to N" share-count cells, and a NIL / "Not applicable" cell on that row.
 DRHP_TABLE_START_RX = re.compile(r"DETAILS\s+OF\s+(?:THE\s+)?(?:OFFER|ISSUE)\b", re.I)
 DRHP_TABLE_END_RX = re.compile(
     r"OFFER\s+FOR\s+SALE\s+BY|SELLING\s+SHAREHOLDERS|RISKS\s+IN\s+RELATION", re.I)
 DRHP_TYPE_RX = re.compile(
     r"^\s*(FRESH\s+ISSUE\s+AND\b|FRESH\s+ISSUE\b|OFFER\s+FOR\s+SALE\b)", re.I)
-DRHP_UPTO_COUNT_RX = re.compile(r"\bUP\s*TO\s+([\d,]+)(?!\s*[\d,])", re.I)
+# A data row carries a cell value after its type words; a wrapped header line carries none.
+DRHP_DATA_CELL_RX = re.compile(r"\bUP\s*TO\b|\bNIL\b|\bNOT\b|\d{1,3}(?:,\d{2,3})+", re.I)
+DRHP_SLOT_RX = re.compile(r"\bUP\s*TO\b", re.I)
+_DRHP_COUNT_AT_RX = re.compile(
+    r"\s*(\d{1,3}(?:,\d{2,3})+|\d{4,})(?![\d,])(\.\d+)?"
+    r"(\s*(?:LAKHS?|CRORES?|MILLIONS?|BILLIONS?|RS\b))?", re.I)
+_DRHP_PLACEHOLDER_AT_RX = re.compile(r"\s*\[[^\]\n]{0,3}\]")
 DRHP_PLACEHOLDER_COUNT_RX = re.compile(r"\bUP\s*TO\s+\[\S{0,3}\]\s+EQUITY", re.I)
-# "Not applicable" may be split by the interleave: "Not Up to 148,905,525 ..." / "applicable ...".
-DRHP_NIL_LEG_RX = re.compile(
-    r"\bNOT\s+APPLICABLE\b|\bNOT\b[^\n]{0,300}\n\s*APPLICABLE\b|\bNIL\b", re.I)
+DRHP_BY_SHARES_HEADER_RX = re.compile(r"\(\s*BY\s+NUMBER\s+OF\s+SHARES\s*\)", re.I)
+DRHP_NIL_CELL_RX = re.compile(r"\bNIL\b|\bNOT\s+APPLICABLE\b", re.I)
 _DRHP_SHARE_FIELDS = ("shares_at_floor", "shares_at_cap", "ofs_shares",
                       "total_offer_shares_at_cap", "issue_structure")
+_DRHP_CELL_WORDS = {"money": "a rupee amount", "placeholder": "a [*] placeholder",
+                    "blank": "no figure after 'up to' on the row"}
 
 
-def _drhp_offer_table(blob):
-    """(offer type, [share counts], nil leg stated, None) or (None, None, None, why)."""
+def _drhp_cell_at(text, pos):
+    """What the cell starting at `pos` holds: ("count", n); ("money", None) for a rupee
+    figure (decimals, or a lakh/crore/million unit); ("placeholder", None); ("blank", None)."""
+    m = _DRHP_COUNT_AT_RX.match(text, pos)
+    if m:
+        if m.group(2) or m.group(3):
+            return "money", None
+        return "count", _num(m.group(1))
+    if _DRHP_PLACEHOLDER_AT_RX.match(text, pos):
+        return "placeholder", None
+    return "blank", None
+
+
+def _drhp_offer_row(blob):
+    """(kind, row, None) for the table's first data row, or (None, None, why)."""
     start = DRHP_TABLE_START_RX.search(blob)
     if not start:
-        return None, None, None, "no 'details of the offer' table on the cover"
+        return None, None, "no 'details of the offer' table on the cover"
     end = DRHP_TABLE_END_RX.search(blob, start.end())
     region = blob[start.end():end.start() if end else start.end() + 3000]
     lines = region.split("\n")
     head = next((k for k, l in enumerate(lines) if re.search(r"ELIGIBILITY|ELIGIBLITY", l, re.I)), -1)
     if head < 0:
-        return None, None, None, "offer table header (eligibility column) not found"
-    kind = type_count = None
-    for line in lines[head + 1:]:
-        m = DRHP_TYPE_RX.match(line)
-        if m:
-            # A table "by number of shares" prints the count right after the type
-            # cell with no "up to" (Panchatv: "Fresh Issue 16,75,200 NIL 1809.22").
-            tc = re.match(r"\s+(\d{1,3}(?:,\d{2,3})+)(?![\d.])", line[m.end():])
-            type_count = _num(tc.group(1)) if tc else None
-            word = re.sub(r"\s+", " ", m.group(1).upper())
-            kind = ("FRESH_AND_OFS" if word.startswith("FRESH ISSUE AND")
-                    else "FRESH_ONLY" if word.startswith("FRESH") else "OFS_ONLY")
-            break
-    if kind is None:
-        return None, None, None, "offer table type cell not readable"
+        return None, None, "offer table header (eligibility column) not found"
+    for k in range(head + 1, len(lines)):
+        m = DRHP_TYPE_RX.match(lines[k])
+        if not m or not DRHP_DATA_CELL_RX.search(lines[k], m.end()):
+            continue
+        nxt = lines[k + 1] if k + 1 < len(lines) else ""
+        word = re.sub(r"\s+", " ", m.group(1).upper())
+        # The type cell itself can wrap: "Fresh Issue" / "and Offer for" / "Sale" (Lenskart).
+        if word.startswith("FRESH ISSUE AND") or (word == "FRESH ISSUE"
+                                                  and re.match(r"\s*AND\b", nxt, re.I)):
+            kind = "FRESH_AND_OFS"
+        else:
+            kind = "FRESH_ONLY" if word.startswith("FRESH") else "OFS_ONLY"
+        return kind, dict(line=lines[k], after=lines[k][m.end():], next=nxt,
+                          header="\n".join(lines[:k]), region=region), None
+    return None, None, "offer table has no data row with a type cell"
+
+
+def _drhp_mixed_counts(row):
+    """Fresh + OFS row: its three "up to" cells in the prescribed column order fresh | OFS |
+    total. ({field: (value, None) or (None, why)}, None), or (None, why) for a row that
+    cannot be split."""
+    header = row["header"].upper()
+    if not ("FRESH" in header and re.search(r"OFFER\s+FOR|FOR\s+SALE|\bOFS\b", header) and "TOTAL" in header):
+        return None, "mixed offer table header does not name fresh / OFS / total columns"
+    slots = [_drhp_cell_at(row["line"], m.end()) for m in DRHP_SLOT_RX.finditer(row["line"])]
+    if len(slots) != 3:
+        return None, "mixed offer table row has %d 'up to' cells, expected 3" % len(slots)
+    (fk, fresh), (ok, ofs), (tk, total) = slots
+    if fk == ok == tk == "count" and abs(fresh + ofs - total) > 0.5:
+        return None, "fresh %s + OFS %s != total %s on the offer table" % (fresh, ofs, total)
+    out = {}
+    for name, (k, v), leg in (("shares_at_floor", (fk, fresh), "fresh"),
+                              ("shares_at_cap", (fk, fresh), "fresh"),
+                              ("ofs_shares", (ok, ofs), "OFS"),
+                              ("total_offer_shares_at_cap", (tk, total), "total")):
+        out[name] = (v, None) if k == "count" else (
+            None, "%s leg not printed as a share count (%s)" % (leg, _DRHP_CELL_WORDS[k]))
+    return out, None
+
+
+def _drhp_single_leg_count(row):
+    """Fresh-only / OFS-only row: (the one share count, None) or (None, why)."""
+    region, line = row["region"], row["line"]
+    # The other leg's NIL / "Not applicable" cell sits on the data row itself; pdfplumber
+    # may split it as "Not" on the row and "applicable" opening the next line (NSE).
+    nil = DRHP_NIL_CELL_RX.search(line) or (
+        re.search(r"\bNOT\b", line, re.I) and re.match(r"\s*APPLICABLE\b", row["next"], re.I))
     if DRHP_PLACEHOLDER_COUNT_RX.search(region):
-        return kind, None, None, "share count printed as a placeholder"
-    counts = [c for c in (_num(c) for c in DRHP_UPTO_COUNT_RX.findall(region)) if c]
-    if not counts and type_count:
-        counts = [type_count]
-    return kind, counts, bool(DRHP_NIL_LEG_RX.search(region)), None
+        return None, "share count printed as a placeholder"
+    counts = [v for k, v in (_drhp_cell_at(region, m.end()) for m in DRHP_SLOT_RX.finditer(region))
+              if k == "count" and v]
+    if not counts:
+        # A table "by number of shares" prints the count right after the type cell with
+        # no "up to" (Panchatv: "Fresh Issue 16,75,200 NIL 1809.22"). Accepted only when
+        # the header states that unit: a bare number could be rupees in lakhs.
+        k, v = _drhp_cell_at(row["after"], 0)
+        if k == "count" and v and DRHP_BY_SHARES_HEADER_RX.search(row["header"]):
+            counts = [v]
+    if len(set(counts)) != 1:
+        return None, ("no 'up to N' share count in the offer table" if not counts
+                      else "offer table prints different share counts %s" % sorted(set(counts)))
+    if not nil:
+        return None, "the other leg is not stated as nil / not applicable"
+    return counts[0], None
 
 
 def _drhp_price_independent(blob, cover_page, emit):
-    """Answer states per field: a printed value is put; a leg the cover states as
-    NIL / not applicable is put as 0; anything the table does not settle (no table,
-    a mixed fresh + OFS split, two different counts, a placeholder count) is null
-    with the reason, never guessed."""
+    """Answer states per field: a printed share count is put; a leg the data row states
+    as NIL / not applicable is put as 0; anything the table does not settle (no table, a
+    header-only table, a placeholder or rupee figure where a count belongs, two different
+    counts, a mixed row whose cells do not add up) is null with the reason, never guessed."""
     fixed = bool(FIXED_PRICE_RX.search(blob))
     book = bool(BOOK_BUILT_RX.search(blob))
     price_type = "FIXED_PRICE" if fixed and not book else "BOOK_BUILDING" if book and not fixed else None
@@ -2563,19 +2628,31 @@ def _drhp_price_independent(blob, cover_page, emit):
               price_type or ("both 'fixed price' and 'book built' on the cover"
                              if fixed and book else "neither wording on the cover")))
 
-    kind, counts, nil_leg, why = _drhp_offer_table(blob)
-    if why is None and kind == "FRESH_AND_OFS":
-        why = "fresh/OFS split not readable from a mixed offer table"
-    elif why is None and len(set(counts)) != 1:
-        why = ("no 'up to N' share count in the offer table" if not counts
-               else "offer table prints different share counts %s" % sorted(set(counts)))
-    elif why is None and not nil_leg:
-        why = "the other leg is not stated as nil / not applicable"
-    if why is not None:
-        for name in _DRHP_SHARE_FIELDS:
+    def null_all(why, names=_DRHP_SHARE_FIELDS):
+        for name in names:
             emit.null(name, "DRHP: %s" % why, cover_page)
+
+    kind, row, why = _drhp_offer_row(blob)
+    if why is not None:
+        return null_all(why)
+
+    if kind == "FRESH_AND_OFS":
+        emit.put("issue_structure", kind, cover_page, "offer_type_named_on_cover",
+                 (True, "the offer table's type cell reads 'Fresh Issue and Offer for Sale'"))
+        cells, why = _drhp_mixed_counts(row)
+        if why is not None:
+            return null_all(why, _DRHP_SHARE_FIELDS[:-1])
+        for name, (v, reason) in cells.items():
+            if v is None:
+                emit.null(name, "DRHP: %s" % reason, cover_page)
+            else:
+                emit.put(name, v, cover_page, "cover_share_count_plausible",
+                         check_cover_share_count(v))
         return
-    shares = counts[0]
+
+    shares, why = _drhp_single_leg_count(row)
+    if why is not None:
+        return null_all(why)
     share_check = check_cover_share_count(shares)
     nil = (True, "the cover's offer table states the other leg as nil / not applicable")
     fresh = shares if kind == "FRESH_ONLY" else 0.0

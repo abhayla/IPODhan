@@ -457,58 +457,190 @@ def test_headline_helper_default_doc_type_is_unaffected():
 
 
 # --------------------------------------------------------------------------- #
-# F-244 — W-171 blanks only what depends on a price. Five REAL DRHP covers
-# (fixtures/drhp-covers/drhp-covers.json, page 1 as pdfplumber returns it).
-# Values read by hand off each cover:
-#   NSE      "Offer for Sale" | fresh "Not applicable" | up to 148,905,525 | 100% Book Built Offer
-#   Nityas   "Fresh Issue" | up to 14,456,000 | OFS "Not applicable" | 100% Book Built Issue
-#   Orient   "Fresh Issue and Offer for Sale" | counts "[*]" | 100% Book Built Offer
-#   RK       "Fresh Issue" | upto 42,67,200 | OFS "NIL" | 100% BOOK BUILT ISSUE (SME)
-#   Panchatv "Fresh Issue" 16,75,200 | OFS "NIL" | 100% Fixed Price Issue (SME draft prospectus)
+# F-244 — W-171 blanks only what depends on a price. Thirteen REAL draft covers
+# (fixtures/drhp-covers/drhp-covers.json, page 1 as pdfplumber returns it; each entry
+# names its source PDF). Values read by hand off each cover's offer table:
+#   NSE       "Offer for Sale" | fresh "Not applicable" | up to 148,905,525 | Book Built
+#   Hyundai   "Offer for Sale" | fresh "Not applicable" | up to 142,194,700 | Book Building
+#   Studds    "Offer for Sale" | fresh "Not applicable" | up to 7,786,120   | Book Building
+#   Nityas    "Fresh Issue" | up to 14,456,000 | OFS "Not applicable" | Book Built
+#   RK        "Fresh Issue" | upto 42,67,200 | OFS "NIL" | Book Built (SME)
+#   Modern    "Fresh Issue" | upto 41,00,000 | OFS "Not Applicable" | Book Building (SME)
+#   Panchatv  "Fresh Issue" 16,75,200 | OFS "NIL" | Fixed Price (SME DRAFT PROSPECTUS)
+#   Water     "Fresh Issue and Offer for Sale" | 9,505,000 + 2,376,000 = 11,881,000
+#   Emcure    mixed | fresh [*] shares (Rs 8,000 million) | OFS 13,678,839 | total [*]
+#   Ola       mixed | fresh "up to [*]" wrapped | OFS 95,191,195 | total [*]
+#   Orient, Bajaj, Lenskart  mixed | every share count "[*]"
+# Emcure and Bajaj print a WRAPPED HEADER line starting "FRESH ISSUE OFFER FOR ..." after
+# the eligibility header; Lenskart wraps the type cell itself ("Fresh Issue" / "and Offer").
 # --------------------------------------------------------------------------- #
 import json  # noqa: E402
+import re  # noqa: E402
 
 _COVERS = {c["slug"]: c["text"] for c in json.load(open(
     os.path.join(os.path.dirname(os.path.abspath(__file__)),
                  "fixtures", "drhp-covers", "drhp-covers.json"), encoding="utf-8"))["covers"]}
 
+_SHARE_FIELDS = ("shares_at_floor", "shares_at_cap", "ofs_shares", "total_offer_shares_at_cap")
+_PRICED = ("price_band_floor", "price_band_cap", "lot_size", "fresh_issue_amount",
+           "ofs_amount", "ofs_amount_at_cap", "total_offer_amount_at_cap")
+
+
+def drhp(text):
+    return headline(text, segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+
+
+def detail(fields, name):
+    return fields[name]["check"]["detail"]
+
+
+# slug -> (issue_price_type, issue_structure, fresh shares, OFS shares, total shares);
+# None = must be null.
 _DRHP_EXPECTED = {
     "national-stock-exchange-of-india-ltd":
         ("BOOK_BUILDING", "OFS_ONLY", 0.0, 148905525.0, 148905525.0),
+    "hyundai-motor": ("BOOK_BUILDING", "OFS_ONLY", 0.0, 142194700.0, 142194700.0),
+    "studds": ("BOOK_BUILDING", "OFS_ONLY", 0.0, 7786120.0, 7786120.0),
     "nityas-gems-and-jewellery-ltd":
         ("BOOK_BUILDING", "FRESH_ONLY", 14456000.0, 0.0, 14456000.0),
     "r-k-fashion-accessories-ltd":
         ("BOOK_BUILDING", "FRESH_ONLY", 4267200.0, 0.0, 4267200.0),
+    "modern-diagnostic": ("BOOK_BUILDING", "FRESH_ONLY", 4100000.0, 0.0, 4100000.0),
     "panchatv-bharat-ltd":
         ("FIXED_PRICE", "FRESH_ONLY", 1675200.0, 0.0, 1675200.0),
+    "water-infra": ("BOOK_BUILDING", "FRESH_AND_OFS", 9505000.0, 2376000.0, 11881000.0),
+    "emcure-pharma": ("BOOK_BUILDING", "FRESH_AND_OFS", None, 13678839.0, None),
+    "ola-electric": ("BOOK_BUILDING", "FRESH_AND_OFS", None, 95191195.0, None),
+    "orient-cables-india-ltd": ("BOOK_BUILDING", "FRESH_AND_OFS", None, None, None),
+    "bajaj-housing": ("BOOK_BUILDING", "FRESH_AND_OFS", None, None, None),
+    "lenskart": ("BOOK_BUILDING", "FRESH_AND_OFS", None, None, None),
 }
+
+
+def test_every_fixture_cover_has_an_expectation():
+    assert sorted(_COVERS) == sorted(_DRHP_EXPECTED)
 
 
 @pytest.mark.parametrize("slug", sorted(_DRHP_EXPECTED))
 def test_drhp_reads_price_independent_facts_off_real_covers(slug):
     ptype, structure, fresh, ofs, total = _DRHP_EXPECTED[slug]
-    f = headline(_COVERS[slug], segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+    f = drhp(_COVERS[slug])
     assert value(f, "issue_price_type") == ptype
     assert value(f, "issue_structure") == structure
     assert value(f, "shares_at_floor") == fresh
     assert value(f, "shares_at_cap") == fresh
     assert value(f, "ofs_shares") == ofs
     assert value(f, "total_offer_shares_at_cap") == total
+    for name in _SHARE_FIELDS:
+        if value(f, name) is None:
+            assert detail(f, name).startswith("DRHP: "), name
     # Everything priced stays null on a draft (W-171 unchanged).
-    for name in ("price_band_floor", "price_band_cap", "lot_size", "fresh_issue_amount",
-                 "ofs_amount", "ofs_amount_at_cap", "total_offer_amount_at_cap"):
+    for name in _PRICED:
         assert value(f, name) is None, name
 
 
-def test_drhp_mixed_offer_with_placeholder_counts_fails_closed():
-    """Orient: a fresh + OFS table whose counts are "[*]" cannot be split -> null, with the reason."""
-    f = headline(_COVERS["orient-cables-india-ltd"], segment="MAINBOARD", doc_unit="millions",
-                 doc_type="DRHP")
-    assert value(f, "issue_price_type") == "BOOK_BUILDING"
-    for name in ("shares_at_floor", "shares_at_cap", "ofs_shares", "total_offer_shares_at_cap",
-                 "issue_structure"):
+def test_mixed_offer_rupee_fresh_leg_gives_ofs_shares_only():
+    """Emcure prints the fresh leg as "[*] Equity Shares aggregating up to Rs 8,000.00
+    million": the OFS count is read, the fresh and total counts stay null with the reason,
+    and the rupee figure is never read as shares."""
+    f = drhp(_COVERS["emcure-pharma"])
+    assert value(f, "ofs_shares") == 13678839.0
+    assert detail(f, "shares_at_floor") == "DRHP: fresh leg not printed as a share count (a [*] placeholder)"
+    assert detail(f, "total_offer_shares_at_cap") == \
+        "DRHP: total leg not printed as a share count (a [*] placeholder)"
+    assert 8000.0 not in [value(f, n) for n in _SHARE_FIELDS]
+
+
+def test_mixed_offer_rupee_amount_in_a_share_cell_is_refused():
+    """Water's fresh cell edited to a rupee figure: "up to 9,505.00 million" is money."""
+    f = drhp(_COVERS["water-infra"].replace("Up to 9,505,000", "Up to 9,505.00 million", 1))
+    assert value(f, "shares_at_floor") is None
+    assert detail(f, "shares_at_floor") == "DRHP: fresh leg not printed as a share count (a rupee amount)"
+    assert value(f, "ofs_shares") == 2376000.0
+
+
+def test_mixed_offer_cells_that_do_not_add_up_fail_closed():
+    f = drhp(_COVERS["water-infra"].replace("Up to 11,881,000", "Up to 11,882,000", 1))
+    assert value(f, "issue_structure") == "FRESH_AND_OFS"
+    for name in _SHARE_FIELDS:
         assert value(f, name) is None, name
-        assert f[name]["check"]["detail"] == "DRHP: share count printed as a placeholder"
+        assert "!= total" in detail(f, name)
+
+
+def test_mixed_offer_row_without_three_cells_fails_closed():
+    f = drhp(_COVERS["water-infra"].replace("Up to 2,376,000 ", "", 1))
+    for name in _SHARE_FIELDS:
+        assert value(f, name) is None, name
+        assert detail(f, name) == "DRHP: mixed offer table row has 2 'up to' cells, expected 3"
+
+
+def test_mixed_offer_header_without_column_names_fails_closed():
+    text = _COVERS["water-infra"].replace(
+        "Type Fresh Offer Size Offer for Sale size Total Offer size",
+        "Type Size A Size B Size C", 1)
+    f = drhp(text)
+    for name in _SHARE_FIELDS:
+        assert value(f, name) is None, name
+        assert "header does not name" in detail(f, name)
+
+
+def test_wrapped_header_line_is_not_taken_as_the_type_cell():
+    """Studds (OFS only) with a real-shaped wrapped header line after the eligibility header:
+    "Fresh Issue size Offer for Sale size" carries no cell value, so it is not the data row
+    and the offer stays OFS_ONLY (before: FRESH_ONLY with the OFS count as fresh shares)."""
+    head = "Type Fresh Issue size Offer for Sale size Total Offer size Eligibility and share reservation"
+    text = _COVERS["studds"].replace(head, head + "\nFresh Issue size Offer for Sale size", 1)
+    assert text != _COVERS["studds"]
+    f = drhp(text)
+    assert value(f, "issue_structure") == "OFS_ONLY"
+    assert value(f, "shares_at_floor") == 0.0
+    assert value(f, "ofs_shares") == 7786120.0
+
+
+def test_table_with_no_data_row_fails_closed():
+    f = drhp(_COVERS["studds"].replace("Offer for Sale Not applicable", "Not applicable", 1))
+    for name in _SHARE_FIELDS + ("issue_structure",):
+        assert value(f, name) is None, name
+        assert detail(f, name) == "DRHP: offer table has no data row with a type cell"
+
+
+def test_no_offer_table_fails_closed():
+    f = drhp(re.sub(r"DETAILS OF THE OFFER", "SUMMARY", _COVERS["studds"]))
+    for name in _SHARE_FIELDS + ("issue_structure",):
+        assert value(f, name) is None, name
+        assert detail(f, name) == "DRHP: no 'details of the offer' table on the cover"
+
+
+def test_count_after_type_cell_needs_a_by_number_of_shares_header():
+    """Panchatv's "Fresh Issue 16,75,200 NIL" is read only because its header says
+    "(By Number of Shares)"; the same row under a rupees-in-lakhs header stays null."""
+    text = _COVERS["panchatv-bharat-ltd"].replace(
+        "(By Number of Shares) (By Number of Shares)", "(₹ in Lakhs) (₹ in Lakhs)", 1)
+    assert text != _COVERS["panchatv-bharat-ltd"]
+    f = drhp(text)
+    for name in _SHARE_FIELDS:
+        assert value(f, name) is None, name
+    assert detail(f, "ofs_shares") == "DRHP: no 'up to N' share count in the offer table"
+
+
+def test_rupee_figure_after_type_cell_is_not_shares():
+    f = drhp(_COVERS["panchatv-bharat-ltd"].replace("Fresh Issue 16,75,200 NIL",
+                                                    "Fresh Issue 1,800.50 NIL", 1))
+    assert value(f, "shares_at_floor") is None
+    assert value(f, "total_offer_shares_at_cap") is None
+
+
+def test_nil_leg_must_be_on_the_data_row():
+    """Nityas with its row's "Not applicable" cell removed and a NIL elsewhere in the table
+    region: a NIL that is not the other leg's cell does not make the offer fresh-only."""
+    text = _COVERS["nityas-gems-and-jewellery-ltd"].replace(
+        "Up to 14,456,000 Not applicable Up to 14,456,000",
+        "Up to 14,456,000 Up to 14,456,000", 1).replace(
+        "Eligibility for the Issue", "Eligibility for the Issue NIL", 1)
+    assert text.count("NIL") == _COVERS["nityas-gems-and-jewellery-ltd"].count("NIL") + 1
+    f = drhp(text)
+    assert value(f, "ofs_shares") is None
+    assert detail(f, "ofs_shares") == "DRHP: the other leg is not stated as nil / not applicable"
 
 
 def test_drhp_unstated_other_leg_fails_closed():
@@ -516,15 +648,30 @@ def test_drhp_unstated_other_leg_fails_closed():
     leg is empty, so nothing share-related is written."""
     text = _COVERS["national-stock-exchange-of-india-ltd"].replace("Not", "Up").replace(
         "applicable", "")
-    f = headline(text, segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+    f = drhp(text)
     assert value(f, "ofs_shares") is None
-    assert f["ofs_shares"]["check"]["detail"] ==         "DRHP: the other leg is not stated as nil / not applicable"
+    assert detail(f, "ofs_shares") == "DRHP: the other leg is not stated as nil / not applicable"
 
 
 def test_drhp_two_different_counts_fail_closed():
     text = _COVERS["nityas-gems-and-jewellery-ltd"].replace(
         "Up to 14,456,000 Not applicable Up to 14,456,000",
         "Up to 14,456,000 Not applicable Up to 14,465,000")
-    f = headline(text, segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+    f = drhp(text)
     assert value(f, "total_offer_shares_at_cap") is None
-    assert "different share counts" in f["total_offer_shares_at_cap"]["check"]["detail"]
+    assert "different share counts" in detail(f, "total_offer_shares_at_cap")
+
+
+def test_issue_process_both_wordings_is_null_with_reason():
+    text = _COVERS["nityas-gems-and-jewellery-ltd"] + "\n100% Fixed Price Issue"
+    f = drhp(text)
+    assert value(f, "issue_price_type") is None
+    assert detail(f, "issue_price_type") == "check_failed: both 'fixed price' and 'book built' on the cover"
+
+
+def test_issue_process_neither_wording_is_null_with_reason():
+    text = re.sub(r"book[\s-]*(?:built|building)", "", _COVERS["nityas-gems-and-jewellery-ltd"],
+                  flags=re.I)
+    f = drhp(text)
+    assert value(f, "issue_price_type") is None
+    assert detail(f, "issue_price_type") == "check_failed: neither wording on the cover"
