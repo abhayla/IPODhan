@@ -215,3 +215,55 @@ def test_kpi_section_sentence_is_not_stated_none_when_a_headingless_peer_table_i
     headless = dict(viv)[113].replace("6. Comparison with Peer Group Companies:", "")
     found, reason = extract_peer_companies(pages + [(500, headless)], tables)
     assert found is None and reason == ONLY_KPI_TABLE
+
+
+# PR #1496 review round 2: peers NAMED after the denial, or anywhere in the
+# section, keep the answer a MISS (structural guard: a named company).
+def _robo_with(sentence):
+    return _edit(ROBO, ROBO_SENTENCE, sentence)
+
+
+@pytest.mark.parametrize("sentence", [
+    # X1
+    "Although there are no listed companies exactly comparable to our business, we present the ratios "
+    "of Alpha Limited and Beta Limited",
+    # X2
+    "There are no listed companies engaged exclusively in our business, but Alpha Limited and Beta "
+    "Limited operate in adjacent segments and match its business",
+    # X3
+    "There are no listed peers in India except Alpha Limited, which closely match its business",
+])
+def test_peers_named_after_the_denial_are_not_stated_none(sentence):
+    pages, tables = _robo_with(sentence)
+    found, reason = extract_peer_companies(pages, tables)
+    assert found is None and reason != NO_LISTED_PEERS
+
+
+@pytest.mark.parametrize("word", ["although", "but", "except", "save", "other than"])
+def test_new_walk_back_words_keep_a_miss(word):
+    pages, tables = _robo_with(
+        "The company has no directly comparable listed peers, %s some listed companies that closely "
+        "match its business" % word)
+    found, reason = extract_peer_companies(pages, tables)
+    assert found is None and reason != NO_LISTED_PEERS
+
+
+def test_a_one_section_naming_its_peers_is_never_stated_none():
+    """P2b: A-One Steels' real section (the shape detector misses its plain-text
+    table) with one plain denial sentence added and no table or row parsed."""
+    pages, _ = load("a-one-steels-india-ltd-rhp-peer-pages.json")
+    first = dict(pages)[220]
+    cut = first.index("(the “Industry Peers”).") + len("(the “Industry Peers”).")
+    text = first[:cut] + "\nThere are no listed companies in India engaged in the same business as ours.\n"
+    found, reason = extract_peer_companies([(220, text)], lambda index: [])
+    assert found is None and reason != NO_LISTED_PEERS
+
+
+def test_the_issuer_own_name_does_not_block_a_stated_absence():
+    pages, tables = _robo_with(
+        "Robokidz Eduventures Limited has no directly comparable listed peers, as there are no publicly "
+        "listed companies that closely match its business")
+    found, reason = extract_peer_companies(pages, tables, issuer_name="Robokidz Eduventures Limited")
+    assert found is None and reason == NO_LISTED_PEERS
+    found, reason = extract_peer_companies(pages, tables)
+    assert reason != NO_LISTED_PEERS

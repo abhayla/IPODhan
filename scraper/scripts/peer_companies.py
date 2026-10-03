@@ -64,15 +64,38 @@ _NO_PEERS_STATEMENT = re.compile(
 # paragraph walks it back: "...exactly the same line of business; however we have
 # compared ...", "the following listed peers", "the table below". Fail closed: any
 # of these words keeps the answer a MISS.
-_WALKED_BACK = re.compile(r"\b(?:however|compared|following|below|table)\b", re.I)
+# PR #1496 review round 2: "Although there are no listed companies exactly
+# comparable ...", "... but Alpha Limited ...", "except Alpha Limited", "save",
+# "other than" name peers after the denial.
+_WALKED_BACK = re.compile(
+    r"\b(?:however|compared|following|below|table|although|but|except|save|other\s+than)\b", re.I)
+# A named company: capitalised words ending in a legal form. The structural guard
+# (review round 2): a section that names ANY company other than the issuer is not
+# a statement that no listed peer exists, whatever its sentences say.
+_NAMED_COMPANY = re.compile(
+    r"\b[A-Z][A-Za-z&.'\-]*(?:\s+[A-Z&(][A-Za-z&.'()\-]*){0,6}\s+"
+    r"(?:Limited|Ltd\b\.?|Inc\b\.?|LLP\b|Pvt\b\.?)")
+
+
+def _names_other_company(text, issuer_name=None):
+    issuer = " ".join((issuer_name or "").lower().split())
+    for match in _NAMED_COMPANY.finditer(text):
+        name = " ".join(match.group(0).lower().split())
+        if issuer and (name in issuer or issuer in name):
+            continue
+        return True
+    return False
 _SENTENCE_SPLIT = re.compile(r"(?<=\.)\s+(?=[A-Z(])")
 _ALL_CAPS_HEADING = re.compile(r"^[^a-z]*[A-Z]{4}[^a-z]*$")
 
 
-def stated_no_listed_peer(body_lines):
+def stated_no_listed_peer(body_lines, issuer_name=None):
     """True only when a whole sentence of the section body literally states the
-    issuer has no listed peer / comparable listed company, and nothing later in
-    the same paragraph (up to a blank-free heading line) walks it back."""
+    issuer has no listed peer / comparable listed company, nothing later in the
+    same paragraph (up to a blank-free heading line) walks it back, and the
+    section names no company other than the issuer."""
+    if _names_other_company(" ".join(" ".join(body_lines).split()), issuer_name):
+        return False
     paragraphs, current = [], []
     for raw in body_lines:
         line = (raw or "").strip()
@@ -267,7 +290,7 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
             # answer stays a miss (ONLY_KPI_TABLE / NOT_IN_DOCUMENT).
             # PR #1496 review: only a literal, un-walked-back sentence, and only
             # when no page of the document prints a peer-ratio table shape.
-            if stated_no_listed_peer(body) and not _document_prints_peer_table(page_texts):
+            if stated_no_listed_peer(body, issuer_name) and not _document_prints_peer_table(page_texts):
                 return None, NO_LISTED_PEERS
         if kpi_found:
             return None, ONLY_KPI_TABLE
@@ -284,7 +307,7 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
     # engaged exclusively in our business; however, the following listed
     # peers..." and then print them - checking the sentence first threw those
     # rows away (#545 round 2).
-    states_no_peers = (stated_no_listed_peer(body)
+    states_no_peers = (stated_no_listed_peer(body, issuer_name)
                        and not _document_prints_peer_table(page_texts))
 
     any_table = False
