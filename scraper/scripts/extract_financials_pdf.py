@@ -546,12 +546,35 @@ _EPS_TOTAL_RX = re.compile(r"continuing\s+and\s+discontinued", re.I)
 _EPS_LABEL_LINES = 4
 
 
+# Step-1 review (item 2): only the EPS rows the statement prints under its OWN heading are candidates. The
+# block starts at the statement's heading line (a continuation page with no heading starts at the top) and
+# ends at the first line that closes the statement: the auditor's "should be read with" / "integral part" /
+# "as per our report" sign-off, a "Notes:" line, or another statement or table heading. A disagreeing EPS
+# row outside the block (a bonus-adjusted figure in a note, a ratio table below) never displaces the
+# statement's row. Inside the block a segment row (continuing-only / discontinued-only) is never the EPS, so
+# the total row is what remains; two remaining rows that disagree give no EPS (fail closed).
+_STATEMENT_HEADING_RX = re.compile(r"statement\s*of\s*profit\s*and\s*loss|key\s*performance\s*indicators", re.I)
+_HEADING_PREFIX = r"^\s*(?:\(?[a-z\d]{1,4}[.)]\s*)?(?:annexure\s*[ivxlc\d]+\s*[-\u2013:]?\s*)?(?:restated\s*)?(?:summary\s*)?(?:of\s*)?(?:consolidated\s*|standalone\s*)?"
+_STATEMENT_END_RX = re.compile(
+    r"should\s*be\s*read\s*(?:together\s*)?with|integral\s*part\s*of|as\s*per\s*our\s*report|^\s*notes?\s*[:.\-]"
+    + "|" + _HEADING_PREFIX + r"(?:statement\s*of\s*(?:assets|cash\s*flows?|changes\s*in|financial\s*position"
+    r"|profit\s*and\s*loss)|balance\s*sheet|accounting\s*ratios|basis\s*for\s*(?:the\s*)?offer\s*price"
+    r"|key\s*performance\s*indicators)",
+    re.I)
+
+
+def _statement_block(lines):
+    start = next((i for i, ln in enumerate(lines) if _STATEMENT_HEADING_RX.search(ln)), 0)
+    end = next((i for i in range(start + 1, len(lines)) if _STATEMENT_END_RX.search(lines[i])), len(lines))
+    return lines[start:end]
+
+
 def _read_eps_rows(lines, align):
-    """(series, combined, ambiguous) for the EPS rows of one page; series None when there is none or the
-    rows disagree."""
+    """(series, combined, ambiguous) for the EPS rows the statement prints in its own block on one page;
+    series None when there is none or the remaining rows disagree."""
     found = []
     context = []
-    for raw in lines:
+    for raw in _statement_block(lines):
         ln = _rejoin_split_initial(raw)
         if _EPS_ROW_RX.search(ln):
             label = " ".join(context + [ln])

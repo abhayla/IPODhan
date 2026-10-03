@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "stored copy D:/Abhay/Ventures/IPODhan/pdf-parser-test/drhps/emcure-pharma-drhp.pdf",
+  "capturedAt": "2026-10-04",
+  "pages": "0-based 302 (restated consolidated statement of profit and loss, EPS rows per segment and the continuing-and-discontinued total, then the auditor's sign-off)",
+  "extraction": "pdfplumber page text as extract_filing page_texts"
+}
