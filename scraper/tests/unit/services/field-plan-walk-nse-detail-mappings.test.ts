@@ -182,6 +182,19 @@ describe('NSE ipo-detail mappings: answer states', () => {
     expect(a).toMatchObject({ outcome: 'CHECK_FAILED', reason: expect.stringMatching(/identity unproven: SME reply period 2026-09-24\.\.2026-10-01, stored 2026-09-24\.\.2026-09-26/) });
   });
 
+  it('OD-170: a reply printing both period rows supplies the REVISED dates (the row identity is proven on)', async () => {
+    const base = fixture('RUNWALENTR');
+    const dataList = [
+      ...base.issueInfo.dataList,
+      { title: 'Revised/Extended Issue Period ', value: '"25-Sep-2026 to 01-Oct-2026 (The Issue is further extended from start date 25-09-2026 to end date 01-10-2026)"' },
+    ];
+    const { fetcher } = setup('RUNWALENTR', { detail: async () => ({ ...base, issueInfo: { ...base.issueInfo, dataList } }) });
+    await expect(fetcher(IPO_ID, 'ipos', '', 'close_date')).resolves.toEqual({ outcome: 'SUPPLIED', value: '2026-10-01' });
+    await expect(fetcher(IPO_ID, 'ipos', '', 'open_date')).resolves.toEqual({ outcome: 'SUPPLIED', value: '2026-09-25' });
+    const g = setup('GREENASIA');
+    await expect(g.fetcher(IPO_ID, 'ipos', '', 'close_date')).resolves.toEqual({ outcome: 'SUPPLIED', value: '2026-10-01' });
+  });
+
   it('SME identity refusals: mismatched dates, a missing stored date, an EQ key, a named reply, companyName not the symbol', async () => {
     const base = fixture('EVENTIONS');
     const cases: Array<[string, Parameters<typeof setup>[1]]> = [

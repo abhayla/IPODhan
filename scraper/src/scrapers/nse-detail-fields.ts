@@ -89,10 +89,17 @@ function band(rows: DataRow[]): { min: NseDetailFieldAnswer; max: NseDetailField
   return { min: { error }, max: { error } };
 }
 
+/**
+ * The issue period NSE states NOW (OD-170, F-237): the "Revised/Extended Issue Period" row when printed
+ * (its title carries a trailing space, its value a trailing "(The Issue is further extended ...)" note),
+ * else "Issue Period". The date fields AND the SME identity check read this one row, so the dates the
+ * walk supplies and the dates identity was proven on can never disagree.
+ */
 function period(rows: DataRow[]): { open: NseDetailFieldAnswer; close: NseDetailFieldAnswer } {
-  const row = single(rows, 'Issue Period');
+  const revised = single(rows, 'Revised/Extended Issue Period');
+  const row = 'absent' in revised ? single(rows, 'Issue Period') : revised;
   if (!('value' in row)) return { open: row, close: row };
-  const parts = row.value.split(/\s+to\s+/i);
+  const parts = row.value.replace(/\s*\(.*\)\s*$/, '').split(/\s+to\s+/i);
   const open = parts.length === 2 ? parseNSEDate(parts[0]) : undefined;
   const close = parts.length === 2 ? parseNSEDate(parts[1]) : undefined;
   if (!open || !close || open > close) {
@@ -134,22 +141,11 @@ function storedDay(v: unknown): string | null {
   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null;
 }
 
-/**
- * The issue period NSE states NOW: the "Revised/Extended Issue Period" row when printed (F-237; its
- * title carries a trailing space and its value a trailing "(The Issue is further extended ...)" note),
- * else "Issue Period". Used for SME identity only.
- */
+/** The SME identity check's view of `period` (OD-170): both dates, or why there are none. */
 function statedPeriod(rows: DataRow[]): { open: string; close: string } | { cause: string } {
-  const revised = single(rows, 'Revised/Extended Issue Period');
-  const row = 'absent' in revised ? single(rows, 'Issue Period') : revised;
-  if ('error' in row) return { cause: row.error };
-  if (!('value' in row)) return { cause: 'no issue period printed' };
-  const text = row.value.replace(/\s*\(.*\)\s*$/, '');
-  const parts = text.split(/\s+to\s+/i);
-  const open = parts.length === 2 ? parseNSEDate(parts[0]) : undefined;
-  const close = parts.length === 2 ? parseNSEDate(parts[1]) : undefined;
-  if (!open || !close) return { cause: `issue period unparseable: "${row.value.slice(0, 120)}"` };
-  return { open, close };
+  const p = period(rows);
+  if ('value' in p.open && 'value' in p.close) return { open: String(p.open.value), close: String(p.close.value) };
+  return { cause: 'error' in p.open ? p.open.error : 'no issue period printed' };
 }
 
 export function parseNseDetailFields(
@@ -177,7 +173,7 @@ export function parseNseDetailFields(
     return { kind: 'identity_mismatch', cause: `detail identity unproven: the reply for ${want} carries no symbol` };
   }
 
-  // D3 (F-236, supervisor + reviewer decision on the owner's delegation): an SME reply prints no company
+  // OD-170 (decision D3, F-236; supervisor + reviewer under the owner's delegation): an SME reply prints no company
   // name -- dataList[0].title is null and companyName is the symbol itself. Identity is then accepted ONLY
   // when (a) the key's series is SME and the reply has exactly that no-name shape (a reply carrying a
   // different name is still refused), (b) the symbol asked is the IPO's ACTIVE NSE_ISSUE key (the caller
