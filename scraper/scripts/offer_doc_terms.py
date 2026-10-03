@@ -163,6 +163,11 @@ def read_allocation(text, offsets, emit, check_allocation):
         passed, detail = check_allocation(found["qib_pct"], found["nii_pct"], found["retail_pct"])
         if not passed:
             reason = "allocation_check_failed: %s" % detail
+        elif abs(found["qib_pct"] + found["nii_pct"] + found["retail_pct"] - 100) > 0.5:
+            # The three portions are the whole Net Offer; a set that does not add to 100 is a
+            # mis-read (a sentence about another portion), never a value.
+            reason = "allocation_not_whole_net_offer: sum %s" % (
+                found["qib_pct"] + found["nii_pct"] + found["retail_pct"])
     for name in ALLOCATION_RX:
         if reason is None:
             emit.put(name, found[name], page, "allocation_sums_and_qib_floor",

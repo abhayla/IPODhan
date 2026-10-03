@@ -148,6 +148,15 @@ def test_allocation_that_does_not_add_up_is_missed_as_a_set():
     assert f["qib_pct"]["check"]["detail"].startswith("allocation_check_failed")
 
 
+@pytest.mark.parametrize("q,n,r", [(50, 15, 10), (40, 25, 35)])
+def test_allocation_must_add_to_the_whole_net_offer(q, n, r):
+    # A set under 100 (50/15/10) or with QIB under its floor but still summing to 100 (40/25/35)
+    # is never written: the three portions of the Net Offer are the whole of it.
+    f = read(page(ALLOC.format(q=q, n=n, r=r))).fields
+    assert {f[k]["state"] for k in ("qib_pct", "nii_pct", "retail_pct")} == {answer_states.MISSED}
+    assert f["qib_pct"]["value"] is None
+
+
 def test_allocation_values_when_consistent():
     f = read(page(ALLOC.format(q=50, n=15, r=35))).fields
     assert [f[k]["value"] for k in ("qib_pct", "nii_pct", "retail_pct")] == [50.0, 15.0, 35.0]
