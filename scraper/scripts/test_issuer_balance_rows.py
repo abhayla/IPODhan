@@ -38,10 +38,16 @@ NSE_P381 = "Return on Equity 32.98% 44.87% 37.37%\nReturn on Net Worth 33.21% 45
 NSE_P19 = ("Return on Equity Return on Equity represents Profit for the year attributable to Owners "
            "of National Stock Exchange of")
 YEARS = [2026, 2025, 2024]
+# NSE DRHP p78 (0-based), the P&L page the figures are read from: its heading prints no basis label.
+NSE_P78 = """SUMMARY STATEMENT OF PROFIT AND LOSS
+( in million, unless stated otherwise)
+Particulars For the year ended
+March 31, 2026 March 31, 2025 March 31, 2024"""
+PNL = (78, NSE_P78)
 
 
 def test_nse_total_assets_and_reserves_from_the_statement():
-    out = B.read_balance_totals([(76, NSE_P77)], pnl_page=78)
+    out = B.read_balance_totals([(76, NSE_P77), PNL], pnl_page=78)
     assert out["total_assets_by_fy"] == (
         {"2026": 879374.42, "2025": 694666.38, "2024": 654639.78}, 76, None)
     # "Other equity" is the Ind AS reserves line; total equity and share capital are not read.
@@ -51,9 +57,9 @@ def test_nse_total_assets_and_reserves_from_the_statement():
 
 def test_the_statement_nearest_the_pnl_page_is_used():
     other = NSE_P77.replace("879,374.42", "1.00").replace("318,660.41", "0.50")
-    out = B.read_balance_totals([(76, NSE_P77), (284, other)], pnl_page=78)
+    out = B.read_balance_totals([(76, NSE_P77), PNL, (284, other)], pnl_page=78)
     assert out["total_assets_by_fy"][0]["2026"] == 879374.42
-    out = B.read_balance_totals([(76, NSE_P77), (284, other)], pnl_page=283)
+    out = B.read_balance_totals([(76, NSE_P77), (283, NSE_P78), (284, other)], pnl_page=283)
     assert out["total_assets_by_fy"][0]["2026"] == 1.0
 
 
@@ -72,7 +78,7 @@ def test_the_statement_nearest_the_pnl_page_is_used():
      "total_assets_by_fy", "balance_sheet_total_assets_row_not_in_document"),
 ])
 def test_unresolved_statement_shapes_fail_closed(edit, field, reason):
-    series, _page, why = B.read_balance_totals([(76, edit(NSE_P77))], pnl_page=78)[field]
+    series, _page, why = B.read_balance_totals([(76, edit(NSE_P77)), PNL], pnl_page=78)[field]
     assert series is None
     assert why == reason
 
@@ -100,3 +106,57 @@ def test_roe_beyond_100_is_kept_in_a_loss_year():
     pages = [(123, NSE_P124.replace("32.98", "-132.98"))]
     series, _p, why = B.read_roe(pages, YEARS, {2026: -5.0, 2025: 1.0, 2024: 1.0})
     assert why is None and series["2026"] == -132.98
+
+
+# Step-2 review (item 4): the balance sheet must be on the SAME basis as the P&L page the figures
+# were read from (restated consolidated vs standalone, as each page labels itself); a basis that
+# cannot be told fails closed. Labelled pages below are MINIMAL EDITS of the real NSE headings
+# (the NSE annexure p284 reads "Restated Consolidated Statement of Assets and Liabilities").
+CONS_BS = NSE_P77.replace("SUMMARY STATEMENT OF ASSETS AND LIABILITIES",
+                          "RESTATED CONSOLIDATED STATEMENT OF ASSETS AND LIABILITIES")
+STAND_BS = NSE_P77.replace("SUMMARY STATEMENT OF ASSETS AND LIABILITIES",
+                           "RESTATED STANDALONE STATEMENT OF ASSETS AND LIABILITIES").replace(
+    "879,374.42", "500,000.00")
+CONS_PNL = NSE_P78.replace("SUMMARY STATEMENT", "RESTATED CONSOLIDATED STATEMENT")
+
+
+def test_nearest_statement_on_another_basis_is_skipped_for_the_matching_one():
+    out = B.read_balance_totals([(76, STAND_BS), (78, CONS_PNL), (284, CONS_BS)], pnl_page=78)
+    assert out["total_assets_by_fy"][0]["2026"] == 879374.42
+    assert out["total_assets_by_fy"][1] == 284
+
+
+def test_no_statement_on_the_pnl_basis_fails_closed():
+    out = B.read_balance_totals([(76, STAND_BS), (78, CONS_PNL)], pnl_page=78)
+    for field in ("total_assets_by_fy", "reserves_by_fy"):
+        assert out[field][0] is None
+        assert out[field][2] == "balance_sheet_basis_does_not_match_pnl"
+
+
+def test_unlabelled_pages_when_the_document_prints_both_bases_fail_closed():
+    out = B.read_balance_totals([(76, NSE_P77), PNL, (284, CONS_BS), (300, STAND_BS)], pnl_page=78)
+    assert out["total_assets_by_fy"][0] is None
+    assert out["total_assets_by_fy"][2] == "balance_sheet_basis_not_told"
+
+
+def test_unlabelled_summary_pages_match_when_the_document_prints_one_basis():
+    out = B.read_balance_totals([(76, NSE_P77), PNL, (284, CONS_BS)], pnl_page=78)
+    assert out["total_assets_by_fy"][1] == 76
+
+
+def test_a_pnl_page_naming_both_bases_fails_closed():
+    both = CONS_PNL + chr(10) + "Refer to the restated standalone financial information"
+    out = B.read_balance_totals([(76, CONS_BS), (78, both)], pnl_page=78)
+    assert out["total_assets_by_fy"][2] == "balance_sheet_basis_not_told"
+
+
+def test_pnl_page_text_missing_fails_closed():
+    out = B.read_balance_totals([(76, NSE_P77)], pnl_page=78)
+    assert out["total_assets_by_fy"][2] == "balance_sheet_basis_not_told"
+
+
+def test_without_a_pnl_page_every_statement_must_share_one_basis():
+    out = B.read_balance_totals([(96, CONS_BS), (270, CONS_BS)], pnl_page=None)
+    assert out["total_assets_by_fy"][1] == 96
+    out = B.read_balance_totals([(96, CONS_BS), (270, STAND_BS)], pnl_page=None)
+    assert out["total_assets_by_fy"][2] == "balance_sheet_basis_not_told"

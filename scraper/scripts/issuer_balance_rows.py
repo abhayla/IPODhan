@@ -11,8 +11,9 @@ Three financial_data fields the document prints and no reader took (spec §1.4 r
 Fail-closed rules (each returns a reason instead of a value, never a guess):
 
 * The statement is a page carrying the balance-sheet heading AND a clean TOTAL ASSETS data row.
-  Of several (summary, consolidated annexure, standalone annexure), the one nearest the page the
-  P&L figures were read from is used, so the totals and the P&L share one basis.
+  Of several (summary, consolidated annexure, standalone annexure), only those on the basis the
+  P&L page labels itself with are eligible (a basis that cannot be told fails closed), and of
+  those the one nearest the P&L page is used, so the totals and the P&L share one basis.
 * Its columns are mapped from that page's OWN year header; no header, no read.
 * Two reserves rows on the statement that disagree are refused.
 * Every clean ROE row in the document is read; rows that disagree on a shared year are refused,
@@ -43,14 +44,46 @@ def _clean_rows(lines, rx):
     return out
 
 
+_CONSOLIDATED_RX = re.compile(r"\bconsolidated\b", re.I)
+_STANDALONE_RX = re.compile(r"\bstand\s*-?\s*alone\b", re.I)
+
+
+def _basis(text):
+    """The basis a statement page labels itself with: 'consolidated', 'standalone', None (no label)
+    or 'both' (a page naming both cannot be told)."""
+    c, s = bool(_CONSOLIDATED_RX.search(text or "")), bool(_STANDALONE_RX.search(text or ""))
+    return "both" if c and s else "consolidated" if c else "standalone" if s else None
+
+
 def _statement_page(page_texts, pnl_page):
+    """(page, text, None), or (None, None, reason). Step-2 review (item 4): the statement must be on
+    the basis the P&L page labels itself with (restated consolidated vs standalone), so the totals and
+    the P&L figures share one basis; of those, the one nearest the P&L page. An unlabelled P&L page
+    matches only unlabelled statements, and only when the document's statement pages do not print both
+    bases. With no P&L page every statement must share one basis. Anything else fails closed."""
     cands = [(i, t) for i, t in page_texts
              if _BALANCE_SHEET_HEADING.search(t or "")
              and _clean_rows((t or "").split("\n"), TOTAL_ASSETS_RX)]
     if not cands:
-        return None, None
-    anchor = pnl_page if pnl_page is not None else cands[0][0]
-    return min(cands, key=lambda c: (abs(c[0] - anchor), c[0]))
+        return None, None, "balance_sheet_total_assets_row_not_in_document"
+    labels = {i: _basis(t) for i, t in cands}
+    if pnl_page is None:
+        told = set(labels.values())
+        if len(told) != 1 or "both" in told:
+            return None, None, "balance_sheet_basis_not_told"
+        return cands[0][0], cands[0][1], None
+    pnl_text = next((t for i, t in page_texts if i == pnl_page), None)
+    if pnl_text is None:
+        return None, None, "balance_sheet_basis_not_told"
+    want = _basis(pnl_text)
+    printed = set(labels.values()) | {want}
+    if want == "both" or (want is None and {"consolidated", "standalone"} <= printed):
+        return None, None, "balance_sheet_basis_not_told"
+    same = [c for c in cands if labels[c[0]] == want]
+    if not same:
+        return None, None, "balance_sheet_basis_does_not_match_pnl"
+    page, text = min(same, key=lambda c: (abs(c[0] - pnl_page), c[0]))
+    return page, text, None
 
 
 def _one_series(rows, align, what):
@@ -69,9 +102,8 @@ def _one_series(rows, align, what):
 
 def read_balance_totals(page_texts, pnl_page):
     """{'total_assets_by_fy': (series, page, reason), 'reserves_by_fy': (...)}."""
-    page, text = _statement_page(page_texts, pnl_page)
+    page, text, why = _statement_page(page_texts, pnl_page)
     if page is None:
-        why = "balance_sheet_total_assets_row_not_in_document"
         return {"total_assets_by_fy": (None, None, why), "reserves_by_fy": (None, None, why)}
     lines = text.split("\n")
     years = _year_header_years("\n".join(lines[:_HEADER_LINES]))
