@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_PAPADMALJI.zip",
+  "sourceUrlFrom": "ipodhan_staging documents.url (read-only, 2026-10-03), document bf9e0357",
+  "capturedAt": "2026-10-03",
+  "ipoId": "papadmalji-agro-foods-ltd",
+  "company": "Papadmalji Agro Foods",
+  "note": "Item 46 round 3 peer fixture. 'pages' = [pageIndex, text] pairs from pdfplumber page.extract_text() exactly as extract_filing.py reads them (0-based pages [128, 129, 132]); 'tables' = page.extract_tables() for the same pages, exactly as tables_for_page returns them."
+}

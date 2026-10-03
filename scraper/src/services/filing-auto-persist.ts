@@ -176,7 +176,7 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  * '@2026-10-02' were read before those readers existed. Same cycle bounds as above; the re-read
  * passes order IPOs by how soon their files are purged (document-cycle.ts `orderForRereads`).
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-04';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-05';
 
 /**
  * #771 round 3 review (MAJOR): a version bump re-opens a COMPLETED document
@@ -220,6 +220,10 @@ export const EXTRACTOR_VERSION_CHANGES: Readonly<Record<string, readonly string[
   // guard, and the cover reader on the advert. Item 46 round 2 (PR #1480): financial statement
   // fiscal-year / two-line headers and the ratio note (prospectus family).
   'extract_filing.py@2026-10-04': ['RHP', 'DRHP', 'PROSPECTUS', 'PRICE_BAND_AD'],
+  // Item 46 round 3: the peer-section reader (prospectus family only) - two more SME heading
+  // wordings, a header printed one column right of every value, and a stated no-listed-peer sentence
+  // under the KPI heading when no peer section exists.
+  'extract_filing.py@2026-10-05': ['RHP', 'DRHP', 'PROSPECTUS'],
 };
 
 function deriveRereadFloors(changes: Readonly<Record<string, readonly string[]>>): Record<string, string> {

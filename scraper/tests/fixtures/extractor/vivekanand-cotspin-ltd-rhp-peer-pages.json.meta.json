@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://www.bseindia.com/downloads/ipo/RHP&GID_170920261238.zip",
+  "sourceUrlFrom": "ipodhan_staging documents.url (read-only, 2026-10-03), document 76de3269",
+  "capturedAt": "2026-10-03",
+  "ipoId": "vivekanand-cotspin-ltd",
+  "company": "Vivekanand Cotspin",
+  "note": "Item 46 round 3 peer fixture. 'pages' = [pageIndex, text] pairs from pdfplumber page.extract_text() exactly as extract_filing.py reads them (0-based pages [113, 114]); 'tables' = page.extract_tables() for the same pages, exactly as tables_for_page returns them."
+}
