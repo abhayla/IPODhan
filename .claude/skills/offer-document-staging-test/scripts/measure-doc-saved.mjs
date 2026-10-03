@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Read-only: what ONE offer document saved on staging.
-// Usage: PW=<ipodhan_app password> node measure-doc-saved.cjs <ipo-slug> [--doc <document-id>] [--json out.json]
-// Without --doc it lists the IPO's documents in filing order (the order the skill tests them in).
-// Needs the DB tunnel on localhost:15432 (scripts/ops/db-tunnel.sh start). Never prints the password or a URL.
-const path = require('path');
-const fs = require('fs');
-const repo = path.resolve(__dirname, '..', '..', '..', '..');
-const { Client } = require(require.resolve('pg', { paths: [repo, 'D:/Abhay/Ventures/IPODhan'] }));
+// Usage (DB tunnel on localhost:15432 via scripts/ops/db-tunnel.sh start):
+//   DATABASE_HOST=localhost DATABASE_PORT=15432 DATABASE_NAME=ipodhan_staging DATABASE_USER=ipodhan_app //   DATABASE_PASSWORD=<from GLOBAL.env IPODHAN_APP_DB_PASSWORD> node measure-doc-saved.mjs <ipo-slug> [--doc <id>] [--json out.json]
+// Without --doc it lists the IPO's documents in test order. Refuses any database other than ipodhan_staging.
+// Never prints the password or a connection URL.
+import fs from 'node:fs';
+import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from '../../../../scripts/lib/pg-utc.mjs';
+import { resolveDiscreteDbParams } from '../../../../scripts/lib/pg-connection-params.mjs';
 
 const TYPE_ORDER = ['DRHP', 'ADDENDUM_DRHP', 'RHP', 'ADDENDUM_RHP', 'PRICE_BAND_AD', 'CORRIGENDUM', 'PROSPECTUS'];
 const OFFER_TYPES = new Set(['DRHP', 'RHP', 'PROSPECTUS', 'PRICE_BAND_AD']);
@@ -16,13 +16,12 @@ function arg(name) {
   return i > 0 ? process.argv[i + 1] : undefined;
 }
 
-(async () => {
+async function main() {
   const slug = process.argv[2];
   if (!slug || slug.startsWith('--')) throw new Error('usage: measure-doc-saved.cjs <ipo-slug> [--doc <id>] [--json out.json]');
-  if (!process.env.PW) throw new Error('PW env var (ipodhan_app password) is not set');
-  const c = new Client({ host: 'localhost', port: 15432, user: 'ipodhan_app', password: process.env.PW, database: 'ipodhan_staging' });
-  await c.connect();
-  await c.query("SET TIME ZONE 'UTC'");
+  installUtcTimestampParsing();
+  const c = createUtcPool({ ...resolveDiscreteDbParams(process.env), ssl: false, max: 2 });
+  await assertUtcSession(c);
   const db = (await c.query('select current_database() d')).rows[0].d;
   if (db !== 'ipodhan_staging') throw new Error(`refusing: connected to ${db}, not ipodhan_staging`);
 
@@ -83,4 +82,6 @@ function arg(name) {
     console.log(`wrote ${out}`);
   }
   await c.end();
-})().catch((e) => { console.error('ERR', e.message); process.exit(1); });
+}
+
+main().catch((e) => { console.error('ERR', e.message); process.exit(1); });

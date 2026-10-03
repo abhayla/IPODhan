@@ -15,3 +15,8 @@ Each lesson is also folded into the SKILL.md step it changes.
   OCR guards) landed or partly landed on 2026-10-02/03. Always re-measure; never quote an old count.
 - **NSE has no PROSPECTUS row on staging** (F-224: fetch BLOCKED_ALL; item 44 says it is on SEBI 104637). Record it
   when the round reaches the PROSPECTUS.
+
+- **Scripts must use the shared DB pool.** The first version of measure-doc-saved built its own `pg` client and failed
+  the PR gate step `check-db-connection-defaults` (#640). Use `createUtcPool` + `resolveDiscreteDbParams` from
+  `scripts/lib/`. The UTC parser also changes how naive timestamps print: documents.extracted_at for the DRHP read
+  03:18Z through a raw client and 08:48Z through the shared pool (which one is the true instant: unverified).

@@ -47,7 +47,7 @@ rule (no ad-hoc runs on the VPS host; staging is read through the DB tunnel and 
 |---|---|---|
 | Tools | node, python (for `scraper/scripts/extract_filing.py`), gh, git | `node -v && python --version && gh auth status` |
 | Connectivity | DB tunnel to the DB host on `localhost:15432` | `bash scripts/ops/db-tunnel.sh status` (start with `start`; never as a harness background task) |
-| Credentials | `IPODHAN_APP_DB_PASSWORD` in `D:/Abhay/GLOBAL.env`, passed to scripts as env `PW`; never printed, never put in a URL that is printed | `grep -c "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env` = 1 |
+| Credentials | `IPODHAN_APP_DB_PASSWORD` in `D:/Abhay/GLOBAL.env`, passed to scripts as env `DATABASE_PASSWORD` (with DATABASE_HOST/PORT/NAME/USER; the script uses the shared `createUtcPool` and refuses any DB but `ipodhan_staging`); never printed, never put in a URL that is printed | `grep -c "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env` = 1 |
 | Files | the manifest; `references/progress.md` (round state); `references/lessons.md` | file exists |
 | User inputs | none beyond C1's IPO slug. If the owner names no IPO, resume `references/progress.md`. | - |
 
@@ -80,7 +80,7 @@ never discovered) and go on to the next document.
 ## STEP 3: Measure what staging saved from this document
 
 ```bash
-node .claude/skills/offer-document-staging-test/scripts/measure-doc-saved.cjs <ipo-slug> --doc <id> --json <scratch>/saved.json
+node .claude/skills/offer-document-staging-test/scripts/measure-doc-saved.mjs <ipo-slug> --doc <id> --json <scratch>/saved.json
 ```
 
 It reads two layers (read-only):
@@ -150,4 +150,4 @@ before/after counts in `references/progress.md`, then go to the next document (C
 - MUST NOT hand-edit staging rows to make a field CORRECT. Fix the code and re-extract with the productized tool. — Why: a hand fix proves nothing for the next IPO.
 - MUST NOT call a field MISSED when the document does not print it. Mark it NOT PRINTED. — Why: C5; chasing fields that were never in the file wastes rounds.
 - MUST NOT move to the next document while the current one has unclassified fields or unexplained misses. — Why: C4.
-- MUST NOT print the DB password or a connection URL. Pass it as env `PW`. — Why: a builder once printed a superuser password into a log.
+- MUST NOT print the DB password or a connection URL. Pass it as env `DATABASE_PASSWORD`. — Why: a builder once printed a superuser password into a log.
