@@ -77,6 +77,8 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
     complianceOfficer: ['compliance_officer'],
     complianceOfficerPhone: ['compliance_officer_phone'],
     complianceOfficerEmail: ['compliance_officer_email'],
+    registrarLink: ['registrar_website'],
+    leadManagers: ['lead_managers'],
     companyAddress: ['company_address'],
     companyCity: ['company_city'],
     companyState: ['company_state'],

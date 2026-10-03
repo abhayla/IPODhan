@@ -710,6 +710,24 @@ export function isTrustedDocumentHost(
  * kfintech, ...) a registrar row's `website` legitimately points at. Reusing
  * `normalizeCompanyUrl` here would exclude every real registrar host.
  */
+/**
+ * Appendix A row 59 (`ipo_details.registrar_link`, DOC only, E7): the registrar website the offer
+ * document prints, as an https origin. Same parse as a registrar row's website (registrar hosts are
+ * on NON_ISSUER_DOMAINS, so `normalizeCompanyUrl` would refuse every real one); a non-default port is
+ * refused as `normalizeCompanyUrl` refuses it. Null = refused (not http(s), no dot, private host, port).
+ */
+export function normalizeRegistrarLink(value: string | null | undefined): string | null {
+  const host = parseRegistrarWebsiteHost(value);
+  if (host === null) return null;
+  const raw = (value as string).trim();
+  try {
+    if (new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).port !== '') return null;
+  } catch {
+    return null;
+  }
+  return `https://${host}`;
+}
+
 function parseRegistrarWebsiteHost(value: string | null | undefined): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
   const raw = value.trim();

@@ -59,7 +59,7 @@ import type { PeerCompanyRepository } from '../repositories/peer-company-reposit
 import type { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { PEER_VALUE_COLUMNS } from '../repositories/peer-company-repository.js';
 import { upsertIPO, recordDocumentSourceHints } from './data-persister.js';
-import { normalizeCompanyUrl } from './company-host-source.js';
+import { normalizeCompanyUrl, normalizeRegistrarLink } from './company-host-source.js';
 import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import { headingHashForRiskFactor } from '@ipodhan/shared/utils/risk-factor-heading-key';
 import {
@@ -2069,6 +2069,21 @@ export async function persistFilingExtraction(
   mark('complianceOfficer', str(extraction, mappedField('ipo_details', 'complianceOfficer')));
   mark('complianceOfficerPhone', str(extraction, mappedField('ipo_details', 'complianceOfficerPhone')));
   mark('complianceOfficerEmail', str(extraction, mappedField('ipo_details', 'complianceOfficerEmail')));
+  // Appendix A rows 59-60 (DOC rank 1, E7) from the cover reader (item 39, spec 2.5.6 item 2): the
+  // registrar website the document prints (NSE DRHP p92 "Website: www.in.mpms.mufg.com") as
+  // `registrar_link`, and the SAME book running lead manager list `ipos.lead_managers` takes (OD-162),
+  // through the same passing-VALUE reader and the same OD-96 family gate. A MISSED / REFUSED read
+  // writes nothing, so a stored value stays (OD-158).
+  const docRegistrarWebsite = str(extraction, mappedField('ipo_details', 'registrarLink'));
+  if (docRegistrarWebsite !== null && documentMayWriteField('ipo_details', 'registrarLink', options.docType)) {
+    const link = normalizeRegistrarLink(docRegistrarWebsite);
+    if (link === null) skippedFailedCheck.push('ipo_details.registrarLink: E7 host refused (not a public http(s) host)');
+    else mark('registrarLink', link.slice(0, 500));
+  }
+  const detailsLeadManagers = coverLeadManagers(extraction); // reads mappedField('ipo_details', 'leadManagers')
+  if (detailsLeadManagers && documentMayWriteField('ipo_details', 'leadManagers', options.docType)) {
+    mark('leadManagers', detailsLeadManagers);
+  }
   // Appendix A rows 61-66: the issuer's registered office and contact (issuer_address.py; rows 62-63
   // are the cover's issuer contact block, the same reading as the compliance officer's, supervisor
   // decision 2026-10-03). Rows 73-74: the retail and employee maximum bid amounts in rupees (OD-48).

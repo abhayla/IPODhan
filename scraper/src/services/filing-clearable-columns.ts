@@ -68,6 +68,8 @@ const ONE_TO_ONE: ReadonlyArray<readonly [ClearableTable, string, string]> = [
   ['ipo_details', 'promoterSharesHeld', 'promoter_shares_held'],
   ['ipo_details', 'sebiRegulationCited', 'book_building_regulation'],
   ['ipo_details', 'promoterGroupTransactionsSinceDrhp', 'promoter_group_transactions_since_drhp'],
+  ['ipo_details', 'registrarLink', 'registrar_website'],
+  ['ipo_details', 'leadManagers', 'lead_managers'],
   ['financial_data', 'currentRatio', 'current_ratio'],
   ['financial_data', 'inventoryTurnover', 'inventory_turnover'],
   ['financial_data', 'peRatio', 'pe_at_cap'],
