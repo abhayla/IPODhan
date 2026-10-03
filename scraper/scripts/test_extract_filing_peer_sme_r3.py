@@ -129,3 +129,89 @@ def test_uniform_shift_refused_when_a_left_neighbour_is_labelled():
     table[1][6] = "CMP (Rs)"
     parsed = parse_peer_table(table)
     assert parsed["columns"]["revenue_from_operations"] == 7
+
+
+# PR #1496 review (OD-158): a reader MISS must never become the stated absence.
+# Each adversarial text is set into a REAL page (Robokidz p97 / S. K. Offset p119).
+ROBO = "robokidz-eduventures-ltd-rhp-peer-pages.json"
+SKO = "s-k-offset-ltd-rhp-peer-pages.json"
+ROBO_HEADING = "6. Comparison of Accounting Ratios with Industry Peers"
+ROBO_SENTENCE = ("The company has no directly comparable listed peers, as there are no publicly "
+                 "listed companies that closely match its business")
+SKO_SENTENCE = "There are presently no listed Companies in India that are engaged in a business that is directly comparable to the"
+
+
+def _edit(fixture, old, new):
+    pages, tables = load(fixture)
+    assert any(old in t for _i, t in pages), old
+    return [(i, t.replace(old, new)) for i, t in pages], tables
+
+
+def test_adversarial_a_listed_peers_heading_with_however_compared_is_not_stated_none():
+    pages, tables = _edit(ROBO, ROBO_HEADING, "6. Comparison of Accounting Ratios with Listed Peers")
+    pages = [(i, t.replace(ROBO_SENTENCE, "There are no listed companies in India engaged in exactly the "
+                           "same line of business; however we have compared our Company with")) for i, t in pages]
+    found, reason = extract_peer_companies(pages, tables)
+    assert found is None and reason != NO_LISTED_PEERS
+
+
+def test_adversarial_b_two_line_heading_is_the_peer_section():
+    pages, _ = _edit(ROBO, ROBO_HEADING, "6. Comparison of Accounting Ratios with Listed\nIndustry Peers")
+    lines = dict(pages)[97].split("\n")
+    heading, body = find_peer_table_section(lines)
+    assert heading is not None and "Comparison of Accounting Ratios with Listed" in lines[heading]
+    assert not any("Industry Peers" == ln.strip() for ln in body)
+
+
+def test_adversarial_b_two_line_heading_over_a_peer_table_is_not_stated_none():
+    pages, tables = _edit(ROBO, ROBO_HEADING, "6. Comparison of Accounting Ratios with Listed\nIndustry Peers")
+    viv, _ = load("vivekanand-cotspin-ltd-rhp-peer-pages.json")
+    pages = pages + [(500, dict(viv)[113])]
+    found, reason = extract_peer_companies(pages, tables)
+    assert reason != NO_LISTED_PEERS
+
+
+def test_adversarial_c_no_listed_entity_data_is_not_stated_none():
+    pages, tables = _edit(SKO, SKO_SENTENCE, "No listed entity data is available for FY2022 for the")
+    found, reason = extract_peer_companies(pages, tables)
+    assert found is None and reason == ONLY_KPI_TABLE
+
+
+def test_adversarial_d_no_listed_peers_whose_kpis_is_not_stated_none():
+    pages, tables = _edit(ROBO, ROBO_HEADING, "6. Comparison with Listed Peers")
+    pages = [(i, t.replace(ROBO_SENTENCE, "The Company does not have any listed peers whose KPIs are "
+                           "comparable with ours in every respect, as there are no publicly listed companies "
+                           "that closely match its business")) for i, t in pages]
+    found, reason = extract_peer_companies(pages, tables)
+    assert found is None and reason != NO_LISTED_PEERS
+
+
+def test_literal_sentence_is_not_stated_none_when_the_document_prints_a_peer_table():
+    pages, tables = load(SKO)
+    viv, _ = load("vivekanand-cotspin-ltd-rhp-peer-pages.json")
+    found, reason = extract_peer_companies(pages + [(500, dict(viv)[113])], tables)
+    assert reason != NO_LISTED_PEERS
+
+
+def test_uniform_shift_needs_two_mapped_value_columns():
+    from peer_table_columns import map_columns
+    headers = ["Name of the Company", "", "Revenue from operations"]
+    rows = [["Alpha Limited", "100.00", ""], ["Beta Limited", "200.00", ""]]
+    assert map_columns(headers, rows)["revenue_from_operations"] == 2
+
+
+def test_listed_peers_heading_is_the_peer_section():
+    pages, _ = _edit(ROBO, ROBO_HEADING, "6. Comparison with Listed Peers")
+    lines = dict(pages)[97].split("\n")
+    heading, _body = find_peer_table_section(lines)
+    assert heading is not None and lines[heading].endswith("Comparison with Listed Peers")
+
+
+def test_kpi_section_sentence_is_not_stated_none_when_a_headingless_peer_table_is_printed():
+    """No peer heading anywhere, but a page carries the peer-ratio table shape
+    (Vivekanand p113 with its heading removed): the KPI sentence stays a MISS."""
+    pages, tables = load(SKO)
+    viv, _ = load("vivekanand-cotspin-ltd-rhp-peer-pages.json")
+    headless = dict(viv)[113].replace("6. Comparison with Peer Group Companies:", "")
+    found, reason = extract_peer_companies(pages + [(500, headless)], tables)
+    assert found is None and reason == ONLY_KPI_TABLE

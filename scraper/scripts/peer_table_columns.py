@@ -374,7 +374,8 @@ def _relocate_uniform_left_shift(mapping, headers, data_rows):
     falls back to the first text cell left of the first value.
     """
     values = {f: i for f, i in mapping.items() if f != NAME and i is not None}
-    if not values:
+    # PR #1496 review: one mapped column is no evidence of a UNIFORM shift.
+    if len(values) < 2:
         return mapping
     claimed = set(mapping.values())
     for index in values.values():

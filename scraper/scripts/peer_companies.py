@@ -52,9 +52,81 @@ _NO_PEERS_STATEMENT = re.compile(
     r"(?:there\s+(?:are|is)\s+no|do(?:es)?\s+not\s+have\s+any|no)\s+"
     # Item 46 round 3: "has no directly comparable listed peers" (Robokidz RHP p97).
     r"(?:directly\s+)?(?:comparable\s+|other\s+)?listed\s+(?:industry\s+)?"
-    r"(?:peers?|compan(?:y|ies)|entit(?:y|ies))",
+    r"(?:peers?|compan(?:y|ies)|entit(?:y|ies))\b"
+    # PR #1496 review (OD-158): "No listed entity DATA is available for FY2022",
+    # "no listed peers WHOSE KPIs ..." restrict the noun; they never say the
+    # issuer has no listed peer.
+    r"(?!\s+(?:data|information|figures|details|whose|for)\b)",
     re.I,
 )
+
+# A sentence naming no listed peer is a stated absence only when nothing in its
+# paragraph walks it back: "...exactly the same line of business; however we have
+# compared ...", "the following listed peers", "the table below". Fail closed: any
+# of these words keeps the answer a MISS.
+_WALKED_BACK = re.compile(r"\b(?:however|compared|following|below|table)\b", re.I)
+_SENTENCE_SPLIT = re.compile(r"(?<=\.)\s+(?=[A-Z(])")
+_ALL_CAPS_HEADING = re.compile(r"^[^a-z]*[A-Z]{4}[^a-z]*$")
+
+
+def stated_no_listed_peer(body_lines):
+    """True only when a whole sentence of the section body literally states the
+    issuer has no listed peer / comparable listed company, and nothing later in
+    the same paragraph (up to a blank-free heading line) walks it back."""
+    paragraphs, current = [], []
+    for raw in body_lines:
+        line = (raw or "").strip()
+        if not line or _ALL_CAPS_HEADING.match(line):
+            if current:
+                paragraphs.append(current)
+            current = []
+            continue
+        current.append(line)
+    if current:
+        paragraphs.append(current)
+    for para in paragraphs:
+        sentences = _SENTENCE_SPLIT.split(" ".join(" ".join(para).split()))
+        for at, sentence in enumerate(sentences):
+            if not _NO_PEERS_STATEMENT.search(sentence):
+                continue
+            if any(_WALKED_BACK.search(s) for s in sentences[at:]):
+                return False
+            return True
+    return False
+
+
+# A peer-ratio table set as text: a company row (Limited / Ltd on the row or the
+# line after it) followed by at least four figures, on a page that names EPS and
+# one of P/E, NAV or RoNW. Two such rows (issuer + a peer) on one page is the shape.
+_FIGURE = r"(?:\(?-?[\d,]*\d(?:\.\d+)?\)?%?|\[\s*[●•]\s*\])"
+_COMPANY_ROW = re.compile(r"^[A-Za-z][A-Za-z&.,'()\- ]{2,80}?(?:\s+" + _FIGURE + r"){4,}\s*$")
+_FIGURES_ONLY_ROW = re.compile(r"^" + _FIGURE + r"(?:\s+" + _FIGURE + r"){3,}\s*$")
+_LEGAL_FORM = re.compile(r"\b(?:limited|ltd)\b\.?", re.I)
+_RATIO_TERMS = re.compile(r"\bP\s*/\s*E\b|\bNAV\b|\bRoNW\b|return\s+on\s+(?:average\s+)?net\s+worth", re.I)
+
+
+def page_has_peer_ratio_table(text):
+    """True when the page carries a peer accounting-ratio table shape."""
+    text = text or ""
+    if not (re.search(r"\bEPS\b", text) and _RATIO_TERMS.search(text)):
+        return False
+    lines = [ln.strip() for ln in text.split("\n")]
+    rows = 0
+    for i, line in enumerate(lines):
+        following = lines[i + 1] if i + 1 < len(lines) else ""
+        tail_is_form = bool(re.match(r"^(?:limited|ltd)\b", following, re.I))
+        if _COMPANY_ROW.match(line):
+            if _LEGAL_FORM.search(line) or tail_is_form:
+                rows += 1
+        elif _FIGURES_ONLY_ROW.match(line) and i > 0 and tail_is_form:
+            # Vivekanand RHP p113: "Deepak Spinners" / "10 53,416.00 ..." / "limited".
+            if re.match(r"^[A-Za-z][A-Za-z&.,'\- ]{2,60}$", lines[i - 1]):
+                rows += 1
+    return rows >= 2
+
+
+def _document_prints_peer_table(page_texts):
+    return any(page_has_peer_ratio_table(text) for _i, text in page_texts)
 
 # How far a peer table may run past its heading's page. A-One Steels' RHP prints
 # the heading at the foot of p220 and the whole table on p221 (#545).
@@ -193,7 +265,9 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
             # that are engaged in a business that is directly comparable ...").
             # That sentence is the issuer STATING no listed peer; without it the
             # answer stays a miss (ONLY_KPI_TABLE / NOT_IN_DOCUMENT).
-            if _NO_PEERS_STATEMENT.search(" ".join(" ".join(body).split())):
+            # PR #1496 review: only a literal, un-walked-back sentence, and only
+            # when no page of the document prints a peer-ratio table shape.
+            if stated_no_listed_peer(body) and not _document_prints_peer_table(page_texts):
                 return None, NO_LISTED_PEERS
         if kpi_found:
             return None, ONLY_KPI_TABLE
@@ -205,13 +279,13 @@ def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
     for p in span:
         lines.extend((by_index[p] or "").split("\n"))
     _heading, body = find_peer_table_section(lines)
-    body_text = " ".join(" ".join(body).split())
     # The "no listed peers" statement is read only AFTER parsing, as the reason
     # for an empty result. A section can say "there are no listed companies
     # engaged exclusively in our business; however, the following listed
     # peers..." and then print them - checking the sentence first threw those
     # rows away (#545 round 2).
-    states_no_peers = bool(_NO_PEERS_STATEMENT.search(body_text))
+    states_no_peers = (stated_no_listed_peer(body)
+                       and not _document_prints_peer_table(page_texts))
 
     any_table = False
     for p in span:

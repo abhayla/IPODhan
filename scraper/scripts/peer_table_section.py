@@ -41,7 +41,9 @@ import re
 # heading is still refused first (_KPI_HEADING).
 _PEER_HEADING = re.compile(
     r"comparison(?:\s+\S+){0,4}?\s+with\s+(?:the\s+|our\s+)?"
-    r"(?:(?:listed\s+)?industry\s+peers?|(?:listed\s+)?peer\s+group(?:\s+compan(?:y|ies))?)\b",
+    # "with Listed Peers" (PR #1496 review) is the same section.
+    r"(?:(?:listed\s+)?industry\s+peers?|listed\s+peers?"
+    r"|(?:listed\s+)?peer\s+group(?:\s+compan(?:y|ies))?)\b",
     re.I,
 )
 
@@ -113,13 +115,22 @@ def find_peer_table_section(lines):
         # footnote that merely quotes the heading's name mid-sentence.
         if not _STARTS_WITH_COMPARISON.match(after):
             continue
+        heading_end = index
+        if not _PEER_HEADING.search(after) and index + 1 < len(lines):
+            # PR #1496 review: a heading wrapped over two lines ("Comparison of
+            # Accounting Ratios with Listed" / "Industry Peers") is still the
+            # heading. Only a short next line joins, never a paragraph.
+            nxt = (lines[index + 1] or "").strip()
+            if nxt and len(nxt) < 60 and _PEER_HEADING.search(after + " " + nxt):
+                after = after + " " + nxt
+                heading_end = index + 1
         if _KPI_HEADING.search(after):
             continue
         if not _PEER_HEADING.search(after):
             continue
 
         body = []
-        for j in range(index + 1, len(lines)):
+        for j in range(heading_end + 1, len(lines)):
             if _ends_peer_section(lines[j]):
                 break
             body.append(lines[j])
