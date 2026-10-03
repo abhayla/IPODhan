@@ -111,7 +111,7 @@ describe('filing-persister — W-171 DRHP never emits a price band (defence in d
     expect(scraped.priceRangeMax).toBeUndefined();
   });
 
-  it('discards issue_price_type -> ipo_details.issueType for a DRHP too', async () => {
+  it('F-244: keeps issue_price_type -> ipo_details.issueType for a DRHP (the process is not a price)', async () => {
     const { deps, detailsUpsert } = makeDeps();
     await persistFilingExtraction(
       IPO_ID,
@@ -121,7 +121,7 @@ describe('filing-persister — W-171 DRHP never emits a price band (defence in d
     );
 
     const details = detailsUpsert.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
-    expect(details?.issueType).toBeUndefined();
+    expect(details?.issueType).toBe('BOOK_BUILDING');
   });
 
   it('logs a WARN naming the source document when a DRHP JSON carries a stale band', async () => {
