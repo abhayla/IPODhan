@@ -139,4 +139,35 @@ describe('filing-persister - offer-document grievance e-mail and WACA price rang
     >;
     expect(rows[0]).toMatchObject({ period: '1Y', priceLow: null, priceHigh: null });
   });
+  it('step-3b B5: a period the document left empty keeps the row another source wrote', async () => {
+    const deps = makeDeps();
+    // The advertisement wrote an 18M row; the NSE DRHP's 18M row is read empty here.
+    (deps.promoters as unknown as Record<string, unknown>).listAcquisitionRangesByIpo = vi.fn(async () => [
+      { id: 'x', ipoId: IPO_ID, period: '18M', waca: '1747.54', capMultiple: null, priceLow: '800.00', priceHigh: '2260.00' },
+      { id: 'y', ipoId: IPO_ID, period: '1Y', waca: '1.00', capMultiple: null, priceLow: null, priceHigh: null },
+    ]);
+    await persistFilingExtraction(IPO_ID, nseDrhp(), { docType: 'DRHP', apply: true }, deps);
+    const rows = (deps.promoters.replaceAcquisitionRanges as ReturnType<typeof vi.fn>).mock.calls[0][1] as Array<
+      Record<string, unknown>
+    >;
+    expect(rows.map((r) => [r.period, r.waca, r.priceLow, r.priceHigh])).toEqual([
+      ['1Y', '1909.02', '1350', '2260'],
+      ['3Y', '229.23', null, null],
+      ['18M', '1747.54', '800.00', '2260.00'],
+    ]);
+  });
+
+  it('step-3b B6 (D14): a null closed-below from the document never reaches the upsert', async () => {
+    const deps = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      nseDrhp({ brlm_track_record: v([{ brlm: KOTAK, issues_3y: 37, closed_below: null }]) }),
+      { docType: 'DRHP', apply: true },
+      deps
+    );
+    const row = (deps.brlmTrackRecord.upsert as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+    expect(row).toMatchObject({ brlmName: KOTAK, issues3y: 37 });
+    expect('closedBelowIssuePrice' in row).toBe(false);
+  });
 });
+

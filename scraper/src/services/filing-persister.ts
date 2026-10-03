@@ -3138,7 +3138,23 @@ export async function persistFilingExtraction(
       })
     ) {
       if (apply) {
-        await deps.promoters.replaceAcquisitionRanges(ipoId, acquisitionRows);
+        // Step-3b review B5: the replace deletes every period row first. A period this document
+        // printed nothing for (its row read empty) keeps the row another source wrote: skip-and-keep,
+        // never delete-and-forget.
+        const docPeriods = new Set(acquisitionRows.map((r) => r.period));
+        const kept: PromoterAcquisitionRangeInsert[] = deps.promoters.listAcquisitionRangesByIpo
+          ? (await deps.promoters.listAcquisitionRangesByIpo(ipoId))
+              .filter((r) => !docPeriods.has(r.period as PromoterAcquisitionRangeInsert['period']))
+              .map((r) => ({
+                ipoId,
+                period: r.period as PromoterAcquisitionRangeInsert['period'],
+                waca: r.waca ?? null,
+                capMultiple: r.capMultiple ?? null,
+                priceLow: r.priceLow ?? null,
+                priceHigh: r.priceHigh ?? null,
+              }))
+          : [];
+        await deps.promoters.replaceAcquisitionRanges(ipoId, [...acquisitionRows, ...kept]);
         await trackField('promoter_acquisition_ranges', 'rows');
       }
       bump(written, 'promoter_acquisition_ranges', acquisitionRows.length);
@@ -3519,11 +3535,16 @@ export async function persistFilingExtraction(
     for (const row of trackRows) {
       if (!row?.brlm) continue;
       if (apply && brlmAllowed) {
+        // Step-3b review B6 (D14): the repository's upsert SETs every key it is given, so a null
+        // closed_below (an offer document never prints the listing-day count) would erase the
+        // advertisement's stored count. A null is left out of the row instead: insert defaults it to
+        // null, update leaves the stored value alone.
+        const closedBelow = typeof row.closed_below === 'number' ? row.closed_below : null;
         await deps.brlmTrackRecord.upsert({
           brlmName: row.brlm,
           asOfDate,
           issues3y: typeof row.issues_3y === 'number' ? row.issues_3y : null,
-          closedBelowIssuePrice: typeof row.closed_below === 'number' ? row.closed_below : null,
+          ...(closedBelow === null ? {} : { closedBelowIssuePrice: closedBelow }),
           sourceIpoId: ipoId,
         } as never);
       }
@@ -3816,15 +3837,19 @@ export async function persistFilingExtraction(
   // document's unit -> crore, and total borrowings / total equity (a plain ratio, numeric(10,2)).
   // The extractor reads them only for a statement dated March 31 of the latest fiscal year (D11).
   const borrowing = num(extraction, mappedField('financial_data', 'totalBorrowing'));
+  let borrowingWritten = false;
   if (borrowing !== null) {
     const cr = withUnit('financial_data.totalBorrowing', (u) => round2(toCrore(borrowing, u)));
     if (cr !== null) {
       fd.totalBorrowing = cr.toString();
       fdFields += 1;
+      borrowingWritten = true;
     }
   }
+  // Step-3a review A5: the ratio is written only with the total borrowing it was read with (D10's
+  // 0 is defined by that total); a borrowing held back for its unit holds the ratio back too.
   const debtToEquity = num(extraction, mappedField('financial_data', 'debtToEquity'));
-  if (debtToEquity !== null) {
+  if (debtToEquity !== null && borrowingWritten) {
     fd.debtToEquity = round2(debtToEquity).toString();
     fdFields += 1;
   }

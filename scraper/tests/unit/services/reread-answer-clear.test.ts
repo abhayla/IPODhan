@@ -205,3 +205,56 @@ describe('clearRereadAnswers: a document with an ambiguous OCR value clears noth
     expect(r.keptAmbiguousOcr.map((k) => k.field).sort()).toEqual(['financial_data.peRatio', 'ipos.lotSize']);
   });
 });
+
+// Step-3a review A6: totalBorrowing / debtToEquity became clearable (D10). A re-read that refuses
+// or states them not printed clears ONLY a value an older read of THIS document wrote; a value the
+// walk wrote from a ranked website answer (or any other source, or another document) is kept.
+describe('A6: a re-read never clears a total borrowing / debt-to-equity another source wrote', () => {
+  const OLDER = 'extract_filing.py@2026-09-26';
+  const NEWER = 'extract_filing.py@2026-10-04';
+  function db(source: string, documentId = 'd1') {
+    const sqlSeen: string[] = [];
+    const tx: RereadExecutor = {
+      execute: async (q) => {
+        const text = JSON.stringify(q);
+        sqlSeen.push(text);
+        if (text.includes('UPDATE')) return { rows: [{ ipo_id: 'i1' }] };
+        return { rows: [{ source, data_lineage: { documentId, extractorVersion: OLDER }, ipo_id: 'i1', id: 'p1' }] };
+      },
+      transaction: async (fn) => fn(tx),
+    };
+    return { tx, sqlSeen };
+  }
+  const refusal = { value: null, state: 'REFUSED', source_text: 'TEXT', check: { name: 'c', passed: false, detail: 'check_failed: c' } };
+  const fields = { total_borrowing: refusal, debt_to_equity: refusal };
+  const run = (tx: RereadExecutor) =>
+    clearRereadAnswers(tx, { ipoId: 'i1', docType: 'DRHP', documentId: 'd1', sourceSha: 's1', extractorVersion: NEWER, fields: fields as never });
+
+  it('both columns are on the clearable map', () => {
+    const cols = REREAD_CLEARABLE_FIELDS.map((f) => `${f.tableName}.${f.column}`);
+    expect(cols).toEqual(expect.arrayContaining(['financial_data.totalBorrowing', 'financial_data.debtToEquity']));
+  });
+
+  it.each(['CHITTORGARH', 'NSE', 'BSE', 'ADMIN'])('a value written by %s is kept (no UPDATE)', async (source) => {
+    const { tx, sqlSeen } = db(source);
+    const r = await run(tx);
+    expect(r.cleared).toEqual([]);
+    expect(r.notOlderRead).toEqual(['financial_data.totalBorrowing', 'financial_data.debtToEquity']);
+    expect(sqlSeen.some((t) => t.includes('UPDATE'))).toBe(false);
+  });
+
+  it('a value another document of the family wrote is kept', async () => {
+    const { tx, sqlSeen } = db('DRHP', 'd-other');
+    const r = await run(tx);
+    expect(r.cleared).toEqual([]);
+    expect(sqlSeen.some((t) => t.includes('UPDATE'))).toBe(false);
+  });
+
+  it('control: a value an older read of this same document wrote is cleared', async () => {
+    const { tx, sqlSeen } = db('DRHP');
+    const r = await run(tx);
+    expect(r.cleared.map((c) => c.field)).toEqual(['financial_data.totalBorrowing', 'financial_data.debtToEquity']);
+    // The UPDATE probe the keep cases rely on does see an UPDATE when one is issued.
+    expect(sqlSeen.filter((t) => t.includes('UPDATE')).length).toBeGreaterThan(0);
+  });
+});

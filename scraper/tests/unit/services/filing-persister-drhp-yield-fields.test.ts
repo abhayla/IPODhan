@@ -190,6 +190,13 @@ describe('NSE DRHP yield fields reach their columns', () => {
     expect(fd(s).debtToEquity).toBeUndefined();
   });
 
+  it('step-3a A5: a debt-to-equity whose total borrowing is not written is not written either', async () => {
+    const s = makeDeps();
+    await persist(s.deps, { total_borrowing: undefined, debt_to_equity: 0.63 });
+    expect(fd(s).totalBorrowing).toBeUndefined();
+    expect(fd(s).debtToEquity).toBeUndefined();
+  });
+
   it('row 75: financial_data.ronw is the latest full fiscal year of the RoNW rows', async () => {
     const s = makeDeps();
     await persist(s.deps, { ronw_by_fy: { '2026': 33.21, '2025': 45.14, '2024': 37.6 } });
