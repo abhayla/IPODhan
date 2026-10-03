@@ -89,7 +89,7 @@ test('no E9 row at all FAILS', () => {
 const FIXED = RATIO_FIXED_EXTRACTOR_VERSION;
 
 test('the scraper writes a version the verdict counts as fixed (pins the two constants)', () => {
-  const src = readFileSync(new URL('../../scraper/src/services/filing-auto-persist.ts', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../../scraper/src/services/extractor-version-floors.ts', import.meta.url), 'utf8');
   const m = src.match(/export const EXTRACTOR_VERSION = '([^']+)'/);
   assert.ok(m, 'EXTRACTOR_VERSION literal not found');
   assert.equal(isFixedExtractorVersion(m[1]), true, `${m[1]} is older than ${FIXED}`);

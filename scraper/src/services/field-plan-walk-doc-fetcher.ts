@@ -43,11 +43,14 @@ import type { DocumentRepository } from '@ipodhan/shared';
 // provenance reads use — see its doc comment ("field_sources.field_name is
 // camelCase (listingDate, bseIpoNo), not the snake_case column name").
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
-import { bestPlanDocument, isFixedPriceIssue, type PlanDocumentRef } from './document-state-machine.js';
+import { getTableColumns } from 'drizzle-orm';
+import { ipos as iposTable, ipoDetails as ipoDetailsTable } from '@ipodhan/shared/db/schema';
+import { bestPlanDocument, decidePlanRowSupersession, isFixedPriceIssue, type PlanDocumentRef } from './document-state-machine.js';
 import { logger } from '../utils/logger.js';
 import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, familyForField, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
+import { rereadSinceFor, versionAtLeast } from './extractor-version-floors.js';
 
 /**
  * Which document-type family answers a manifest field's DOC rank, in
@@ -132,6 +135,12 @@ export interface DocFetcherDeps {
    * 'TEXT', means "not read from a text page" -- the document value never replaces (B4(c), fail closed).
    */
   receiptMarkReader?: (documentId: string, tableName: string, rowKey: string, camelFieldName: string) => Promise<string | null>;
+  /**
+   * F-240 round 2 (B8): document id -> the extractor version that last read it (`document_fetch_state`,
+   * by document id, else by IPO + type -- the same read the item 45 re-read uses). Absent: an empty
+   * column is never filled from a receipt (fail closed).
+   */
+  recordedVersionReader?: (ipoId: string) => Promise<ReadonlyMap<string, string | null>>;
 }
 
 interface MinimalDocument {
@@ -555,6 +564,265 @@ async function answerFromOwnRecord(deps: DocFetcherDeps, a: OwnRecordArgs): Prom
   return { outcome: 'SUPPLIED', value: decoded.value, ...evidence, adminListing: { ...listing, outcome: 'REPLACED' } };
 }
 
+const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
+const PLAIN_INTEGER = /^\d+$/;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
+
+/**
+ * F-240 round 2: the jsonb columns this path may fill, each with its element shape. Any other jsonb
+ * column is refused (fail closed): its shape is not known here.
+ */
+const JSONB_SHAPES: Readonly<Record<string, (v: unknown) => boolean>> = {
+  'ipos.objectives': (v) =>
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every(
+      (o) =>
+        o !== null &&
+        typeof o === 'object' &&
+        !Array.isArray(o) &&
+        nonEmptyString((o as Record<string, unknown>).description) &&
+        ((o as Record<string, unknown>).amount === null ||
+          (typeof (o as Record<string, unknown>).amount === 'number' && Number.isFinite((o as Record<string, unknown>).amount) && ((o as Record<string, unknown>).amount as number) >= 0)) &&
+        ((o as Record<string, unknown>).sno === undefined || (Number.isInteger((o as Record<string, unknown>).sno) && ((o as Record<string, unknown>).sno as number) > 0))
+    ),
+  'ipos.lead_managers': (v) => Array.isArray(v) && v.length > 0 && v.every(nonEmptyString),
+  'ipos.listing_exchanges': (v) => Array.isArray(v) && v.length > 0 && v.every((x) => x === 'NSE' || x === 'BSE'),
+};
+
+function isCalendarDay(s: string): boolean {
+  const d = new Date(`${s}T00:00:00Z`);
+  const year = Number(s.slice(0, 4));
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s && year >= 1900 && year <= 2100;
+}
+
+/**
+ * F-240 round 3: columns whose value is a size, a price or a lot -- zero is never a real value there
+ * (an issue of size 0, a band of 0, a lot of 0), so a receipt "0" is refused for an empty column.
+ */
+const POSITIVE_ONLY: ReadonlySet<string> = new Set([
+  'ipos.issueSize',
+  'ipos.priceRangeMin',
+  'ipos.priceRangeMax',
+  'ipos.lotSize',
+  'ipos.faceValue',
+  'ipo_details.faceValue',
+  'ipo_details.cutOffPrice',
+  'ipo_details.minInvestment',
+  'ipo_details.tickSize',
+  'ipo_details.lotMultiple',
+]);
+
+/** numeric(p, s): at most p - s integer digits and s fraction digits (Postgres would round or overflow). */
+function fitsNumeric(text: string, precision?: number, scale?: number): boolean {
+  if (precision === undefined) return true;
+  const [whole, fraction = ''] = text.split('.');
+  const intDigits = whole.replace(/^0+(?=\d)/, '').length;
+  return intDigits <= precision - (scale ?? 0) && fraction.length <= (scale ?? 0);
+}
+
+/**
+ * F-240 round 2 (Tier A MAJOR): a receipt is validated against the column's REAL SQL type before it may
+ * fill an empty column. Drizzle reports numeric and date columns as plain strings, so a shape exemplar
+ * would let "1,234", "500 crore", "-5" or "03 Oct 2026" through. Every type this path cannot judge
+ * (timestamp, uuid, array, an unlisted jsonb) is refused: fail closed (B4(c)).
+ *
+ * | SQL type (drizzle columnType)            | accepted receipt                                   | written as      |
+ * | numeric(p,s), real, double precision     | plain non-negative decimal `^\d+(\.\d+)?$`, numeric |
+ * |                                          |   within p-s integer and s fraction digits         | the text / number |
+ * | date                                     | year 1900..2100 (see below)                        |                 |
+ * | size / price / lot columns (POSITIVE_ONLY) | greater than zero                                | -               |
+ * | integer, smallint, bigint                | `^\d+$`                                            | a number        |
+ * | date                                     | `^\d{4}-\d{2}-\d{2}$` and a real calendar day      | the day string  |
+ * | text, varchar                            | non-empty after trim, within the varchar length    | the string      |
+ * | enum                                     | a member of the enum                               | the string      |
+ * | boolean                                  | `true` / `false`                                   | a boolean       |
+ * | jsonb in JSONB_SHAPES                    | JSON whose value passes the column's element shape | the parsed value |
+ * | anything else                            | refused                                            | -               |
+ */
+export function validateReceiptForEmptyColumn(
+  tableName: string,
+  camelFieldName: string,
+  receipt: string
+): { value: unknown } | { refused: string } {
+  const table = tableName === 'ipos' ? iposTable : tableName === 'ipo_details' ? ipoDetailsTable : null;
+  const column = table
+    ? (getTableColumns(table) as Record<string, { columnType?: string; name?: string; length?: number; precision?: number; scale?: number; enumValues?: readonly string[] }>)[camelFieldName]
+    : undefined;
+  if (!column) return { refused: `no column ${tableName}.${camelFieldName}` };
+  const text = receipt.trim();
+  if (POSITIVE_ONLY.has(`${tableName}.${camelFieldName}`) && /^\d+(\.\d+)?$/.test(text) && Number(text) <= 0) {
+    return { refused: `'${receipt}' is zero; ${tableName}.${camelFieldName} is positive-only` };
+  }
+  switch (column.columnType) {
+    case 'PgNumeric':
+      if (!PLAIN_DECIMAL.test(text)) return { refused: `'${receipt}' is not a plain non-negative decimal (numeric column)` };
+      return fitsNumeric(text, column.precision, column.scale)
+        ? { value: text }
+        : { refused: `'${receipt}' does not fit numeric(${column.precision},${column.scale ?? 0})` };
+    case 'PgReal':
+    case 'PgDoublePrecision':
+      return PLAIN_DECIMAL.test(text) ? { value: Number(text) } : { refused: `'${receipt}' is not a plain non-negative decimal` };
+    case 'PgInteger':
+    case 'PgSmallInt':
+    case 'PgBigInt53':
+      return PLAIN_INTEGER.test(text) && Number.isSafeInteger(Number(text))
+        ? { value: Number(text) }
+        : { refused: `'${receipt}' is not a non-negative integer (integer column)` };
+    case 'PgDateString':
+    case 'PgDate':
+      return ISO_DAY.test(text) && isCalendarDay(text) ? { value: text } : { refused: `'${receipt}' is not a YYYY-MM-DD calendar day (date column)` };
+    case 'PgText':
+    case 'PgVarchar':
+      if (text === '') return { refused: 'empty text' };
+      if (typeof column.length === 'number' && text.length > column.length) return { refused: `longer than varchar(${column.length})` };
+      return { value: text };
+    case 'PgEnumColumn':
+      return column.enumValues?.includes(text) ? { value: text } : { refused: `'${receipt}' is not a member of the enum` };
+    case 'PgBoolean':
+      return text === 'true' ? { value: true } : text === 'false' ? { value: false } : { refused: `'${receipt}' is not a boolean` };
+    case 'PgJsonb':
+    case 'PgJson': {
+      const shape = JSONB_SHAPES[`${tableName}.${column.name ?? ''}`];
+      if (!shape) return { refused: `jsonb column ${tableName}.${camelFieldName} has no known element shape` };
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return { refused: 'not JSON' };
+      }
+      return shape(parsed) ? { value: parsed } : { refused: `JSON does not match the ${tableName}.${column.name} element shape` };
+    }
+    default:
+      return { refused: `column type ${column.columnType ?? 'unknown'} is not filled from a receipt` };
+  }
+}
+
+type EmptyColumnArgs = {
+  ipoId: string;
+  tableName: string;
+  camelFieldName: string;
+  manifestDocType: string;
+  family: ReadonlyArray<string>;
+  docs: MinimalDocument[];
+};
+
+/**
+ * F-240 answer-state table (OD-161 "the DOC fetcher reads a document's answer from its own record, never
+ * from who owns the stored value"; OD-96; OD-97; #684): a DOC-readable column that is EMPTY and has NO
+ * `field_sources` row. Nobody owns it, so there is nothing to credit, keep or replace: the document's own
+ * record is the answer, from a CURRENT read only.
+ *
+ * | state                                                        | outcome                                                  |
+ * | column not empty, unreadable table, no receipt or version reader | null -> the caller's next path (unchanged)           |
+ * | no non-empty receipt for the field                           | null -> today's answer (CHECK_FAILED NO_DOCUMENT_PROVENANCE) |
+ * | receipts only from documents OUTSIDE the family (OD-96)      | CHECK_FAILED transient, ignored, never written           |
+ * | family receipts only from reads BELOW the type's re-read     | CHECK_FAILED transient, not written: the re-read (item   |
+ * |   floor (rereadSinceFor, the same filter the re-read uses)   |   45) replaces them and OD-171 re-offers the row         |
+ * | two current family receipts with different values that the  | CHECK_FAILED transient AMBIGUOUS, nothing written        |
+ * |   OD-91 comparator cannot order                              |                                                          |
+ * | mark OCR, MIXED or any other text                            | CHECK_FAILED transient, column kept empty, NOT listed    |
+ * |   (SPEC CHANGE, reversible: see spec §2.5 F-240 paragraph)   |   (no stored value, so no conflict row to name)          |
+ * | value fails the column's SQL type (validateReceiptForEmptyColumn) | CHECK_FAILED transient with the reason, not written |
+ * | mark TEXT, or null (read before the mark existed)            | SUPPLIED with the validated value and the document's     |
+ * |                                                              |   evidence -> the walk's normal write, which records the |
+ * |                                                              |   field_sources row (#684); its checks may refuse it     |
+ */
+async function answerEmptyUnownedColumn(deps: DocFetcherDeps, a: EmptyColumnArgs): Promise<FieldFetcherAnswer | null> {
+  if (!deps.receiptReader || !deps.recordedVersionReader || !DOC_READABLE_TABLES.includes(a.tableName)) return null;
+  const read = await readColumnValue(deps, a.ipoId, a.tableName, a.camelFieldName);
+  if (read.status !== 'ok' || (read.value !== null && read.value !== undefined && read.value !== '')) return null;
+
+  let receipts: Map<string, ReadonlyMap<string, string | null>>;
+  let versions: ReadonlyMap<string, string | null>;
+  try {
+    receipts = await deps.receiptReader(a.ipoId);
+    versions = await deps.recordedVersionReader(a.ipoId);
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+  const key = `${a.tableName}||${a.camelFieldName}`;
+  const printed = new Map<string, ReadonlyMap<string, string | null>>();
+  for (const [docId, byKey] of receipts) {
+    const v = byKey.get(key);
+    if (v !== null && v !== undefined && v !== '') printed.set(docId, new Map([[key, v]]));
+  }
+  if (printed.size === 0) return null;
+  const fixedPrice = await isFixedPriceFor(deps, a.ipoId);
+  if (!bestReceiptedDocument(a.docs, a.family, printed, key, fixedPrice)) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `document receipt for ${a.camelFieldName} only from a document outside the ${a.manifestDocType} family (OD-96) — not written`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  // B8 structural guard: only a read at or above its type's re-read floor may fill an empty column.
+  const current = new Map<string, ReadonlyMap<string, string | null>>();
+  for (const d of a.docs) {
+    const r = printed.get(d.id);
+    if (r && versionAtLeast(versions.get(d.id) ?? null, rereadSinceFor(d.type))) current.set(d.id, r);
+  }
+  const best = bestReceiptedDocument(a.docs, a.family, current, key, fixedPrice);
+  if (!best) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `document receipt for ${a.camelFieldName} only from a read below its type's re-read floor — not written until the re-read`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  const value = current.get(best.id)!.get(key)!;
+
+  // B4(c): another current family document whose receipt differs and that the comparator cannot rank
+  // below the chosen one -- the order between them is unknown, so no value is written.
+  const asRef = (d: MinimalDocument): PlanDocumentRef => ({
+    id: d.id,
+    docType: d.type,
+    filingDate:
+      d.filingDate == null ? null : d.filingDate instanceof Date ? d.filingDate.toISOString().slice(0, 10) : String(d.filingDate).slice(0, 10),
+  });
+  for (const d of a.docs) {
+    if (d.id === best.id || !a.family.includes(d.type) || d.extractionStatus !== 'COMPLETED' || d.isActive === false) continue;
+    const other = current.get(d.id)?.get(key);
+    if (other === undefined || other === value) continue;
+    if (!decidePlanRowSupersession(asRef(d), asRef(best), { family: a.family, fixedPrice }).supersede) {
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `AMBIGUOUS: ${best.type} ${best.id} and ${d.type} ${d.id} print different values for ${a.camelFieldName} and cannot be ordered — not written`,
+        transient: true,
+        gap: 'NO_DOCUMENT_PROVENANCE',
+      };
+    }
+  }
+
+  let mark: string | null = null;
+  try {
+    mark = deps.receiptMarkReader ? await deps.receiptMarkReader(best.id, a.tableName, '', a.camelFieldName) : null;
+  } catch (error) {
+    return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error), transient: true };
+  }
+  if (mark !== null && mark !== 'TEXT') {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `the ${best.type} value of empty ${a.camelFieldName} is not from a text page (mark ${mark}) — kept empty (F-240, SPEC CHANGE to OD-97 for empty columns)`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  const checked = validateReceiptForEmptyColumn(a.tableName, a.camelFieldName, value);
+  if ('refused' in checked) {
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `the ${best.type} value of empty ${a.camelFieldName} fails the column type: ${checked.refused} — not written`,
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    };
+  }
+  return { outcome: 'SUPPLIED', value: checked.value, documentId: best.id, documentType: best.type, sha256: best.sha256 ?? undefined };
+}
+
 export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
   return async function docFetcher(
     ipoId: string,
@@ -668,6 +936,11 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
     // family than the manifest wants, so DOC has no fresher document family
     // to check -- but that is STILL not a settled "not printed", because the
     // wanted family may simply not be extracted yet.
+    if (!provenance) {
+      // F-240 (OD-161): an empty column nobody owns -- the document's own record is the answer.
+      const fromRecord = await answerEmptyUnownedColumn(deps, { ipoId, tableName, camelFieldName, manifestDocType, family, docs });
+      if (fromRecord) return fromRecord;
+    }
     if (!provenance || provenance.source !== 'DRHP') {
       // Item 41 (OD-161): a website (or nobody) owns the stored value -- the document's answer is read
       // from its OWN record (`document_field_receipts`), never from who owns the column.
