@@ -531,12 +531,21 @@ def test_drhp_reads_price_independent_facts_off_real_covers(slug):
     assert value(f, "shares_at_cap") == fresh
     assert value(f, "ofs_shares") == ofs
     assert value(f, "total_offer_shares_at_cap") == total
-    for name in _SHARE_FIELDS:
+    # A draft's share count is price-independent: the total at the floor is the same count.
+    assert value(f, "total_offer_shares_at_floor") == total
+    for name in _SHARE_FIELDS + ("total_offer_shares_at_floor",):
         if value(f, name) is None:
             assert detail(f, name).startswith("DRHP: "), name
-    # Everything priced stays null on a draft (W-171 unchanged).
+    # A leg the offer table states nil / not applicable is 0 in rupees too (spec row 35
+    # "OFS-only: legitimately 0", row 36 "fresh-only: legitimately 0"); every other priced
+    # field stays null on a draft (W-171 unchanged).
+    stated_nil = {"OFS_ONLY": "fresh_issue_amount", "FRESH_ONLY": "ofs_amount"}.get(structure)
     for name in _PRICED:
-        assert value(f, name) is None, name
+        if name == stated_nil:
+            assert value(f, name) == 0.0, name
+            assert f[name]["state"] == "VALUE", name
+        else:
+            assert value(f, name) is None, name
 
 
 def test_mixed_offer_rupee_fresh_leg_gives_ofs_shares_only():

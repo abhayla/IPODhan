@@ -2522,7 +2522,8 @@ DRHP_PLACEHOLDER_COUNT_RX = re.compile(r"\bUP\s*TO\s+\[\S{0,3}\]\s+EQUITY", re.I
 DRHP_BY_SHARES_HEADER_RX = re.compile(r"\(\s*BY\s+NUMBER\s+OF\s+SHARES\s*\)", re.I)
 DRHP_NIL_CELL_RX = re.compile(r"\bNIL\b|\bNOT\s+APPLICABLE\b", re.I)
 _DRHP_SHARE_FIELDS = ("shares_at_floor", "shares_at_cap", "ofs_shares",
-                      "total_offer_shares_at_cap", "issue_structure")
+                      "total_offer_shares_at_cap", "total_offer_shares_at_floor",
+                      "issue_structure")
 _DRHP_CELL_WORDS = {"money": "a rupee amount", "placeholder": "a [*] placeholder",
                     "blank": "no figure after 'up to' on the row"}
 
@@ -2644,6 +2645,8 @@ def _drhp_price_independent(blob, cover_page, emit):
         cells, why = _drhp_mixed_counts(row)
         if why is not None:
             return null_all(why, _DRHP_SHARE_FIELDS[:-1])
+        # A draft prints the count, never a price, so the total is the same at the floor.
+        cells["total_offer_shares_at_floor"] = cells["total_offer_shares_at_cap"]
         for name, (v, reason) in cells.items():
             if v is None:
                 emit.null(name, "DRHP: %s" % reason, cover_page)
@@ -2666,7 +2669,15 @@ def _drhp_price_independent(blob, cover_page, emit):
              share_check if not fresh else nil)
     emit.put("total_offer_shares_at_cap", shares, cover_page, "cover_share_count_plausible",
              share_check)
+    # Price-independent (spec rows 108-109): the one leg's count is the total at either price.
+    emit.put("total_offer_shares_at_floor", shares, cover_page, "cover_share_count_plausible",
+             share_check)
     emit.put("issue_structure", kind, cover_page, "offer_type_named_on_cover", nil)
+    # The leg the table states nil / not applicable is 0 in rupees too (spec row 35 "OFS-only:
+    # legitimately 0, not missing", row 36 "fresh-only: legitimately 0"). The leg that IS
+    # offered stays null: its rupee amount needs a price a draft does not have (W-171).
+    emit.put("fresh_issue_amount" if kind == "OFS_ONLY" else "ofs_amount", 0.0, cover_page,
+             "other_leg_stated_nil_on_cover", nil)
 
 
 def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=None,
