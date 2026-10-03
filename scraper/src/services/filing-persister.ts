@@ -2262,6 +2262,28 @@ export async function persistFilingExtraction(
       delete details[field];
     }
   }
+  // D7 (owner decision, delegated 2026-10-04): `ipo_details.lead_managers` is filled ONLY when the
+  // stored list is empty, the same rule `ipos.lead_managers` follows above (PR #1460, OD-161,
+  // OD-162). The receipt is already filed; a held list stays and a different one is the walk's to
+  // decide. An unreadable stored row withholds the list (fail closed).
+  if ('leadManagers' in details) {
+    const { ok: heldOk, row: heldRow } = await loadStoredDetails();
+    const held = heldRow ? (heldRow as Record<string, unknown>).leadManagers : null;
+    const heldEmpty =
+      held === null || held === undefined || (Array.isArray(held) ? held.length === 0 : String(held).trim() === '');
+    if (!heldOk) {
+      delete details.leadManagers;
+      skippedLowerPriority.push('ipo_details.leadManagers (stored row unreadable; withheld, filled only when empty, D7)');
+    } else if (!heldEmpty) {
+      const same = normalizeReceiptValue(held) === normalizeReceiptValue(details.leadManagers);
+      delete details.leadManagers;
+      skippedLowerPriority.push(
+        same
+          ? 'ipo_details.leadManagers (equal to the stored value: credited by the receipt, not re-written, OD-73)'
+          : 'ipo_details.leadManagers (differs from the stored value: receipt filed, the walk decides under OD-161, D7)'
+      );
+    }
+  }
   if (Object.keys(details).length > 0 && deps.ocrPrecedence) {
     const { ok: storedDetailsOk, row: storedDetails } = await loadStoredDetails();
     if (!storedDetailsOk) {

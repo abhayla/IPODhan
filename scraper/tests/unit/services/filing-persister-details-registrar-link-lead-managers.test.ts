@@ -132,6 +132,49 @@ describe('filing-persister - ipo_details.registrar_link and ipo_details.lead_man
     expect('leadManagers' in d).toBe(false);
   });
 
+  // D7 (owner decision, delegated 2026-10-04; step-1 review Medium): ipo_details.lead_managers is filled
+  // ONLY when empty, exactly like ipos.lead_managers (PR #1460 rule). A held list (a website's, an
+  // ADMIN's, an earlier document's) is never replaced by the persister; the receipt is still filed
+  // and a differing value is the walk's to decide under OD-161.
+  const withStored = (stored: Record<string, unknown> | null, fail = false) => {
+    const h = makeDeps();
+    (h.deps as unknown as Record<string, unknown>).ocrPrecedence = {
+      textReceipts: vi.fn(async () => []),
+      documentRef: vi.fn(async () => null),
+      storedDetails: vi.fn(async () => {
+        if (fail) throw new Error('read failed');
+        return stored;
+      }),
+    };
+    return h;
+  };
+
+  it('D7: a held ipo_details.lead_managers list is never replaced; the receipt is still filed', async () => {
+    const held = ['Kotak Mahindra Capital Company Limited', 'JM Financial Limited'];
+    const h = withStored({ ipoId: IPO_ID, leadManagers: held });
+    const summary = await persistFilingExtraction(IPO_ID, extraction('DRHP', NSE_FIELDS()), { docType: 'DRHP', apply: true }, h.deps);
+    expect('leadManagers' in detailsWritten(h.upsert)).toBe(false);
+    expect(detailsWritten(h.upsert).registrarLink).toBe('https://www.in.mpms.mufg.com');
+    const r = (summary.receipt_fields ?? []).filter((x) => x.tableName === 'ipo_details');
+    expect(r.find((x) => x.fieldName === 'leadManagers')?.value).toBe(JSON.stringify(NSE_BRLMS));
+    expect((summary.skipped_lower_priority_source ?? []).join(String.fromCharCode(10))).toContain('ipo_details.leadManagers (differs from the stored value');
+  });
+
+  it('D7: an empty or null held list is filled', async () => {
+    for (const stored of [{ ipoId: IPO_ID, leadManagers: [] }, { ipoId: IPO_ID, leadManagers: null }, null]) {
+      const h = withStored(stored);
+      await persistFilingExtraction(IPO_ID, extraction('DRHP', NSE_FIELDS()), { docType: 'DRHP', apply: true }, h.deps);
+      expect(detailsWritten(h.upsert).leadManagers).toEqual(NSE_BRLMS);
+    }
+  });
+
+  it('D7: an unreadable stored row withholds the list (fail closed)', async () => {
+    const h = withStored(null, true);
+    const summary = await persistFilingExtraction(IPO_ID, extraction('DRHP', NSE_FIELDS()), { docType: 'DRHP', apply: true }, h.deps);
+    expect('leadManagers' in detailsWritten(h.upsert)).toBe(false);
+    expect((summary.skipped_lower_priority_source ?? []).join(String.fromCharCode(10))).toContain('ipo_details.leadManagers (stored row unreadable');
+  });
+
   it('normalizeRegistrarLink keeps registrar hosts normalizeCompanyUrl refuses', () => {
     expect(normalizeRegistrarLink('www.linkintime.co.in')).toBe('https://www.linkintime.co.in');
     expect(normalizeRegistrarLink('https://ipo.bigshareonline.com/IPO_Status.html')).toBe('https://ipo.bigshareonline.com');
