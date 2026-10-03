@@ -2,6 +2,17 @@
 
 Each lesson is also folded into the SKILL.md step it changes.
 
+## 2026-10-03 — round 1 DRHP measured
+
+- **Run the extractor on the laptop to split "not read" from "read but not saved".** Staging's served sha
+  (`ssh rfp-vps cat /var/www/ipodhan/DEPLOYED_SHA-staging`) is the code to compare; if `git log <sha>..origin/main` shows no
+  change to `scraper/scripts/` or the persister, the laptop run IS staging's read. `python scraper/scripts/extract_filing.py
+  <pdf> --doc-type <TYPE>` took 3 min on a 614-page DRHP and writes no DB.
+- **Classify every miss by cause class A-F** (A no reader, B reader failed, C read not persisted, D persisted not recorded,
+  E blocked by a rule, F truth questionable). One code-reading agent did all 94 in 9 min; re-check its top 3 claims in code.
+- **Two emails can both be right.** The cover contact box and the General Information chapter printed different compliance
+  officer emails; the spec reads the cover (OD-164(b)). Record every printed alternative in the truth file.
+
 ## 2026-10-03 — round 1 setup (NSE, national-stock-exchange-of-india-ltd)
 
 - **CORRECTED same day: `field_sources.source = 'DRHP'` does not mean "from the DRHP".** Every filing type saves as

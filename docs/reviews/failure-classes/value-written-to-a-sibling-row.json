@@ -1,0 +1,13 @@
+{
+  "class_id": "a value read from one record is written to a sibling record chosen by a fixed type",
+  "feature": "any writer that updates 'the row of type T for this parent' instead of 'the row this value came from'",
+  "symptom": "when a different-type input produces the value, it lands on the wrong sibling row, and the right row stays empty. The result depends on processing order, so it looks intermittent.",
+  "first_seen": "2026-10-03 -- IPODhan filing-persister.ts:3063-3083 calls setFilingDate with docType 'RHP' for any extraction; the NSE DRHP's cover date (2026-06-17) is written to the RHP row and the DRHP row keeps null; 6 of 7 NSE documents rows have no filing_date. F-245.",
+  "fix_prs": "open -- write the filing date to the document being persisted, by its id",
+  "detection_check": "none",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5",
+    "§2.5.5"
+  ]
+}

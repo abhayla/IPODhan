@@ -2310,6 +2310,54 @@
       "title": "The DOC fetcher has no answer for an EMPTY column with no provenance row even when a document record holds the value",
       "detail": "Measured read-only on ipodhan_staging 2026-10-03: of the 232 F-239 rows, 18 are ipos fields with no field_sources row (e.g. nityas-gems-and-jewellery-ltd ipos.objectives NULL while its RHP record holds [{amount:70, Funding Working Capital ...}]). The fetcher's own-record path (OD-161) serves only website-owned columns and the DRHP path needs DRHP provenance, so a re-opened row is answered CHECK_FAILED NO_DOCUMENT_PROVENANCE again: re-asked once, still unanswered, no loop. Owners of the other rows: DRHP 133, BSE 37, CHITTORGARH 40, NSE 3, ADMIN 1. Settled by OD-161 (\"the DOC fetcher reads a document's answer from its own record, never from who owns the stored value\"; supervisor ruling 2026-10-03, not an owner decision). FIXED (fix/doc-receipt-empty-column, refs #1500): an empty column with no provenance row is answered from the best in-family COMPLETED document's own receipt, decoded to the column shape from the schema; only from reads at or above the type's re-read floor, validated against the column's real SQL type; TEXT or unknown mark writes through the walk (which records the field_sources row), OCR/MIXED is kept empty and not listed (spec §2.5 F-240 paragraph, SPEC CHANGE), two receipts the OD-91 comparator cannot order fail closed. Round 2 re-measure 2026-10-03 04:00 UTC: 28 ipos rows, 21 SUPPLIED, 7 OD-96. Re-measured read-only on ipodhan_staging 2026-10-03 03:30 UTC (docs/design/probes/f240-doc-receipt-empty-column.mts): 27 ipos rows on 26 IPOs, before 27 CHECK_FAILED NO_DOCUMENT_PROVENANCE, after 20 SUPPLIED (nityas objectives from its RHP) and 7 companyDescription rows whose only receipt is outside the field's RHP family (OD-96, unchanged).",
       "phase1": true
+    },
+    {
+      "id": "F-241",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document_field_receipts / filing-persister.ts:1801,:2105",
+      "title": "A document's own record (OD-91) covers only ipos and ipo_details; every child-table value and side-writer value it produced has no record",
+      "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. Receipts are built only from iposCandidate (filing-persister.ts:1801) and details (:2105). The extractor read and the persister writes financial_data and financial_statements (FY2024-26 revenue, PAT, EBITDA, net worth, total income), 78 risk factors, the peer row (BSE Limited P/E 66.67, EPS 60.61, RoNW, NAV) and the company website, yet the DRHP's record holds 6 rows. 24 of the 94 misses are this class. Related: on the same IPO 666 document-path field_sources rows carry no data_lineage.documentId (ipo_intermediaries 372, ipo_risk_factors 263, financial_statements 15, peer_companies 7, ipo_valuation 5, ipos 4), and every filing type saves as source DRHP (filing-persister.ts SOURCE ENUM NOTE), so what a given document saved cannot be read back. OD-91 says the record holds 'the fields it produced'; not a decision change."
+    },
+    {
+      "id": "F-242",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "scraper/scripts/extract_filing.py:1234-2138, :3047",
+      "title": "About 20 field readers run only for PRICE_BAND_AD, so a DRHP, RHP or PROSPECTUS that prints those fields never offers them",
+      "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. run() calls extract_price_band_ad only when doc_type == 'PRICE_BAND_AD' (extract_filing.py:3047); its readers (UPI cut-off, designated exchange, allocation %, bid windows, SEBI regulation, business description, RoNW and weighted RoNW, operating cash flow, diluted EPS, BRLM track record, WACA, KPIs, BRLM SEBI numbers) never run on offer documents, although document-families.json puts DRHP, RHP and PROSPECTUS in the PRICE_BAND_AD family. 22 of the 94 misses. Each reader was built on advert layouts; running it on a 600-page document needs real-layout fixtures first."
+    },
+    {
+      "id": "F-243",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "scraper/scripts/cover_block.py:316 (lead managers), registrar cover/GI reconciliation",
+      "title": "Multi-column cover text breaks the lead-manager and registrar readers: one overrunning row nulls all BRLMs, and a truncated cover registrar name vetoes the full name found elsewhere",
+      "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. NSE DRHP page 2 prints 20 BRLMs and 'MUFG Intime India Private Limited (Formerly Link Intime India Private Limited)'. The Definitions-row reader fails with lead_managers_row_overrun, so lead_managers is null; the cover table yields only 'India Private Limited', which disagrees with the Definitions and General Information pages ('MUFG Intime India Private Limited', page 91), so registrar_sources_disagree nulls the name AND the email, phone and website the GI block had read. 10 of the 94 misses. Item 39 (PR #1460) is PARTIAL."
+    },
+    {
+      "id": "F-244",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "scraper/scripts/extract_filing.py:2520-2538 (W-171 DRHP branch)",
+      "title": "The DRHP rule 'no price band by law' also blanks price-independent facts: offer-for-sale share count, fresh issue stated not applicable, and the book-built statement",
+      "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. The DRHP branch nulls ofs_shares, shares_at_*/fresh_shares_at_*, total_offer_shares_at_*, issue_structure and issue_price_type with 'DRHP has no price band by law'. The NSE DRHP cover prints 'Offer for Sale of up to 148,905,525 Equity Shares', 'FRESH ISSUE SIZE Not applicable' and '100% Book Built Offer', none of which depends on a price. 9 of the 94 misses. A later RHP/PROSPECTUS still supersedes them (OD-30)."
+    },
+    {
+      "id": "F-245",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "scraper/src/services/filing-persister.ts:3063-3083",
+      "title": "A DRHP's own filing date is written to the IPO's RHP documents row, and the DRHP row keeps no date",
+      "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. The cover-date reader matches 'DRAFT RED HERRING PROSPECTUS Dated: June 17, 2026' as rhp_filing_date (2026-06-17); the persister always calls setFilingDate with docType 'RHP', so an extracted DRHP stamps its date onto the RHP row (order-dependent: the RHP's own later extraction overwrites it; staging RHP shows 2026-09-10 IST) while the DRHP row's filing_date stays null. 6 of 7 NSE documents rows have filing_date null. Filing order drives supersession (OD-30), so a wrong or missing date can mis-order documents for any IPO."
+    },
+    {
+      "id": "F-246",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "extract_filing.py / filing-persister.ts (no reader)",
+      "title": "20 printed DRHP fields have no reader anywhere (issuer address, city, state, pincode; maximum retail and employee bid; bid hours; RoE, total assets, reserves, borrowings, debt-to-equity; BRLM contact details; registrar address; offering type), and the issuer phone, email, name and exchanges map only to other columns",
+      "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. Code trace (class A 42 incl. child-table fields, class C 5) found no extractor or persister path for these fields; the issuer contact block maps only to compliance_officer_* (filing-persister.ts:1997-1999), read_cover_company_name (extract_filing.py:1138) is used only as a check, and the listing-sentence reader feeds ipos.listing_exchanges but not ipo_details.exchanges. Extends F-225 (no extractor code for most RHP cover/business fields)."
     }
   ],
   "false_assertions": [

@@ -2542,6 +2542,8 @@ Owner approval 2026-10-02 of the plan that follows from F-224, F-225 and F-226. 
 
 F-231 records a price-band advert whose pattern let an optional currency-glyph slot swallow the leading digit (glass-wall-systems-india-ltd 172-182 stored as 72-82; 18 of 76 staging adverts read differently once fixed, PR #1483); no decision changes (#1477).
 
+The owner's offer-document test of 2026-10-03 (NSE DRHP d88fad44, 164 manifest fields read from the PDF: 100 printed, 6 recorded from the document, 94 missed) traces the misses to six classes, each open with no decision change: F-241 (a document's own record, OD-91, covers only `ipos` and `ipo_details`), F-242 (about 20 readers run only for price band adverts although DRHP, RHP and PROSPECTUS are in that family), F-243 (multi-column cover text breaks the lead-manager and registrar readers, item 39), F-244 (the DRHP rule also blanks price-independent share counts), F-245 (a DRHP's filing date is written to the RHP row, which can mis-order supersession, OD-30) and F-246 (fields with no reader at all, extends F-225).
+
 Baselines at the time of writing (staging, 2026-10-02, read-only): 28,760 child-table rank-1-DOC rows with 0 SUPPLIED; 4,769 plan rows on 77 IPOs carrying NO_DOCUMENT_PROVENANCE at ~13:15 IST (5,995 at the morning measurement in F-225, before the day's data slots re-walked rows); 0 of 77 IPOs with cover fields from a document; 20,008 of 20,532 stored values without other-source answers. Evidence: F-224, F-225, F-226; issue #1454. Build items: §7.1 items 37 to 46. The design is not ready for release while those items are NOT BUILT (staging-is-the-release-gate R0, OD-146).
 
 ### 2.6 When all three sources fail

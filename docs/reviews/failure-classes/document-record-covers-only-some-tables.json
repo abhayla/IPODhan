@@ -1,0 +1,13 @@
+{
+  "class_id": "a per-document record that covers only some of the tables the document writes",
+  "feature": "any write path that records 'which source produced which value' (a receipt, a lineage tag) beside the values it writes, where the values go to several tables but the record is built from only some of them",
+  "symptom": "the record is the only way to ask 'what did THIS source give us', so every value written outside the recorded tables becomes invisible to that question: the source looks almost empty while its values sit in the database unattributed. Checks, supersession and audits that read the record then treat those values as never delivered. Universal shape: the record is built from the same variables as the first writes in the function, and later writes (child tables, side writers) were added without adding to the record.",
+  "first_seen": "2026-10-03 -- IPODhan NSE DRHP d88fad44 on staging: document_field_receipts holds 6 rows (ipos and ipo_details only, filing-persister.ts:1801, :2105) while the same extraction wrote 5 financial series x 3 years, 78 risk factors, a peer row and the website; 666 document-path field_sources rows on the IPO carry no data_lineage.documentId. F-241.",
+  "fix_prs": "open -- build the record from every table the persister writes (child rows keyed by row_key), per OD-91 'the fields it produced'",
+  "detection_check": "doc_yield_per_document (item 37) counts receipts per COMPLETED document; it reports the symptom but cannot tell an empty document from an unrecorded one",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5",
+    "§2.5.6"
+  ]
+}
