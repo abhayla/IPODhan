@@ -1,5 +1,24 @@
 # Lessons from earlier rounds (read at STEP 0; newest first)
 
+## 2026-10-04 — laptop loop replaces staging-only (owner)
+
+- **The weekend gate keeps listed IPOs out of the scheduled cycle on Saturday and Sunday** (D-13; staging log
+  `reason: saturday, calendarSkipped 32, eligible 13`). A staging deploy alone never re-reads a listed IPO's document
+  on a weekend. Do not wait on it; the laptop loop needs no cycle.
+- **Laptop loop = staging's read.** Same code (main) on the same PDF gave the identical record: every one of
+  staging's 213 receipts present in `ipodhan_test` with 0 different values; the 40 extra were the 20 lead managers,
+  recorded because no earlier source owned that column in the test DB. The save step depends on what is already
+  stored, so compare per key, not by count.
+- **Never write unmerged code's results into staging.** A laptop run into `ipodhan_staging` with code that still had
+  F-245 stamped the DRHP's date (2026-06-17) on NSE's RHP row. Staging is the release check (OD-146).
+- **Copying rows between databases bit three ways** (all fixed in `seed-test-db.mjs`): `$1::character` truncates to
+  one character (sha256 became "7"); a raw `Date` parameter is sent in laptop-local time (+5h30); a `date` column comes
+  back as local midnight (moved back a day). The script now proves the copy identical before any test runs on it.
+- **A laptop Redis can serve stale rows.** The runner uses scratch Redis db 15 and empties it before every run; a cached
+  document list kept the truncated sha alive for one run.
+- **`DEPLOY_SLOT=staging` must not be passed to a test-DB run**: the Redis slot guard refuses it (correctly).
+
+
 Each lesson is also folded into the SKILL.md step it changes.
 
 ## 2026-10-03 — round 1 DRHP measured

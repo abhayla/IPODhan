@@ -2,7 +2,7 @@
 // Read-only: what ONE offer document saved on staging.
 // Usage (DB tunnel on localhost:15432 via scripts/ops/db-tunnel.sh start):
 //   DATABASE_HOST=localhost DATABASE_PORT=15432 DATABASE_NAME=ipodhan_staging DATABASE_USER=ipodhan_app //   DATABASE_PASSWORD=<from GLOBAL.env IPODHAN_APP_DB_PASSWORD> node measure-doc-saved.mjs <ipo-slug> [--doc <id>] [--json out.json]
-// Without --doc it lists the IPO's documents in test order. Refuses any database other than ipodhan_staging.
+// Without --doc it lists the IPO's documents in test order. Reads ipodhan_test (laptop loop) or ipodhan_staging (batch confirmation); refuses anything else.
 // Never prints the password or a connection URL.
 import fs from 'node:fs';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from '../../../../scripts/lib/pg-utc.mjs';
@@ -23,7 +23,7 @@ async function main() {
   const c = createUtcPool({ ...resolveDiscreteDbParams(process.env), ssl: false, max: 2 });
   await assertUtcSession(c);
   const db = (await c.query('select current_database() d')).rows[0].d;
-  if (db !== 'ipodhan_staging') throw new Error(`refusing: connected to ${db}, not ipodhan_staging`);
+  if (!['ipodhan_test', 'ipodhan_staging'].includes(db)) throw new Error(`refusing: connected to ${db}; only ipodhan_test (laptop loop) or ipodhan_staging (batch confirmation)`);
 
   const ipo = (await c.query('select id, slug, status, segment from ipos where slug = $1', [slug])).rows[0];
   if (!ipo) throw new Error(`no IPO with slug ${slug} on staging`);
