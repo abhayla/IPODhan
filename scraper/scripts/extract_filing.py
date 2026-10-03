@@ -2593,13 +2593,52 @@ def _drhp_mixed_counts(row):
     return out, None
 
 
-def _drhp_single_leg_count(row):
+# Step-2 review (item 3): the NIL / "Not applicable" must be the OTHER leg's own cell. The row's
+# cells run type | fresh | OFS | total | eligibility, and pdfplumber keeps their left-to-right order
+# on the data line (a cell may have no fragment on that line: Modern prints its fresh count on the
+# lines around it). So on the line, before the eligibility text: an OFS-only row's nil comes before
+# any count cell (the fresh column); a fresh-only row's nil comes after at most one count cell (the
+# fresh column) and before at most one more (the total). Only a cell's own continuation words may
+# sit between the preceding cell and the nil, so "Employee reservation Nil" is never the OFS cell.
+_DRHP_ELIGIBILITY_RX = re.compile(
+    r"\b(?:THE|THIS)\s+(?:OFFER|ISSUE)\b|\bPURSUANT\b|\bIN\s+TERMS\s+OF\b|\bREGULATIONS?\b", re.I)
+_DRHP_COUNT_CELL_RX = re.compile(
+    r"\bUP\s*TO\b(?:\s*(?:₹|RS\.?)\s*)?(?:\s*\[[^\]\n]{0,3}\]|\s*\d[\d,]*(?:\.\d+)?)?"
+    r"|\bFRESH\s+ISSUE\s+OF\b|(?<![\w.,])\d[\d,]*(?:\.\d+)?(?![\w,])", re.I)
+_DRHP_CELL_FILLER_RX = re.compile(
+    r"^(?:\s|EQUITY\b|SHARES?\b|OF\b|FACE\b|VALUE\b|EACH\b|AGGREGATING\b|TO\b|₹|RS\.?"
+    r"|LAKHS?\b|MILLIONS?\b|CRORES?\b|\[[^\]\n]{0,3}\]|[\d,./()\-])*$", re.I)
+
+
+def _drhp_nil_in_other_leg(row, kind):
+    """True when the data line's nil cell sits in the other leg's column (see above)."""
+    line = row["after"]
+    cut = _DRHP_ELIGIBILITY_RX.search(line)
+    seg = line[:cut.start()] if cut else line
+    nils = list(DRHP_NIL_CELL_RX.finditer(seg))
+    if not nils:
+        # pdfplumber may split "Not applicable" as "Not" on the row and "applicable" opening
+        # the next line (NSE, Hyundai).
+        if not re.match(r"\s*APPLICABLE\b", row["next"], re.I):
+            return False
+        nils = list(re.finditer(r"\bNOT\b", seg, re.I))
+    if len(nils) != 1:
+        return False
+    nil = nils[0]
+    before = list(_DRHP_COUNT_CELL_RX.finditer(seg, 0, nil.start()))
+    after = list(_DRHP_COUNT_CELL_RX.finditer(seg, nil.end()))
+    gap = seg[before[-1].end() if before else 0:nil.start()]
+    if not _DRHP_CELL_FILLER_RX.match(gap):
+        return False
+    if kind == "OFS_ONLY":
+        return not before and len(after) <= 2
+    return len(before) <= 1 and len(after) <= 1
+
+
+def _drhp_single_leg_count(row, kind):
     """Fresh-only / OFS-only row: (the one share count, None) or (None, why)."""
-    region, line = row["region"], row["line"]
-    # The other leg's NIL / "Not applicable" cell sits on the data row itself; pdfplumber
-    # may split it as "Not" on the row and "applicable" opening the next line (NSE).
-    nil = DRHP_NIL_CELL_RX.search(line) or (
-        re.search(r"\bNOT\b", line, re.I) and re.match(r"\s*APPLICABLE\b", row["next"], re.I))
+    region = row["region"]
+    nil = _drhp_nil_in_other_leg(row, kind)
     if DRHP_PLACEHOLDER_COUNT_RX.search(region):
         return None, "share count printed as a placeholder"
     counts = [v for k, v in (_drhp_cell_at(region, m.end()) for m in DRHP_SLOT_RX.finditer(region))
@@ -2656,7 +2695,7 @@ def _drhp_price_independent(blob, cover_page, emit):
                          check_cover_share_count(v))
         return
 
-    shares, why = _drhp_single_leg_count(row)
+    shares, why = _drhp_single_leg_count(row, kind)
     if why is not None:
         return null_all(why)
     share_check = check_cover_share_count(shares)

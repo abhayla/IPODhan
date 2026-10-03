@@ -684,3 +684,37 @@ def test_issue_process_neither_wording_is_null_with_reason():
     f = drhp(text)
     assert value(f, "issue_price_type") is None
     assert detail(f, "issue_price_type") == "check_failed: neither wording on the cover"
+
+
+# Step-2 review (item 3): the NIL / "Not applicable" that makes a single-leg offer must be the OTHER
+# leg's own cell (fresh-only: the OFS column, after at most the fresh cell; OFS-only: the fresh column,
+# right after the type cell), never a nil printed for something else on the row. Each case is a
+# MINIMAL EDIT of a real cover, labelled so; no real draft in the sweep prints this shape.
+def test_fresh_only_nil_after_the_total_is_not_the_ofs_cell():
+    # MINIMAL EDIT (Nityas): OFS cell blank, "Employee reservation Nil" after the total cell.
+    text = _COVERS["nityas-gems-and-jewellery-ltd"].replace(
+        "Up to 14,456,000 Not applicable Up to 14,456,000",
+        "Up to 14,456,000 Up to 14,456,000 Employee reservation Nil", 1)
+    f = drhp(text)
+    for name in ("ofs_shares", "ofs_amount", "shares_at_floor", "total_offer_shares_at_cap"):
+        assert value(f, name) is None, name
+    assert detail(f, "ofs_shares") == "DRHP: the other leg is not stated as nil / not applicable"
+
+
+def test_fresh_only_nil_with_its_own_label_is_not_the_ofs_cell():
+    # MINIMAL EDIT (Nityas): the review's shape, "Fresh Issue Up to N ... Employee reservation Nil".
+    text = _COVERS["nityas-gems-and-jewellery-ltd"].replace(
+        "Up to 14,456,000 Not applicable Up to 14,456,000",
+        "Up to 14,456,000 Employee reservation Nil", 1)
+    f = drhp(text)
+    assert value(f, "ofs_shares") is None
+    assert value(f, "ofs_amount") is None
+
+
+def test_ofs_only_nil_after_the_ofs_count_is_not_the_fresh_cell():
+    # MINIMAL EDIT (NSE): the nil moved from the fresh column to after the OFS cell.
+    text = _COVERS["national-stock-exchange-of-india-ltd"].replace(
+        "Not Up to 148,905,525 Up to 148,905,525", "Up to 148,905,525 Nil Up to 148,905,525", 1)
+    f = drhp(text)
+    for name in ("shares_at_floor", "fresh_issue_amount", "ofs_shares"):
+        assert value(f, name) is None, name
