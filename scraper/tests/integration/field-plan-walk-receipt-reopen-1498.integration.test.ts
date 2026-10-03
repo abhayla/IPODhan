@@ -216,7 +216,7 @@ describe('#1498: a newer document record re-opens a non-settled DOC-ranked row o
     await planRepo.releaseClaimUnrecorded({ planRowId: claimed!.id, claimToken: claimed!.claimToken });
   }, 60000);
 
-  it('live tier first: with budget for ONE claim, the IPO's ordinary due row is asked before the receipt re-open', async () => {
+  it('live tier first: with budget for ONE claim, the ordinary due row of the IPO is asked before the receipt re-open', async () => {
     const pendingId = await seedPlan('cin', { state: 'PENDING', attempts: 0 }, 3 * 86_400_000);
     await db.execute(sql`UPDATE ipo_field_plan SET next_due_at = NULL WHERE id = ${pendingId}::uuid`);
     const reopenId = await seedPlan('price_range_min', { attempts: 16 }, 3 * 86_400_000);
