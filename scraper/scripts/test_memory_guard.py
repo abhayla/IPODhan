@@ -118,6 +118,20 @@ def test_is_near_memory_ceiling_false_when_vm_size_unmeasurable(monkeypatch):
     assert memory_guard.is_near_memory_ceiling(limit_mb=100) is False
 
 
+def test_is_near_memory_ceiling_true_when_the_probe_itself_runs_out_of_memory(monkeypatch):
+    """CI 2026-10-04 (#1518): under RLIMIT_AS the /proc read inside the probe raised MemoryError,
+    which escaped is_memory_exhaustion and turned a memory ceiling into an ordinary exit 1.
+    A probe that cannot allocate is itself proof the process is at its ceiling."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 100)
+
+    def probe():
+        raise MemoryError()
+
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", probe)
+    assert memory_guard.is_near_memory_ceiling(limit_mb=100) is True
+    assert memory_guard.is_memory_exhaustion(IndexError("list index out of range")) is True
+
+
 def test_is_near_memory_ceiling_respects_custom_threshold(monkeypatch):
     monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 100)
     monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 70.0)
