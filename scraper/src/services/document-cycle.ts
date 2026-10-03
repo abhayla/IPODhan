@@ -76,6 +76,7 @@ import {
   buildFieldPlanWalkWitnessVerdictWriter,
   buildFieldPlanWalkReopenDeps,
   buildFieldPlanWalkHoldDeps,
+  buildFieldPlanReceiptDocTypes,
   fieldPlanWalkHasFetchers,
 } from './field-plan-walk-deps.js';
 import { initStepLedger } from './step-ledger.js';
@@ -2811,6 +2812,9 @@ export async function runDocumentCycle(
         const MAX_WALK_IDENTITY_LINES = 50;
         const droppedWriteLines: string[] = [];
         const exhaustedFieldLines: string[] = [];
+        // #1498 (OD-171): every row a newer document record re-opened, with its outcome.
+        const receiptReopenedLines: string[] = [];
+        let receiptReopenedCount = 0;
         // Review round 3, MINOR-3 (real cost): these two used to be called
         // INSIDE `for (const ipo of candidates)` below, so the BSE board and
         // Chittorgarh list were re-fetched once per IPO (40x per cycle on
@@ -2830,6 +2834,8 @@ export async function runDocumentCycle(
         const fieldPlanReopenDeps = buildFieldPlanWalkReopenDeps();
         // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
         const fieldPlanHoldDeps = buildFieldPlanWalkHoldDeps();
+        // #1498 (OD-171): the document types each DOC rank reads, so only such a record re-opens a row.
+        const fieldPlanReceiptDocTypes = buildFieldPlanReceiptDocTypes();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             fieldPlanWalkExhausted = true;
@@ -2860,6 +2866,7 @@ export async function runDocumentCycle(
                 trackWitnessVerdict: fieldPlanWitnessVerdictWriter,
                 ...fieldPlanReopenDeps,
                 ...fieldPlanHoldDeps,
+                receiptDocTypes: fieldPlanReceiptDocTypes,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );
@@ -2884,6 +2891,14 @@ export async function runDocumentCycle(
                 exhaustedFieldLines.push(`${ipo.id}:${e.tableName}.${e.fieldName}`);
               }
             }
+            for (const r of walk.receiptReopened ?? []) {
+              receiptReopenedCount += 1;
+              if (receiptReopenedLines.length < MAX_WALK_IDENTITY_LINES) {
+                receiptReopenedLines.push(
+                  `${ipo.slug ?? ipo.id}:${r.tableName}${r.rowKey ? `[${r.rowKey}]` : ''}.${r.fieldName} ${r.stateBefore}/${r.attemptsBefore} -> ${r.outcome}`
+                );
+              }
+            }
           } catch (error) {
             // Non-fatal per IPO, exactly like PASS 2 — one IPO's walk failing
             // must not stop the rest, and the claim it held goes stale and is
@@ -2906,6 +2921,8 @@ export async function runDocumentCycle(
             // counts — capped at MAX_WALK_IDENTITY_LINES per class.
             droppedWrites: droppedWriteLines,
             exhaustedFields: exhaustedFieldLines,
+            receiptReopenedCount,
+            receiptReopened: receiptReopenedLines,
           },
           'PASS 3 field-plan walk summary for this cycle (item 6)'
         );

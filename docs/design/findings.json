@@ -2292,6 +2292,24 @@
       "title": "NSE's SME 'IPO Market Timings' text is 73 characters; the column holds 50",
       "detail": "Measured 2026-10-03: EVENTIONS and GREENASIA print '10.00 a.m. to 5.00 p.m. (Bidding Timings on Issue Closure upto 4:00 P.M.)' (73 chars); RUNWALENTR and MONEYVIEW print '10.00 a.m. to 5.00 p.m.' (23). The item 43 reader refuses text over 50 chars (CHECK_FAILED with the text) rather than cutting it, so this SME wording is never written until the column is widened or a stored shape is decided.",
       "phase1": false
+    },
+    {
+      "id": "F-239",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "packages/shared/src/repositories/ipo-field-plan-repository.ts claimNextDueField; #1498",
+      "title": "A document record newer than a plan row's last attempt re-opened nothing: capped or gap-stamped DOC-ranked rows never asked DOC again",
+      "detail": "Measured read-only on ipodhan_staging 2026-10-03 06:40 IST: 232 DOC rank-1 plan rows (row_key '') not SUPPLIED held a document_field_receipts value newer than last_attempt_at, on 52 IPOs. Blockers by the claim legs: CHECK_FAILED at attempts >= FIELD_PLAN_RECLAIM_MAX_ATTEMPTS 77 (e.g. nityas-gems-and-jewellery-ltd price_range_min/max and lot_size at 16 attempts, record 70/75/200 from 2026-10-03 00:47 UTC, stored 70/75/200); CHECK_FAILED gap-stamped with a key the re-read under the same extractor version did not change 123 (e.g. nityas ipos.objectives, stamped @2026-10-04 at 23:12 UTC, record at 00:18 UTC); held-read 1 (by design); LISTED rows outside the live window waiting for the closed-IPO job 31. 154 rows sit on IPOs in the document cycle's live window, 78 outside. Fixed by the receipt_newer claim leg (OD-171): the real listReceiptNewerRows on staging selects 243 rows / 52 IPOs (214 CHECK_FAILED, 28 NOT_AVAILABLE_YET, 1 PENDING), nityas 5 (cin, lot_size, objectives, price_range_min, price_range_max; segment excluded as held).",
+      "phase1": true
+    },
+    {
+      "id": "F-240",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "scraper/src/services/field-plan-walk-doc-fetcher.ts (no provenance + empty column)",
+      "title": "The DOC fetcher has no answer for an EMPTY column with no provenance row even when a document record holds the value",
+      "detail": "Measured read-only on ipodhan_staging 2026-10-03: of the 232 F-239 rows, 18 are ipos fields with no field_sources row (e.g. nityas-gems-and-jewellery-ltd ipos.objectives NULL while its RHP record holds [{amount:70, Funding Working Capital ...}]). The fetcher's own-record path (OD-161) serves only website-owned columns and the DRHP path needs DRHP provenance, so a re-opened row is answered CHECK_FAILED NO_DOCUMENT_PROVENANCE again: re-asked once, still unanswered, no loop. Owners of the other rows: DRHP 133, BSE 37, CHITTORGARH 40, NSE 3, ADMIN 1. Open for owner decision: whether the DOC answer for an empty, unowned column is the document's record (decoded to the column shape).",
+      "phase1": true
     }
   ],
   "false_assertions": [

@@ -175,6 +175,56 @@ function heldReadCurrentSql() {
 }
 
 /**
+ * #1498 (OD-171): the plan states a newer document record re-opens. Terminal states and SUPPLIED
+ * are never re-opened by a record (OD-56/OD-65 govern a settled field; supersession, OD-91, is the
+ * document-versus-document path for a SUPPLIED one).
+ */
+export const FIELD_PLAN_RECEIPT_REOPEN_STATES = ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'] as const;
+
+/**
+ * #1498 (OD-171): true when a document of the type the DOC rank reads for this row's field was
+ * (re-)read AFTER the row's last attempt (`documents.extracted_at`, which every COMPLETED read and
+ * re-read stamps) AND that document's record (`document_field_receipts`) holds a non-empty value
+ * for the field. The re-read is the event -- it covers a re-read that CHANGED the record's value
+ * (an upsert keeps the record's `created_at`, which `scripts/lib/doc-yield-checks.mjs` reads as
+ * "first record ever", so it is deliberately not used here) and one that did not. The row is due
+ * once more whatever its attempts count, gap stamp or slot; the DOC fetcher answers from the record
+ * (OD-161) without a network call, and the attempt stamps `last_attempt_at`, so one re-read offers
+ * the row at most once (no loop, no timer).
+ *
+ * Only a document of a type the DOC rank reads for the field counts (`receiptDocTypes`:
+ * `table.field` -> the manifest document type's family, the family the DOC fetcher judges by); a
+ * field absent from the map, or no map at all, re-opens nothing (fail closed). Matched exactly on
+ * table, row_key and field; the record's camelCase field name is compared with the row's snake_case
+ * one converted exactly as `columnToCamelCase` does (`_[a-z]` -> upper case, any other `_` kept),
+ * the conversion the DOC fetcher reads records with. A record that
+ * matches no plan row re-opens nothing (fail closed). Fresh fragment per call (see gapStampedSql).
+ */
+function receiptNewerThanLastAttemptSql(receiptDocTypesJson: string) {
+  return sql`(ipo_field_plan.last_attempt_at IS NOT NULL
+              AND 'DOC' IN (coalesce(ipo_field_plan.rank1_source, ''), coalesce(ipo_field_plan.rank2_source, ''), coalesce(ipo_field_plan.rank3_source, ''))
+              AND EXISTS (
+                SELECT 1 FROM document_field_receipts r
+                  JOIN documents d ON d.id = r.document_id
+                 WHERE d.ipo_id = ipo_field_plan.ipo_id
+                   AND d.is_active IS NOT FALSE
+                   AND d.extraction_status = 'COMPLETED'
+                   AND d.extracted_at > ipo_field_plan.last_attempt_at
+                   AND d.type::text IN (
+                     SELECT jsonb_array_elements_text((${receiptDocTypesJson}::jsonb) -> (ipo_field_plan.table_name || '.' || ipo_field_plan.field_name))
+                   )
+                   AND r.table_name = ipo_field_plan.table_name
+                   AND r.row_key = ipo_field_plan.row_key
+                   AND r.value IS NOT NULL
+                   AND r.value <> ''
+                   AND r.field_name = (
+                     SELECT string_agg(CASE WHEN t.o = 1 THEN t.w WHEN t.w ~ '^[a-z]' THEN upper(left(t.w, 1)) || substr(t.w, 2) ELSE '_' || t.w END, '' ORDER BY t.o)
+                       FROM unnest(string_to_array(ipo_field_plan.field_name, '_')) WITH ORDINALITY AS t(w, o)
+                   )
+              ))`;
+}
+
+/**
  * #762 (S8): the claim query's reclaim keys on the data job's slot boundary
  * ("has a NEW slot begun since X"), never on elapsed time — the OD-33 /
  * design-doc D12 rule governs this claim query exactly as it governs the
@@ -290,6 +340,11 @@ export interface ClaimNextDueFieldParams {
    * row whose field left the manifest. Omitted, no gap row is ever offered.
    */
   gapKeys?: Record<string, readonly string[]>;
+  /**
+   * #1498 (OD-171): `table.field` -> the document types the DOC rank reads for it (the manifest
+   * document type's family). Absent: the receipt_newer leg offers nothing (fail closed).
+   */
+  receiptDocTypes?: Record<string, readonly string[]>;
   /**
    * #762 (S8) review round 2 CRITICAL fix: row ids this WALK has already
    * settled this pass (`field-plan-walk.ts`'s `settledThisWalk`), excluded
@@ -769,6 +824,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const excludeIds = params.excludeIds ?? [];
     // #884 review round 2: the CURRENT gap keys per field; a gap row stamped with one of its field's is not due.
     const gapKeysJson = params.gapKeys === undefined ? null : JSON.stringify(params.gapKeys);
+    const receiptDocTypesJson = JSON.stringify(params.receiptDocTypes ?? {});
     // Drizzle's `sql` tagged template SPREADS a plain JS array interpolated
     // into it as a comma-separated parameter list (`$1, $2, ...`), never as
     // a single array-typed bind — `${excludeIds}::uuid[]` therefore compiled
@@ -956,6 +1012,20 @@ export class IpoFieldPlanRepository extends BaseRepository {
                      )${legFilter()}
                ORDER BY last_attempt_at ASC NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_gap_key_changed`,
+        // #1498 (OD-171): a re-read (after the last attempt) of the document the DOC rank reads, with a
+        // record for the field, is the event that re-opens a non-settled DOC-ranked row ONCE -- past the attempts cap, the gap stamp and the slot.
+        // Measured on staging 2026-10-03 06:40 IST: 232 DOC rank-1 rows / 52 IPOs held a record newer
+        // than their last attempt and were offered by no other leg (attempts >= cap, or a gap key the re-read under
+        // the same extractor version did not change). The attempt stamps last_attempt_at, so the
+        // same re-read cannot offer the row again.
+        // pri 3: AFTER every normal due leg (pending 0, reclaim 1, gap-key 2), so the walk drains
+        // the IPO's ordinary due work first inside the same shared deadline (B4(a)).
+        sql`SELECT id, 3 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state IN ('PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED')
+                 AND ${receiptNewerThanLastAttemptSql(receiptDocTypesJson)}${legFilter()}
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) receipt_newer`,
         // verify_due_leg REMOVED in S2 — verify_state/verify_due_at no longer exist on
         // ipo_field_plan (see the method doc comment above).
       ];
@@ -997,6 +1067,68 @@ export class IpoFieldPlanRepository extends BaseRepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to claim next due field plan row${params.ipoId ? ` for IPO ${params.ipoId}` : ''}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+   * #1498 (OD-171): the rows of one IPO that `claimNextDueField`'s `receipt_newer` leg makes due
+   * (same predicate, read only). The walk reads it once per IPO so its summary line names every
+   * row a newer document record re-opened, with the outcome (signal-ownership R1).
+   */
+  async listReceiptNewerRows(params: { ipoId: string; receiptDocTypes?: Record<string, readonly string[]> }): Promise<
+    Array<{ id: string; tableName: string; rowKey: string; fieldName: string; state: string; attempts: number }>
+  > {
+    try {
+      const result = await this.db.execute(sql`
+        SELECT id, table_name, row_key, field_name, state, attempts
+          FROM ipo_field_plan
+         WHERE ipo_id = ${params.ipoId}::uuid
+           AND state IN ('PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED')
+           AND ${receiptNewerThanLastAttemptSql(JSON.stringify(params.receiptDocTypes ?? {}))}
+           AND NOT ${heldReadCurrentSql()}
+         ORDER BY table_name, row_key, field_name
+      `);
+      const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+      return rows.map((r) => ({
+        id: String(r.id),
+        tableName: String(r.table_name),
+        rowKey: String(r.row_key ?? ''),
+        fieldName: String(r.field_name),
+        state: String(r.state),
+        attempts: Number(r.attempts ?? 0),
+      }));
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to list receipt-reopened field plan rows for IPO ${params.ipoId}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+   * #1498 (OD-171, review MINOR 3): stamp `last_attempt_at` on a row the receipt_newer leg offered
+   * when the walk's settle did not (a dropped write keeps `last_attempt_at` by design, a
+   * recordOutcome that threw wrote nothing), so the same re-read cannot offer the row again every
+   * walk. Touches nothing else: state, attempts, evidence and the claim stay as the settle left them.
+   */
+  async stampReceiptReopenAttempt(params: { planRowId: string; now?: Date }): Promise<{ stamped: boolean }> {
+    const now = params.now ?? new Date();
+    try {
+      const result = await this.db.execute(sql`
+        UPDATE ipo_field_plan
+           SET last_attempt_at = ${utc(now)}::timestamptz, updated_at = ${utc(now)}::timestamptz
+         WHERE id = ${params.planRowId}::uuid
+           AND state IN ('PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED')
+        RETURNING id
+      `);
+      return { stamped: (((result as unknown as { rows?: unknown[] }).rows) ?? []).length > 0 };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to stamp the receipt re-open attempt on plan row ${params.planRowId}`,
         undefined,
         error instanceof Error ? error : undefined
       );
