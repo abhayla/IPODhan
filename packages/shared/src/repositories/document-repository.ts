@@ -413,6 +413,37 @@ export class DocumentRepository
    * `documents` row, so a filing extraction with no matching discovery-runner
    * row for `type = 'RHP'` updates zero rows rather than fabricating one.
    */
+  /**
+   * F-245: set filing_date on ONE document row, keyed by its id. The IPO and the
+   * type are part of the key too, so a wrong id never stamps another IPO's or
+   * another type's row (0 rows updated instead).
+   */
+  async setFilingDateById(
+    ipoId: string,
+    documentId: string,
+    docType: string,
+    filingDate: string
+  ): Promise<number> {
+    try {
+      const { and } = await import('drizzle-orm');
+      const updated = await this.db
+        .update(documents)
+        .set({ filingDate, updatedAt: new Date() })
+        .where(
+          and(
+            eq(documents.id, documentId),
+            eq(documents.ipoId, ipoId),
+            eq(documents.type, docType as (typeof documents.type.enumValues)[number])
+          )
+        )
+        .returning({ id: documents.id });
+      if (updated.length > 0) await this.deleteCache(getDocumentsKey(ipoId));
+      return updated.length;
+    } catch (error) {
+      throw new DatabaseError(`Failed to set filing date for document: ${documentId}`, undefined, error);
+    }
+  }
+
   async setFilingDateForRhp(ipoId: string, filingDate: string): Promise<number> {
     try {
       const { and } = await import('drizzle-orm');

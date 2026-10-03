@@ -198,3 +198,24 @@ describe('OD-129: the listing sentence is the claim of this document on listingE
     expect(contextFields).toContain('listingExchange');
   });
 });
+
+describe('RC6 (spec row 41): the claimed listing sentence also answers ipo_details.exchanges', () => {
+  const persistWith = async (docType: 'RHP' | 'DRHP', precedence: FilingPersisterDeps['listingPrecedence']) => {
+    const deps = makeDeps(precedence);
+    const extraction = {
+      ...datelessCover(),
+      page_texts: [page('national-stock-exchange-of-india-ltd', 'RHP')],
+    } as FilingExtraction;
+    await persistFilingExtraction(IPO_ID, extraction, { docType, apply: true }, deps);
+    const upsert = deps.ipoDetailsWriter.upsert as unknown as ReturnType<typeof vi.fn>;
+    return (upsert.mock.calls[0] as unknown[])[1] as Record<string, unknown>;
+  };
+
+  it('NSE RHP ("being BSE Limited") -> ipo_details.exchanges = [BSE], the same set as ipos', async () => {
+    expect((await persistWith('RHP', completedDocs([]))).exchanges).toEqual(['BSE']);
+  });
+
+  it('an outranked sentence (DRHP after a completed RHP) writes no exchanges either', async () => {
+    expect((await persistWith('DRHP', completedDocs(['RHP']))).exchanges).toBeUndefined();
+  });
+});
