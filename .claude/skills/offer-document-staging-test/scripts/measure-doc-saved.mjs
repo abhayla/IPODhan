@@ -53,16 +53,20 @@ async function main() {
   const receipts = (await c.query(
     `select table_name, row_key, field_name, value, source_text, ocr_confidence
        from document_field_receipts where document_id = $1 order by table_name, field_name, row_key`, [docId])).rows;
-  // Layer 2: provenance rows whose source is this document's type. data_lineage.documentId is set on few rows
-  // (3 of 698 for the NSE DRHP), so the type is the usable key; rows naming ANOTHER document id are excluded.
+  // Layer 2: shown values whose provenance names THIS document (data_lineage.documentId).
+  // NOT field_sources.source: every filing type (DRHP, RHP, PROSPECTUS, PRICE_BAND_AD) saves as source 'DRHP'
+  // (filing-persister.ts SOURCE ENUM NOTE), so a source-type match mixes documents (669 "DRHP" rows on NSE, 3 its own).
   const prov = (await c.query(
     `select table_name, field_name, row_key, source::text as source, updated_by,
             data_lineage->>'documentId' as lineage_doc, verdict
        from field_sources
-      where ipo_id = $1 and source::text = $2
-        and (data_lineage->>'documentId' is null or data_lineage->>'documentId' = $3)
-      order by table_name, field_name, row_key`, [ipo.id, doc.type, docId])).rows;
-
+      where ipo_id = $1 and data_lineage->>'documentId' = $2
+      order by table_name, field_name, row_key`, [ipo.id, docId])).rows;
+  // Layer 3 (context): document-path rows with NO document id at all - nobody can tell which document wrote them.
+  const orphan = (await c.query(
+    `select table_name, count(*)::int n from field_sources
+      where ipo_id = $1 and source::text = 'DRHP' and data_lineage->>'documentId' is null
+      group by 1 order by 1`, [ipo.id])).rows;
   const byTable = {};
   for (const p of prov) {
     const t = (byTable[p.table_name] ||= { rows: new Set(), fields: new Set(), n: 0, withLineage: 0 });
@@ -72,13 +76,14 @@ async function main() {
   console.log(`IPO ${ipo.slug} — document ${doc.type} ${docId} (${doc.extraction_status}, extracted ${doc.extracted_at ? doc.extracted_at.toISOString() : '-'})`);
   console.log(`receipts: ${receipts.length}`);
   for (const r of receipts) console.log(`  R ${r.table_name}.${r.field_name}${r.row_key ? '[' + r.row_key + ']' : ''} = ${String(r.value).slice(0, 80)} (${r.source_text}${r.ocr_confidence ? ' ocr ' + r.ocr_confidence : ''})`);
-  console.log(`field_sources with source=${doc.type}: ${prov.length}`);
+  console.log(`shown values whose lineage names this document: ${prov.length}`);
   for (const [t, v] of Object.entries(byTable)) {
     console.log(`  P ${t}: ${v.n} rows, ${v.rows.size} row keys, ${v.withLineage} naming this document, fields: ${[...v.fields].join(', ')}`);
   }
+  console.log(`document-path values with no document id (unattributable, IPO-wide): ${orphan.map((o) => o.table_name + ' ' + o.n).join(', ') || 'none'}`);
   const out = arg('--json');
   if (out) {
-    fs.writeFileSync(out, JSON.stringify({ measuredAt: new Date().toISOString(), ipo, document: doc, receipts, provenance: prov }, null, 2));
+    fs.writeFileSync(out, JSON.stringify({ measuredAt: new Date().toISOString(), ipo, document: doc, receipts, provenance: prov, unattributable: orphan }, null, 2));
     console.log(`wrote ${out}`);
   }
   await c.end();

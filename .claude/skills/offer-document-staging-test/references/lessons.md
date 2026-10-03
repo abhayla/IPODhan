@@ -4,7 +4,11 @@ Each lesson is also folded into the SKILL.md step it changes.
 
 ## 2026-10-03 — round 1 setup (NSE, national-stock-exchange-of-india-ltd)
 
-- **Two provenance layers that disagree in size.** For the NSE DRHP (d88fad44), `document_field_receipts` held 6 rows
+- **CORRECTED same day: `field_sources.source = 'DRHP'` does not mean "from the DRHP".** Every filing type saves as
+  `DRHP` (filing-persister.ts SOURCE ENUM NOTE). Of the 669 "DRHP" rows on NSE, the DRHP's own lineage is on 3; the rest
+  belong to the RHP / adverts or carry no document id (ipo_intermediaries 372, ipo_risk_factors 263 with none). Measure
+  per document by receipts (OD-91) and `data_lineage.documentId` only. The bullet below is the superseded first reading.
+- **(superseded) Two provenance layers that disagree in size.** For the NSE DRHP (d88fad44), `document_field_receipts` held 6 rows
   (ipos/ipo_details only), while `field_sources` with source=DRHP held 669 rows across 6 tables
   (ipo_intermediaries 372, ipo_risk_factors 263, financial_statements 15, peer_companies 7, ipos 7, ipo_valuation 5).
   Reading only the receipts would report the document as almost empty. Evidence: measure-doc-saved.cjs output, 2026-10-03.

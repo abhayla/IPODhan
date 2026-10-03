@@ -84,9 +84,14 @@ never discovered) and go on to the next document.
 node .claude/skills/offer-document-staging-test/scripts/measure-doc-saved.mjs <ipo-slug> --doc <id> --json <scratch>/saved.json
 ```
 
-It reads two layers (read-only):
-- `document_field_receipts` for the document (only `ipos` and `ipo_details`).
-- `field_sources` rows whose `source` is the document's type, excluding rows that name another document.
+It reads (read-only):
+- **This document's own record**: `document_field_receipts` (OD-91: "each document's extraction writes a per-document
+  record of the fields it produced"). This is the primary measure for C6. Today it covers only `ipos` and `ipo_details`.
+- **Shown values it still owns**: `field_sources` rows whose `data_lineage.documentId` is this document. A later
+  document replacing an earlier one's value is correct (OD-30), so an old DRHP owning few shown values is not a miss.
+- **Unattributable values**: document-path rows with no document id. Never count them for any document.
+NEVER match on `field_sources.source`: every filing type saves as `DRHP` (filing-persister.ts SOURCE ENUM NOTE).
+A child-table field the document prints but that has no receipt is MISSED with cause "no per-document record" (OD-91 gap).
 
 Then read the saved values themselves from the owning tables (e.g. `ipo_intermediaries` rows for the IPO) and
 compare them with the truth from STEP 2.
