@@ -275,7 +275,11 @@ def is_near_memory_ceiling(limit_mb=None, threshold=NEAR_CEILING_THRESHOLD):
     limit_mb = _installed_ceiling_mb if limit_mb is None else limit_mb
     if limit_mb <= 0:
         return False
-    size_mb = _current_vm_size_mb()
+    try:
+        size_mb = _current_vm_size_mb()
+    except MemoryError:
+        # The probe could not even read /proc: the process is at its ceiling (CI 2026-10-04, #1518).
+        return True
     if size_mb is None:
         return False
     return size_mb >= threshold * limit_mb
