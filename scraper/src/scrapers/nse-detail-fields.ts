@@ -118,7 +118,46 @@ function lot(rows: DataRow[]): NseDetailFieldAnswer {
  * e.g. "Runwal Enterprises Limited") must normalise to the stored company name. Anything else is an
  * identity refusal for every field (fail closed), never a value of the IPO that was asked about.
  */
-export function parseNseDetailFields(payload: unknown, expectedSymbol: string, expectedCompanyName: string): NseDetailParse {
+/**
+ * D3 (F-236): what proves identity for an SME reply that prints no company name. The caller asks by the
+ * IPO's own ACTIVE `NSE_ISSUE` key (so the symbol asked IS that key's symbol) and passes the key's series
+ * and the stored issue dates; see `parseNseDetailFields`.
+ */
+export interface NseDetailSmeIdentity {
+  series: 'EQ' | 'SME';
+  storedOpenDate: unknown;
+  storedCloseDate: unknown;
+}
+
+/** A stored `date` column value as YYYY-MM-DD, or null (drizzle's date mode is a string; anything else is not trusted). */
+function storedDay(v: unknown): string | null {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null;
+}
+
+/**
+ * The issue period NSE states NOW: the "Revised/Extended Issue Period" row when printed (F-237; its
+ * title carries a trailing space and its value a trailing "(The Issue is further extended ...)" note),
+ * else "Issue Period". Used for SME identity only.
+ */
+function statedPeriod(rows: DataRow[]): { open: string; close: string } | { cause: string } {
+  const revised = single(rows, 'Revised/Extended Issue Period');
+  const row = 'absent' in revised ? single(rows, 'Issue Period') : revised;
+  if ('error' in row) return { cause: row.error };
+  if (!('value' in row)) return { cause: 'no issue period printed' };
+  const text = row.value.replace(/\s*\(.*\)\s*$/, '');
+  const parts = text.split(/\s+to\s+/i);
+  const open = parts.length === 2 ? parseNSEDate(parts[0]) : undefined;
+  const close = parts.length === 2 ? parseNSEDate(parts[1]) : undefined;
+  if (!open || !close) return { cause: `issue period unparseable: "${row.value.slice(0, 120)}"` };
+  return { open, close };
+}
+
+export function parseNseDetailFields(
+  payload: unknown,
+  expectedSymbol: string,
+  expectedCompanyName: string,
+  sme?: NseDetailSmeIdentity
+): NseDetailParse {
   const issueInfo = (payload as { issueInfo?: { dataList?: unknown; symbol?: unknown } } | null)?.issueInfo;
   const dataList = issueInfo?.dataList;
   if (!Array.isArray(dataList) || dataList.length === 0) return { kind: 'empty' };
@@ -136,6 +175,31 @@ export function parseNseDetailFields(payload: unknown, expectedSymbol: string, e
   }
   if (!payloadSymbol && !('value' in symbolRow)) {
     return { kind: 'identity_mismatch', cause: `detail identity unproven: the reply for ${want} carries no symbol` };
+  }
+
+  // D3 (F-236, supervisor + reviewer decision on the owner's delegation): an SME reply prints no company
+  // name -- dataList[0].title is null and companyName is the symbol itself. Identity is then accepted ONLY
+  // when (a) the key's series is SME and the reply has exactly that no-name shape (a reply carrying a
+  // different name is still refused), (b) the symbol asked is the IPO's ACTIVE NSE_ISSUE key (the caller
+  // asks by nothing else), and (c) the stated open AND close dates equal the stored ones, both present.
+  // Side effect, fails closed: a relaunched SME issue with new dates (OD-83) reads CHECK_FAILED until the
+  // board path updates the stored dates.
+  const replyCompany = (payload as { companyName?: unknown } | null)?.companyName;
+  if (sme?.series === 'SME' && rows[0]?.title === null && typeof replyCompany === 'string' && replyCompany.trim().toUpperCase() === want) {
+    const storedOpen = storedDay(sme.storedOpenDate);
+    const storedClose = storedDay(sme.storedCloseDate);
+    if (!storedOpen || !storedClose) {
+      return { kind: 'identity_mismatch', cause: `detail identity unproven: SME reply without a name and no stored open/close dates to compare` };
+    }
+    const stated = statedPeriod(rows);
+    if ('cause' in stated) return { kind: 'identity_mismatch', cause: `detail identity unproven: SME reply without a name, ${stated.cause}` };
+    if (stated.open !== storedOpen || stated.close !== storedClose) {
+      return {
+        kind: 'identity_mismatch',
+        cause: `detail identity unproven: SME reply period ${stated.open}..${stated.close}, stored ${storedOpen}..${storedClose}`,
+      };
+    }
+    return { kind: 'ok', fields: readNseDetailRowFields(rows) };
   }
 
   const nameTitle = typeof rows[0]?.title === 'string' ? rows[0].title.trim() : '';
@@ -212,7 +276,7 @@ function splitPrintedList(text: string): string[] {
   let depth = 0;
   let current = '';
   const flush = () => {
-    const item = current.replace(/\s+/g, ' ').trim().replace(/^(?:and|&)\s+/i, '');
+    const item = current.replace(/\s+/g, ' ').trim().replace(/^and\s+/i, '');
     if (item) items.push(item);
     current = '';
   };
@@ -225,7 +289,7 @@ function splitPrintedList(text: string): string[] {
         flush();
         continue;
       }
-      const conj = /^\s+(?:and|&)\s+/i.exec(text.slice(i));
+      const conj = /^\s+and\s+/i.exec(text.slice(i));
       if (conj) {
         flush();
         i += conj[0].length - 1;
@@ -284,8 +348,16 @@ function issueType(rows: DataRow[]): NseDetailFieldAnswer {
 function nameList(rows: DataRow[], title: string): NseDetailFieldAnswer {
   const row = printed(rows, title);
   if (!('value' in row)) return row;
-  const items = splitPrintedList(row.value);
-  return items.length > 0 ? { value: items } : { error: `ipo-detail "${title}" unparseable: "${row.value}"` };
+  const text = row.value.replace(/\s+/g, ' ').trim();
+  // Never split on "&": it is part of bank names ("Punjab & Sind Bank", "Jammu & Kashmir Bank").
+  const items = text.split(/\s*[,;]\s*(?:and\s+)?|\s+and\s+/i).map((i) => i.trim()).filter(Boolean);
+  if (items.length === 0) return { error: `ipo-detail "${title}" unparseable: "${row.value}"` };
+  // A split is trusted only when every piece is a whole firm name ending in its suffix; otherwise the
+  // "and" may be inside a name ("Bank of Baroda and Punjab & Sind Bank" cannot be cut safely): refuse.
+  if (items.length > 1 && items.some((i) => !/(?:^|\s)(?:Bank|Limited|Ltd\.?)$/i.test(i))) {
+    return { error: `ipo-detail "${title}" cannot be split into whole names: "${text}"` };
+  }
+  return { value: items };
 }
 
 /** "Re. 1" / "Re.1" -> 1 (rupees). */

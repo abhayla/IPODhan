@@ -4568,8 +4568,11 @@ only when the walk asks (§2, OD-56).
 `category_details`, `sub_categories_upi`. They come from the same one-per-IPO-per-cycle ipo-detail read as
 F-235, for IPOs on or off the boards (the boards carry none of them). Names as printed; a duplicated label,
 an unparseable value or one the column cannot hold is CHECK_FAILED (fail closed); "NA", "-" or a missing row
-is an abstention (OD-60). Open: SME replies carry no company name, so identity is unproven for every SME read
-(F-236, open for owner decision); an extended issue's "Revised/Extended Issue Period" row is not read for
+is an abstention (OD-60). SME replies carry no company name (F-236); by decision D3 (2026-10-03) their identity
+is proven only by an SME key, the no-name reply shape (companyName = the symbol), the IPO's ACTIVE `NSE_ISSUE`
+key, and stated open AND close dates (the Revised/Extended row when printed) equal to the stored ones; else
+CHECK_FAILED. A relaunched SME issue with new dates (OD-83) reads CHECK_FAILED until the board path updates the
+stored dates (fails closed). An extended issue's "Revised/Extended Issue Period" row is not read for
 dates (F-237); NSE's 73-character SME market-timings text exceeds the 50-character column (F-238). Not mapped:
 `ipo_valuation` price floor/cap (rows keyed by a document's pricing event) and the `bidDetails` share counts
 (not `issueInfo`).

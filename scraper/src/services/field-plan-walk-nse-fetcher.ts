@@ -179,7 +179,16 @@ export class NseFieldFetcherState {
     if (!ipo) return { status: 'refused', cause: `IPO ${ipoId} not found` };
     try {
       const payload = await deps.fetchNseDetail(symbol, series);
-      return { status: 'read', key: keys[0], parse: parseNseDetailFields(payload, symbol, String(ipo.companyName ?? '')), ipo };
+      return {
+        status: 'read',
+        key: keys[0],
+        parse: parseNseDetailFields(payload, symbol, String(ipo.companyName ?? ''), {
+          series,
+          storedOpenDate: ipo.openDate,
+          storedCloseDate: ipo.closeDate,
+        }),
+        ipo,
+      };
     } catch (error) {
       return { status: 'failed', key: keys[0], cause: error instanceof Error ? error.message : String(error) };
     }

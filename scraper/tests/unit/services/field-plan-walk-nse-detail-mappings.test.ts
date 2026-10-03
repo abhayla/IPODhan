@@ -34,11 +34,14 @@ const fixture = (sym: string) => JSON.parse(rawFixture(sym));
 const rowsOf = (sym: string) => fixture(sym).issueInfo.dataList as DataRow[];
 
 const IPO_ID = '33333333-3333-3333-3333-333333333333';
-const IPOS: Record<string, { symbol: string; companyName: string; series: 'EQ' | 'SME' }> = {
-  RUNWALENTR: { symbol: 'RUNWALENTR', companyName: 'Runwal Enterprises Ltd.', series: 'EQ' },
-  MONEYVIEW: { symbol: 'MONEYVIEW', companyName: 'Moneyview Ltd.', series: 'EQ' },
-  EVENTIONS: { symbol: 'EVENTIONS', companyName: 'Eventions Ltd.', series: 'SME' },
-  GREENASIA: { symbol: 'GREENASIA', companyName: 'Green Asia Impex Ltd.', series: 'SME' },
+type StoredIpo = { symbol: string; companyName: string; series: 'EQ' | 'SME'; openDate: string | null; closeDate: string | null };
+const IPOS: Record<string, StoredIpo> = {
+  RUNWALENTR: { symbol: 'RUNWALENTR', companyName: 'Runwal Enterprises Ltd.', series: 'EQ', openDate: '2026-09-25', closeDate: '2026-09-29' },
+  MONEYVIEW: { symbol: 'MONEYVIEW', companyName: 'Moneyview Ltd.', series: 'EQ', openDate: '2026-09-24', closeDate: '2026-09-28' },
+  // Stored dates as the replies print them (EVENTIONS "30-Sep-2026 to 05-Oct-2026"; GREENASIA's
+  // "Revised/Extended Issue Period" "24-Sep-2026 to 01-Oct-2026 (The Issue is further extended ...)").
+  EVENTIONS: { symbol: 'EVENTIONS', companyName: 'Eventions Ltd.', series: 'SME', openDate: '2026-09-30', closeDate: '2026-10-05' },
+  GREENASIA: { symbol: 'GREENASIA', companyName: 'Green Asia Impex Ltd.', series: 'SME', openDate: '2026-09-24', closeDate: '2026-10-01' },
 };
 
 async function boardMock() {
@@ -46,11 +49,11 @@ async function boardMock() {
   return nse.scrapeNSEIPOs as unknown as ReturnType<typeof vi.fn>;
 }
 
-function setup(sym: string, opts: { detail?: () => Promise<unknown>; keys?: string[] } = {}) {
-  const ipo = IPOS[sym];
+function setup(sym: string, opts: { detail?: () => Promise<unknown>; keys?: string[]; ipo?: Partial<StoredIpo> } = {}) {
+  const ipo = { ...IPOS[sym], ...opts.ipo };
   const fetchNseDetail = vi.fn(opts.detail ?? (async () => fixture(sym)));
   const deps = {
-    ipoRepository: { findById: vi.fn(async () => ({ id: IPO_ID, symbol: ipo.symbol, companyName: ipo.companyName, isin: null })) } as never,
+    ipoRepository: { findById: vi.fn(async () => ({ id: IPO_ID, symbol: ipo.symbol, companyName: ipo.companyName, isin: null, openDate: ipo.openDate, closeDate: ipo.closeDate })) } as never,
     isNseCapable: () => true,
     nseIssueKeys: vi.fn(async () => opts.keys ?? [`${ipo.symbol}|${ipo.series}`]),
     fetchNseDetail,
@@ -159,15 +162,44 @@ describe('NSE ipo-detail mappings: answer states', () => {
     (await boardMock()).mockResolvedValue({ ipos: [{ symbol: 'OTHER', companyName: 'Other Ltd' }], subscriptions: [], source: 'api' });
   });
 
-  it('SME replies carry no company name: identity unproven -> CHECK_FAILED, never a value (EVENTIONS, GREENASIA)', async () => {
-    for (const sym of ['EVENTIONS', 'GREENASIA']) {
-      expect(rowsOf(sym)[0].title).toBeNull();
-      const { fetcher, fetchNseDetail } = setup(sym);
+  // D3 (F-236): an SME reply prints no company name; identity = SME key + no-name shape + stated
+  // open AND close dates equal to the stored ones.
+  it('SME reply without a name, ACTIVE SME key, dates equal stored -> SUPPLIED (EVENTIONS)', async () => {
+    expect(rowsOf('EVENTIONS')[0].title).toBeNull();
+    expect(fixture('EVENTIONS').companyName).toBe('EVENTIONS');
+    const { fetcher, fetchNseDetail } = setup('EVENTIONS');
+    await expect(fetcher(IPO_ID, 'ipos', '', 'registrar')).resolves.toEqual({ outcome: 'SUPPLIED', value: 'Mudra RTA Ventures Private Limited' });
+    await expect(fetcher(IPO_ID, 'ipos', '', 'face_value')).resolves.toEqual({ outcome: 'SUPPLIED', value: 10 });
+    expect(fetchNseDetail).toHaveBeenCalledWith('EVENTIONS', 'SME');
+  });
+
+  it('SME extended issue: the "Revised/Extended Issue Period" row is what the stored dates are compared with (GREENASIA)', async () => {
+    expect(rowsOf('GREENASIA').some((r) => r.title === 'Issue Period')).toBe(false);
+    const { fetcher } = setup('GREENASIA');
+    await expect(fetcher(IPO_ID, 'ipo_details', '', 'upi_cutoff_time')).resolves.toEqual({ outcome: 'SUPPLIED', value: '17:00' });
+    const old = setup('GREENASIA', { ipo: { closeDate: '2026-09-26' } });
+    const a = await old.fetcher(IPO_ID, 'ipo_details', '', 'upi_cutoff_time');
+    expect(a).toMatchObject({ outcome: 'CHECK_FAILED', reason: expect.stringMatching(/identity unproven: SME reply period 2026-09-24\.\.2026-10-01, stored 2026-09-24\.\.2026-09-26/) });
+  });
+
+  it('SME identity refusals: mismatched dates, a missing stored date, an EQ key, a named reply, companyName not the symbol', async () => {
+    const base = fixture('EVENTIONS');
+    const cases: Array<[string, Parameters<typeof setup>[1]]> = [
+      ['open date differs', { ipo: { openDate: '2026-09-29' } }],
+      ['close date differs', { ipo: { closeDate: '2026-10-06' } }],
+      ['no stored close date', { ipo: { closeDate: null } }],
+      ['EQ key', { keys: ['EVENTIONS|EQ'] }],
+      ['reply names another company', { detail: async () => ({ ...base, issueInfo: { ...base.issueInfo, dataList: [{ title: 'Other Events Limited', value: '' }, ...base.issueInfo.dataList] } }) }],
+      ['companyName is not the symbol', { detail: async () => ({ ...base, companyName: 'Other Events Limited' }) }],
+    ];
+    for (const [name, opts] of cases) {
+      const { fetcher } = setup('EVENTIONS', opts);
       const a = await fetcher(IPO_ID, 'ipos', '', 'registrar');
-      expect(a).toMatchObject({ outcome: 'CHECK_FAILED' });
-      expect((a as { reason: string }).reason).toMatch(/identity unproven/);
-      expect(fetchNseDetail).toHaveBeenCalledWith(sym, 'SME');
+      expect(a, name).toMatchObject({ outcome: 'CHECK_FAILED' });
+      expect((a as { reason: string }).reason, name).toMatch(/identity unproven|different company/);
     }
+    const noDate = await setup('EVENTIONS', { ipo: { openDate: null } }).fetcher(IPO_ID, 'ipos', '', 'registrar');
+    expect((noDate as { reason: string }).reason).toMatch(/no stored open\/close dates to compare/);
   });
 
   it('request failed -> CHECK_FAILED with the cause', async () => {
@@ -226,6 +258,19 @@ describe('NSE ipo-detail readers on real SME rows and per-guard cases', () => {
       { title: 'Revised Cut-off time for UPI Mandate Confirmation', value: '01-Oct-2026 (upto 4:00 PM)' },
     ];
     expect(readNseDetailRowFields(rows).upiCutoffTime).toEqual({ value: '16:00' });
+  });
+
+  it('sponsor banks: "&" never splits a name; an "and" split must leave whole names, else refuse', () => {
+    expect(readWith('RUNWALENTR', 'Sponsor Bank', 'Bank of Baroda and Punjab & Sind Bank').sponsorBanks).toEqual({
+      error: expect.stringMatching(/cannot be split into whole names/),
+    });
+    expect(readWith('RUNWALENTR', 'Sponsor Bank', 'Jammu & Kashmir Bank').sponsorBanks).toEqual({ value: ['Jammu & Kashmir Bank'] });
+    expect(readWith('RUNWALENTR', 'Sponsor Bank', 'The Jammu & Kashmir Bank Limited and Axis Bank Limited').sponsorBanks).toEqual({
+      value: ['The Jammu & Kashmir Bank Limited', 'Axis Bank Limited'],
+    });
+    expect(readWith('RUNWALENTR', 'Sponsor Bank', 'ICICI Bank Ltd., HDFC Bank Ltd; Axis Bank').sponsorBanks).toEqual({
+      value: ['ICICI Bank Ltd.', 'HDFC Bank Ltd', 'Axis Bank'],
+    });
   });
 
   it('guards: each refuses rather than guesses', () => {
