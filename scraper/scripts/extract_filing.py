@@ -30,6 +30,7 @@ import bid_limits  # noqa: E402 — pure-python, stdlib only (rows 73-74)
 import cover_block  # noqa: E402 — pure-python, stdlib only (item 39)
 import objects_of_offer  # noqa: E402 — pure-python, stdlib only (item 40)
 import offer_doc_terms  # noqa: E402 — pure-python, stdlib only (F-242)
+import offer_doc_tables  # noqa: E402 — pure-python, stdlib only (rows 148-151, 158, 161-165)
 from answer_states import judge, missed, refused  # noqa: E402
 
 # W-178c round 2: how long this process waits to acquire the box lock before
@@ -2948,8 +2949,59 @@ def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):
                                      else "printed ratio %s" % value)))
 
 
+_WACA_PERIOD_FIELDS = (("1Y", "1y"), ("18M", "18m"), ("3Y", "3y"))
+
+
+def _read_offer_doc_tables(page_texts, emit, words_for_page):
+    lm = (emit.fields.get("lead_managers") or {}).get("value")
+    rows, page, problems = offer_doc_tables.read_brlm_track_record(page_texts, lm)
+    if rows:
+        emit.put("brlm_track_record",
+                 [{"brlm": r["brlm"], "issues_3y": r["issues_3y"], "closed_below": None}
+                  for r in rows], page, "brlm_summary_table_rows",
+                 (True, "%d BRLM table(s); issues_3y = the three fiscal-year IPO totals; "
+                        "closed_below not printed (the table counts 30th-day discounts, not "
+                        "listing-day closes)%s" % (
+                            len(rows), "; unread: %s" % problems if problems else "")))
+    else:
+        emit.null("brlm_track_record", "brlm_summary_tables_unreadable: %s" % problems
+                  if problems else "brlm_summary_tables_not_in_document")
+    acq = offer_doc_tables.read_acquisition_ranges(page_texts)
+    for period, suffix in _WACA_PERIOD_FIELDS:
+        names = ("waca_last_%s" % suffix, "cap_multiple_last_%s" % suffix,
+                 "acquisition_price_range_%s" % suffix)
+        if acq["rows"] is None:
+            for n in names:
+                emit.null(n, acq["reason"], acq["page"])
+            continue
+        r = acq["rows"][period]
+        detail = "period table of all shares transacted by %s" % acq["group"]
+        if r["waca"] is None:
+            emit.null(names[0], r["waca_why"], acq["page"])
+        else:
+            emit.put(names[0], r["waca"], acq["page"], "waca_period_row", (r["waca"] > 0, detail))
+        if r["cap"] is None:
+            emit.null(names[1], r["cap_why"], acq["page"])
+        else:
+            emit.put(names[1], r["cap"], acq["page"], "cap_multiple_period_row",
+                     (r["cap"] > 0, detail))
+        if r["low"] is None or r["high"] is None:
+            emit.null(names[2], r["range_why"], acq["page"])
+        else:
+            emit.put(names[2], {"low": r["low"], "high": r["high"]}, acq["page"],
+                     "acquisition_range_low_le_high", (0 < r["low"] <= r["high"], detail))
+    emails, problems = offer_doc_tables.read_grievance_emails(page_texts, words_for_page, lm)
+    if emails:
+        emit.put("brlm_grievance_emails", emails, None, "grievance_email_in_firm_column",
+                 (True, "%d of %d BRLMs%s" % (len(emails), len(lm or []),
+                                              "; unread: %s" % problems if problems else "")))
+    else:
+        emit.null("brlm_grievance_emails", "brlm_grievance_emails_unread: %s" % problems
+                  if problems else "no_grievance_label_on_a_brlm_page")
+
+
 def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
-                doc_type=None, tables_for_page=None):
+                doc_type=None, tables_for_page=None, words_for_page=None):
     # Strip the rupee glyphs before the shared core: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
     # match across the glyph, so it would silently fall back to the SME default.
@@ -3118,6 +3170,9 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     cover_block.read_cover_block(page_texts, emit)
     # Appendix A rows 73-74: the retail and employee maximum bid amounts (bid_limits.py).
     bid_limits.read_bid_limits(page_texts, emit)
+    # Spec rows 148-151, 158 and 161-165: the BRLM track record tables, each BRLM's grievance
+    # e-mail and the WACA period table, read off the offer document's own layouts.
+    _read_offer_doc_tables(page_texts, emit, words_for_page)
     # W-133 MAJOR-3: `pnl["status"]` (shared core's own OK/PARTIAL verdict —
     # every headline P&L metric present for >= 2 fiscal years) can be PARTIAL
     # even when every per-field check above passed, e.g. a single-fiscal-year
@@ -3398,7 +3453,7 @@ def read_offer_doc_bid_windows(page_texts, emit):
 
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
         issue_size_rupees=None, tables_for_page=None, unread_pages=None,
-        ocr_render=None):
+        ocr_render=None, words_for_page=None):
     """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
     came from OCR rather than from the PDF's own text layer. `issue_size_rupees`
     (W-129) backs the net_worth_vs_issue_size / unit_matches_magnitude checks —
@@ -3422,7 +3477,7 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     else:
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
                            segment=segment, doc_type=doc_type,
-                           tables_for_page=tables_for_page)
+                           tables_for_page=tables_for_page, words_for_page=words_for_page)
         # F-242 / OD-164: an offer document prints the offer terms the advert reader reads
         # (designated exchange, book-building regulation, UPI mandate end time, allocation
         # portions), and those fields' manifest family includes it. Read with the offer
@@ -3641,9 +3696,20 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
             finally:
                 page.close()
 
+    def words_for_page(index):
+        """Word boxes (text, x0, x1, top) of ONE page, opened and closed for that page alone,
+        on the same memory footing as tables_for_page (row 158 grievance e-mails)."""
+        with pdfplumber.open(pdf_path) as one:
+            page = one.pages[index]
+            try:
+                return [{k: w[k] for k in ("text", "x0", "x1", "top")}
+                        for w in page.extract_words()]
+            finally:
+                page.close()
+
     return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
                ocr_confidence or None, issue_size_rupees=issue_size_rupees,
-               tables_for_page=tables_for_page,
+               tables_for_page=tables_for_page, words_for_page=words_for_page,
                unread_pages=unread_pages or None,
                ocr_render=ocr_render or None)
 
