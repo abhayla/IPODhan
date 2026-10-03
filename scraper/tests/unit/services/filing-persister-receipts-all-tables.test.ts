@@ -126,6 +126,44 @@ function byTable(receipts: ReceiptField[] | undefined): Record<string, string[]>
 const H1 = headingHashForRiskFactor(RISK_1.slice(0, 500)) as string;
 const H2 = headingHashForRiskFactor(RISK_2) as string;
 
+describe('filing-persister - ipo_risk_factors.seq is in the record only when the document prints it (row 115, F2)', () => {
+  const riskOnly = (items: unknown[]): FilingExtraction => {
+    const x = nseDrhp();
+    return { ...x, fields: { ...x.fields, risk_factors: v(items) } } as FilingExtraction;
+  };
+  const seqLines = async (items: unknown[]) => {
+    const summary = await persistFilingExtraction(IPO_ID, riskOnly(items), { docType: 'DRHP', apply: false }, makeDeps());
+    return (summary.receipt_fields ?? [])
+      .filter((r) => r.tableName === 'ipo_risk_factors' && r.fieldName === 'seq')
+      .map((r) => `${r.rowKey}|${r.value}`)
+      .sort();
+  };
+
+  it('the printed numbers 1, 2 are the stored order: both rows carry seq', async () => {
+    expect(await seqLines([{ n: 1, heading: RISK_1, body: 'a' }, { n: 2, heading: RISK_2, body: 'b' }])).toEqual(
+      [`${H1}|1`, `${H2}|2`].sort()
+    );
+  });
+
+  it('a skipped printed number (1, 3) records no seq for the row whose stored order differs', async () => {
+    expect(await seqLines([{ n: 1, heading: RISK_1, body: 'a' }, { n: 3, heading: RISK_2, body: 'b' }])).toEqual([`${H1}|1`]);
+  });
+
+  it('a dropped duplicate shifts nothing: the survivor keeps its own printed number', async () => {
+    expect(
+      await seqLines([
+        { n: 1, heading: RISK_1, body: 'a' },
+        { n: 2, heading: RISK_1, body: 'dup' },
+        { n: 3, heading: RISK_2, body: 'b' },
+      ])
+    ).toEqual([`${H1}|1`]);
+  });
+
+  it('a row with no printed number records no seq', async () => {
+    expect(await seqLines([{ heading: RISK_1, body: 'a' }])).toEqual([]);
+  });
+});
+
 describe('filing-persister - the record covers every table it writes (F-241, OD-91)', () => {
   beforeEach(() => {
     upsertIPOMock.mockClear();
@@ -157,8 +195,10 @@ describe('filing-persister - the record covers every table it writes (F-241, OD-
         [
           `${H1}|body=We earn revenue based on trades executed on our stock exchange.`,
           `${H1}|heading=${RISK_1}`,
+          `${H1}|seq=1`,
           `${H2}|body=We are also subject to periodic inspections by SEBI.`,
           `${H2}|heading=${RISK_2}`,
+          `${H2}|seq=2`,
         ].sort()
       );
       expect(t.peer_companies).toEqual(
@@ -291,7 +331,7 @@ describe('filing-persister - every receipt carries its OD-97 mark (F-241 round 2
     const summary = await persistFilingExtraction(IPO_ID, x, { docType: 'DRHP', apply: true }, makeDeps());
     const receipts = summary.receipt_fields ?? [];
     expect(receipts.filter((r) => r.sourceText === 'OCR').map((r) => `${r.tableName}.${r.fieldName}|${r.ocrConfidence}`).sort()).toEqual(
-      ['ipo_risk_factors.body|0.81', 'ipo_risk_factors.body|0.81', 'ipo_risk_factors.heading|0.81', 'ipo_risk_factors.heading|0.81']
+      ['ipo_risk_factors.body|0.81', 'ipo_risk_factors.body|0.81', 'ipo_risk_factors.heading|0.81', 'ipo_risk_factors.heading|0.81', 'ipo_risk_factors.seq|0.81', 'ipo_risk_factors.seq|0.81']
     );
     expect(receipts.filter((r) => r.sourceText !== 'OCR').every((r) => r.sourceText === 'TEXT')).toBe(true);
   });

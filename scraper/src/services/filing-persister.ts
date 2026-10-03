@@ -3075,10 +3075,13 @@ export async function persistFilingExtraction(
     kpis?: unknown;
   }>(extraction, 'risk_factors');
   const riskRows: IpoRiskFactorInsert[] = [];
+  // The printed risk-factor number of each kept row (same index as riskRows), for its receipt below.
+  const riskPrinted: (number | null)[] = [];
   for (const item of riskItems) {
     const heading = typeof item?.heading === 'string' ? item.heading.trim() : '';
     // heading is NOT NULL in the schema; a row without one is not a risk factor.
     if (heading === '') continue;
+    riskPrinted.push(typeof item?.n === 'number' && Number.isInteger(item.n) ? item.n : null);
     riskRows.push({
       ipoId,
       // KNOWN LIMITATION (item 1 slice s6, Tier A review 2026-09-10): the
@@ -3129,14 +3132,25 @@ export async function persistFilingExtraction(
     }
   }
 
-  // Row key = headingHashForRiskFactor(heading), first-wins like the repository; seq is the
-  // repository's display order, not a printed value.
+  // Row key = headingHashForRiskFactor(heading), first-wins like the repository. `seq` (row 115, F2
+  // "consecutive from 1; unique per IPO") is stored as the repository's display order
+  // (`prepareRiskFactorRows`: 1-based position after the same first-wins de-duplication), so the
+  // record names a seq only when the document PRINTS that same number for the row; a row whose
+  // printed number differs (a skipped or repeated number, a dropped duplicate) records no seq
+  // (fail closed: the stored order is then not the document's).
   const riskKeysSeen = new Set<string>();
-  for (const row of riskRows) {
+  for (const [i, row] of riskRows.entries()) {
     const key = headingHashForRiskFactor(row.heading);
     if (key === null || riskKeysSeen.has(key)) continue;
     riskKeysSeen.add(key);
-    childReceipts('ipo_risk_factors', key, row as unknown as Record<string, unknown>, ['heading', 'body', 'kpis']);
+    const seq = riskKeysSeen.size;
+    const printedSeqHolds = riskPrinted[i] === seq;
+    childReceipts(
+      'ipo_risk_factors',
+      key,
+      { ...row, seq } as unknown as Record<string, unknown>,
+      printedSeqHolds ? ['seq', 'heading', 'body', 'kpis'] : ['heading', 'body', 'kpis']
+    );
   }
   if (riskRows.length > 0) {
     if (!deps.riskFactors) {

@@ -136,7 +136,7 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
     name: ['promoter_names', 'promoter_name'],
     waca: ['promoter_selling_shareholders', 'promoter_waca'],
   },
-  ipo_risk_factors: { heading: ['risk_factors'], body: ['risk_factors'], kpis: ['risk_factors'] },
+  ipo_risk_factors: { seq: ['risk_factors'], heading: ['risk_factors'], body: ['risk_factors'], kpis: ['risk_factors'] },
   peer_companies: Object.fromEntries(
     ['companyName', 'isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'].map((c) => [c, ['peer_companies']])
   ),
