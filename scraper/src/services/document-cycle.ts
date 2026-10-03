@@ -95,6 +95,7 @@ import {
   versionAtLeast,
   EXTRACTABLE_DOC_TYPES,
 } from './filing-auto-persist.js';
+import { buildDocFetcherChangeReask } from './extractor-version-floors.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
 import { isExtractableDocType } from '../config/document-admission-status.js';
 import {
@@ -2836,6 +2837,8 @@ export async function runDocumentCycle(
         const fieldPlanHoldDeps = buildFieldPlanWalkHoldDeps();
         // #1498 (OD-171): the document types each DOC rank reads, so only such a record re-opens a row.
         const fieldPlanReceiptDocTypes = buildFieldPlanReceiptDocTypes();
+        // OD-171 amended: a DOC-fetcher logic change (DOC_FETCHER_LOGIC_SINCE) re-asks rows attempted before it, once.
+        const fieldPlanFetcherChange = buildDocFetcherChangeReask(fieldPlanReceiptDocTypes);
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             fieldPlanWalkExhausted = true;
@@ -2867,6 +2870,7 @@ export async function runDocumentCycle(
                 ...fieldPlanReopenDeps,
                 ...fieldPlanHoldDeps,
                 receiptDocTypes: fieldPlanReceiptDocTypes,
+                fetcherChange: fieldPlanFetcherChange,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );

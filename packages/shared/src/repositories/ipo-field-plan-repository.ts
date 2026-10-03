@@ -179,6 +179,16 @@ function heldReadCurrentSql() {
  * are never re-opened by a record (OD-56/OD-65 govern a settled field; supersession, OD-91, is the
  * document-versus-document path for a SUPPLIED one).
  */
+/**
+ * OD-171 amended (#1498 follow-up): the DOC fetcher's logic-change marker and, per upper-case document
+ * type, the oldest extractor version whose record counts as current (built by the scraper's
+ * `buildDocFetcherChangeReask` from `DOC_FETCHER_LOGIC_SINCE`). Absent: no fetcher-change re-ask.
+ */
+export interface FieldPlanFetcherChangeReask {
+  since: Date;
+  currentVersionFloors: Record<string, string>;
+}
+
 export const FIELD_PLAN_RECEIPT_REOPEN_STATES = ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'] as const;
 
 /**
@@ -199,8 +209,18 @@ export const FIELD_PLAN_RECEIPT_REOPEN_STATES = ['PENDING', 'NOT_AVAILABLE_YET',
  * one converted exactly as `columnToCamelCase` does (`_[a-z]` -> upper case, any other `_` kept),
  * the conversion the DOC fetcher reads records with. A record that
  * matches no plan row re-opens nothing (fail closed). Fresh fragment per call (see gapStampedSql).
+ *
+ * OD-171 amended (#1498 follow-up): a change to the DOC fetcher's answer logic counts like a re-read.
+ * With `fetcherChange`, a row last attempted BEFORE `since` is also re-opened when the same document's
+ * record was read by an extractor version at or above that document type's floor
+ * (`currentVersionFloors`, the floor the DOC fetcher judges a record current by; version read from
+ * `document_fetch_state` exactly as the fetcher's version reader reads it). No recorded version, no
+ * floor for the type, or no `fetcherChange` re-opens nothing by this branch (fail closed). The attempt
+ * stamps `last_attempt_at` past `since`, so the branch offers a row at most once.
  */
-function receiptNewerThanLastAttemptSql(receiptDocTypesJson: string) {
+function receiptNewerThanLastAttemptSql(receiptDocTypesJson: string, fetcherChange?: FieldPlanFetcherChangeReask) {
+  const sinceIso = fetcherChange ? fetcherChange.since.toISOString() : null;
+  const floorsJson = JSON.stringify(fetcherChange?.currentVersionFloors ?? {});
   return sql`(ipo_field_plan.last_attempt_at IS NOT NULL
               AND 'DOC' IN (coalesce(ipo_field_plan.rank1_source, ''), coalesce(ipo_field_plan.rank2_source, ''), coalesce(ipo_field_plan.rank3_source, ''))
               AND EXISTS (
@@ -209,7 +229,27 @@ function receiptNewerThanLastAttemptSql(receiptDocTypesJson: string) {
                  WHERE d.ipo_id = ipo_field_plan.ipo_id
                    AND d.is_active IS NOT FALSE
                    AND d.extraction_status = 'COMPLETED'
-                   AND d.extracted_at > ipo_field_plan.last_attempt_at
+                   AND (
+                     d.extracted_at > ipo_field_plan.last_attempt_at
+                     OR (
+                       ${sinceIso}::timestamp IS NOT NULL
+                       AND ipo_field_plan.last_attempt_at < ${sinceIso}::timestamp
+                       AND EXISTS (
+                         SELECT 1 FROM (
+                           SELECT COALESCE(
+                                    (SELECT s.extractor_version FROM document_fetch_state s WHERE s.document_id = d.id LIMIT 1),
+                                    (SELECT s.extractor_version FROM document_fetch_state s
+                                      WHERE s.ipo_id = d.ipo_id AND s.doc_type::text = d.type::text LIMIT 1)
+                                  ) AS rv,
+                                  ((${floorsJson}::jsonb) ->> upper(d.type::text)) AS fl
+                         ) vf
+                          WHERE vf.rv IS NOT NULL AND vf.fl IS NOT NULL
+                            AND CASE WHEN left(vf.rv, 18) = 'extract_filing.py@' AND left(vf.fl, 18) = 'extract_filing.py@'
+                                     THEN substr(vf.rv, 19) COLLATE "C" >= substr(vf.fl, 19) COLLATE "C"
+                                     ELSE vf.rv = vf.fl END
+                       )
+                     )
+                   )
                    AND d.type::text IN (
                      SELECT jsonb_array_elements_text((${receiptDocTypesJson}::jsonb) -> (ipo_field_plan.table_name || '.' || ipo_field_plan.field_name))
                    )
@@ -345,6 +385,8 @@ export interface ClaimNextDueFieldParams {
    * document type's family). Absent: the receipt_newer leg offers nothing (fail closed).
    */
   receiptDocTypes?: Record<string, readonly string[]>;
+  /** OD-171 amended: a DOC-fetcher logic change re-asks a row attempted before it, once (absent: never). */
+  fetcherChange?: FieldPlanFetcherChangeReask;
   /**
    * #762 (S8) review round 2 CRITICAL fix: row ids this WALK has already
    * settled this pass (`field-plan-walk.ts`'s `settledThisWalk`), excluded
@@ -1023,7 +1065,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
         sql`SELECT id, 3 AS pri, last_attempt_at AS ord FROM (
               SELECT id, last_attempt_at FROM ipo_field_plan
                WHERE state IN ('PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED')
-                 AND ${receiptNewerThanLastAttemptSql(receiptDocTypesJson)}${legFilter()}
+                 AND ${receiptNewerThanLastAttemptSql(receiptDocTypesJson, params.fetcherChange)}${legFilter()}
                ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) receipt_newer`,
         // verify_due_leg REMOVED in S2 — verify_state/verify_due_at no longer exist on
@@ -1078,7 +1120,11 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * (same predicate, read only). The walk reads it once per IPO so its summary line names every
    * row a newer document record re-opened, with the outcome (signal-ownership R1).
    */
-  async listReceiptNewerRows(params: { ipoId: string; receiptDocTypes?: Record<string, readonly string[]> }): Promise<
+  async listReceiptNewerRows(params: {
+    ipoId: string;
+    receiptDocTypes?: Record<string, readonly string[]>;
+    fetcherChange?: FieldPlanFetcherChangeReask;
+  }): Promise<
     Array<{ id: string; tableName: string; rowKey: string; fieldName: string; state: string; attempts: number }>
   > {
     try {
@@ -1087,7 +1133,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
           FROM ipo_field_plan
          WHERE ipo_id = ${params.ipoId}::uuid
            AND state IN ('PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED')
-           AND ${receiptNewerThanLastAttemptSql(JSON.stringify(params.receiptDocTypes ?? {}))}
+           AND ${receiptNewerThanLastAttemptSql(JSON.stringify(params.receiptDocTypes ?? {}), params.fetcherChange)}
            AND NOT ${heldReadCurrentSql()}
          ORDER BY table_name, row_key, field_name
       `);

@@ -443,6 +443,7 @@ export interface FieldPlanWalkRepository {
     excludeIds?: string[];
     gapKeys?: Record<string, readonly string[]>;
     receiptDocTypes?: Record<string, readonly string[]>;
+    fetcherChange?: { since: Date; currentVersionFloors: Record<string, string> };
   }): Promise<any | null>;
   recordOutcome(
     params: RecordOutcomeCallParams
@@ -472,6 +473,7 @@ export interface FieldPlanWalkRepository {
   listReceiptNewerRows?(params: {
     ipoId: string;
     receiptDocTypes?: Record<string, readonly string[]>;
+    fetcherChange?: { since: Date; currentVersionFloors: Record<string, string> };
   }): Promise<Array<{ id: string; tableName: string; rowKey: string; fieldName: string; state: string; attempts: number }>>;
   /** #1498 review MINOR 3: stamp last_attempt_at on a receipt-re-opened row a settle did not stamp. */
   stampReceiptReopenAttempt?(params: { planRowId: string }): Promise<{ stamped: boolean }>;
@@ -545,6 +547,12 @@ export interface FieldPlanWalkDeps {
    * document type's family). Absent, a newer document record re-opens nothing (fail closed).
    */
   receiptDocTypes?: Record<string, readonly string[]>;
+  /**
+   * OD-171 amended (#1498 follow-up): the DOC fetcher's logic-change marker (`DOC_FETCHER_LOGIC_SINCE`)
+   * and per-type current-version floors (`buildDocFetcherChangeReask`). A DOC-ranked row attempted before
+   * the marker, with a current record, is re-opened once by the same receipt leg. Absent: never.
+   */
+  fetcherChange?: { since: Date; currentVersionFloors: Record<string, string> };
   protectionFilter?: ProtectionFilter;
   /**
    * §2.4 clarification / §9.2 item 9: refreshes ONLY witnesses + verdict on a held field's existing
@@ -880,6 +888,7 @@ export async function walkFieldPlanForIPO(
       excludeIds: Array.from(settledThisWalk),
       ...(claimGapKeys ? { gapKeys: claimGapKeys } : {}),
       ...(deps.receiptDocTypes ? { receiptDocTypes: deps.receiptDocTypes } : {}),
+      ...(deps.fetcherChange ? { fetcherChange: deps.fetcherChange } : {}),
     });
     if (!plan) {
       result.stoppedReason = 'NO_DUE_FIELDS';
@@ -2511,7 +2520,11 @@ function trackReceiptReopened(ipoId: string, deps: FieldPlanWalkDeps, result: Fi
   const byId = new Map<string, NonNullable<FieldPlanWalkResult['receiptReopened']>[number]>();
   let listed: Promise<void> | null = null;
   const list = () =>
-    (listed ??= repo.listReceiptNewerRows!({ ipoId, receiptDocTypes: deps.receiptDocTypes ?? {} }).then(
+    (listed ??= repo.listReceiptNewerRows!({
+      ipoId,
+      receiptDocTypes: deps.receiptDocTypes ?? {},
+      ...(deps.fetcherChange ? { fetcherChange: deps.fetcherChange } : {}),
+    }).then(
       (rows) => {
         result.receiptReopened = [];
         for (const r of rows) {
