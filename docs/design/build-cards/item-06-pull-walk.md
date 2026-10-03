@@ -262,7 +262,7 @@ PULL-NOOP detection check ships unable to do its one job.
 | Design section | Rule ids |
 |---|---|
 | §2.4 | R-056, R-241, R-258, R-275 |
-| §2.5 | R-057, R-058, R-234, R-279, R-283 |
+| §2.5 | R-057, R-058, R-234, R-279, R-284 |
 | §2.5.1 | R-059, R-060, R-282 |
 | §2.5.5 | R-071, R-072, R-073, R-074, R-075, R-076, R-179, R-180, R-237 |
 | §2.6 | R-077, R-078, R-198 |

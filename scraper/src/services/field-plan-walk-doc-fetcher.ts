@@ -50,7 +50,7 @@ import { logger } from '../utils/logger.js';
 import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, familyForField, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
-import { rereadSinceFor, versionAtLeast } from './filing-auto-persist.js';
+import { rereadSinceFor, versionAtLeast } from './extractor-version-floors.js';
 
 /**
  * Which document-type family answers a manifest field's DOC rank, in
@@ -593,7 +593,33 @@ const JSONB_SHAPES: Readonly<Record<string, (v: unknown) => boolean>> = {
 
 function isCalendarDay(s: string): boolean {
   const d = new Date(`${s}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  const year = Number(s.slice(0, 4));
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s && year >= 1900 && year <= 2100;
+}
+
+/**
+ * F-240 round 3: columns whose value is a size, a price or a lot -- zero is never a real value there
+ * (an issue of size 0, a band of 0, a lot of 0), so a receipt "0" is refused for an empty column.
+ */
+const POSITIVE_ONLY: ReadonlySet<string> = new Set([
+  'ipos.issueSize',
+  'ipos.priceRangeMin',
+  'ipos.priceRangeMax',
+  'ipos.lotSize',
+  'ipos.faceValue',
+  'ipo_details.faceValue',
+  'ipo_details.cutOffPrice',
+  'ipo_details.minInvestment',
+  'ipo_details.tickSize',
+  'ipo_details.lotMultiple',
+]);
+
+/** numeric(p, s): at most p - s integer digits and s fraction digits (Postgres would round or overflow). */
+function fitsNumeric(text: string, precision?: number, scale?: number): boolean {
+  if (precision === undefined) return true;
+  const [whole, fraction = ''] = text.split('.');
+  const intDigits = whole.replace(/^0+(?=\d)/, '').length;
+  return intDigits <= precision - (scale ?? 0) && fraction.length <= (scale ?? 0);
 }
 
 /**
@@ -603,7 +629,10 @@ function isCalendarDay(s: string): boolean {
  * (timestamp, uuid, array, an unlisted jsonb) is refused: fail closed (B4(c)).
  *
  * | SQL type (drizzle columnType)            | accepted receipt                                   | written as      |
- * | numeric, real, double precision          | plain non-negative decimal `^\d+(\.\d+)?$`         | the text / number |
+ * | numeric(p,s), real, double precision     | plain non-negative decimal `^\d+(\.\d+)?$`, numeric |
+ * |                                          |   within p-s integer and s fraction digits         | the text / number |
+ * | date                                     | year 1900..2100 (see below)                        |                 |
+ * | size / price / lot columns (POSITIVE_ONLY) | greater than zero                                | -               |
  * | integer, smallint, bigint                | `^\d+$`                                            | a number        |
  * | date                                     | `^\d{4}-\d{2}-\d{2}$` and a real calendar day      | the day string  |
  * | text, varchar                            | non-empty after trim, within the varchar length    | the string      |
@@ -619,13 +648,19 @@ export function validateReceiptForEmptyColumn(
 ): { value: unknown } | { refused: string } {
   const table = tableName === 'ipos' ? iposTable : tableName === 'ipo_details' ? ipoDetailsTable : null;
   const column = table
-    ? (getTableColumns(table) as Record<string, { columnType?: string; name?: string; length?: number; enumValues?: readonly string[] }>)[camelFieldName]
+    ? (getTableColumns(table) as Record<string, { columnType?: string; name?: string; length?: number; precision?: number; scale?: number; enumValues?: readonly string[] }>)[camelFieldName]
     : undefined;
   if (!column) return { refused: `no column ${tableName}.${camelFieldName}` };
   const text = receipt.trim();
+  if (POSITIVE_ONLY.has(`${tableName}.${camelFieldName}`) && /^\d+(\.\d+)?$/.test(text) && Number(text) <= 0) {
+    return { refused: `'${receipt}' is zero; ${tableName}.${camelFieldName} is positive-only` };
+  }
   switch (column.columnType) {
     case 'PgNumeric':
-      return PLAIN_DECIMAL.test(text) ? { value: text } : { refused: `'${receipt}' is not a plain non-negative decimal (numeric column)` };
+      if (!PLAIN_DECIMAL.test(text)) return { refused: `'${receipt}' is not a plain non-negative decimal (numeric column)` };
+      return fitsNumeric(text, column.precision, column.scale)
+        ? { value: text }
+        : { refused: `'${receipt}' does not fit numeric(${column.precision},${column.scale ?? 0})` };
     case 'PgReal':
     case 'PgDoublePrecision':
       return PLAIN_DECIMAL.test(text) ? { value: Number(text) } : { refused: `'${receipt}' is not a plain non-negative decimal` };

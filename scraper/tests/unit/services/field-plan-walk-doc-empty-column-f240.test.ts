@@ -185,6 +185,30 @@ describe('F-240 DOC answer for an EMPTY column with no provenance row -- the rea
     });
   }
 
+  // Round 3: numeric(p,s) precision, positive-only size/price columns, plausible years.
+  for (const [table, camelField, receipt, why] of [
+    ['ipos', 'issueSize', '0', /positive-only/],
+    ['ipos', 'issueSize', '0.00', /positive-only/],
+    ['ipos', 'priceRangeMax', '0', /positive-only/],
+    ['ipos', 'issueSize', '12345678901234567.5', /does not fit numeric\(18,2\)/],
+    ['ipos', 'issueSize', '12.345', /does not fit numeric\(18,2\)/],
+    ['ipos', 'gmpPercentageHistorical', '1234.5', /does not fit numeric\(5,2\)/],
+    ['ipos', 'openDate', '1899-12-31', /calendar day/],
+    ['ipos', 'openDate', '2101-01-01', /calendar day/],
+  ] as const) {
+    it(`validateReceiptForEmptyColumn refuses ${table}.${camelField} '${receipt}'`, () => {
+      const r = validateReceiptForEmptyColumn(table, camelField, receipt) as { refused?: string };
+      expect(r.refused).toMatch(why);
+    });
+  }
+
+  it('in-range values pass: issue_size with 16 integer digits (numeric(18,2)), gmp % 999.99, open date 1900-01-01', () => {
+    expect(validateReceiptForEmptyColumn('ipos', 'issueSize', '1234567890123456.67')).toEqual({ value: '1234567890123456.67' });
+    expect(validateReceiptForEmptyColumn('ipos', 'gmpPercentageHistorical', '999.99')).toEqual({ value: '999.99' });
+    expect(validateReceiptForEmptyColumn('ipos', 'openDate', '1900-01-01')).toEqual({ value: '1900-01-01' });
+    expect(validateReceiptForEmptyColumn('ipos', 'subscriptionTotal', '0')).toEqual({ value: '0' });
+  });
+
   it('numeric issue_size "500.5" and date open_date "2026-10-03" pass their column types', async () => {
     const a: any = await buildDocFetcher(deps({ mark: 'TEXT', receipts: [[RHP_ID, 'ipos||issueSize', '500.5']] }))(IPO_ID, 'ipos', '', 'issue_size');
     expect(a).toMatchObject({ outcome: 'SUPPLIED', value: '500.5' });
