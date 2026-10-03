@@ -168,4 +168,62 @@ describe('NSE DRHP yield fields reach their columns', () => {
     expect(details(t).ipoMarketTimings).toBeUndefined();
     expect(summary.skipped_failed_check.join(' ')).toContain('ipoMarketTimings: 51 chars');
   });
+
+  // Step-0 round 3 (fields 1-7): values the offer-document readers read off the real NSE DRHP
+  // (scraper/scripts/test_offer_doc_statements.py) reach their columns.
+  it('rows 69/66 (D10): nil total borrowing writes 0 crore and debt-to-equity 0', async () => {
+    const s = makeDeps();
+    await persist(s.deps, { total_borrowing: 0, debt_to_equity: 0 });
+    expect(fd(s)).toMatchObject({ totalBorrowing: '0', debtToEquity: '0' });
+  });
+
+  it('row 69: a printed total borrowing is converted from the document unit to crore', async () => {
+    const s = makeDeps();
+    await persist(s.deps, { total_borrowing: 11345.0, debt_to_equity: 0.63 });
+    expect(fd(s)).toMatchObject({ totalBorrowing: '1134.5', debtToEquity: '0.63' });
+  });
+
+  it('rows 69/66: no answer writes nothing (a walk value is left alone)', async () => {
+    const s = makeDeps();
+    await persist(s.deps);
+    expect(fd(s).totalBorrowing).toBeUndefined();
+    expect(fd(s).debtToEquity).toBeUndefined();
+  });
+
+  it('row 75: financial_data.ronw is the latest full fiscal year of the RoNW rows', async () => {
+    const s = makeDeps();
+    await persist(s.deps, { ronw_by_fy: { '2026': 33.21, '2025': 45.14, '2024': 37.6 } });
+    expect(fd(s).ronw).toBe('33.21');
+  });
+
+  it('row 102: ipo_valuation.ronw_weighted_3y is the printed weighted average', async () => {
+    const s = makeDeps();
+    await persist(s.deps, { weighted_average_ronw: 37.92 });
+    expect((s.valuationUpsert.mock.calls[0] as unknown[])[0]).toMatchObject({ ronwWeighted3y: '37.92' });
+  });
+
+  it('rows 92 + rent: op cash flow and rent expense land on each fiscal-year statement row', async () => {
+    const s = makeDeps();
+    await persist(s.deps, {
+      revenue_by_fy: { '2026': 166013.09, '2025': 171406.78, '2024': 147800.11 },
+      op_cash_flow_by_fy: { '2026': 238361.75, '2025': 40914.87, '2024': 297442.79 },
+      rent_by_fy: { '2026': 50.72, '2025': 43.08, '2024': 55.65 },
+    });
+    const rows = (s.deps.financialStatements.upsert as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as Record<string, unknown>
+    );
+    const fy2026 = rows.find((r) => r.fiscalYear === 2026)!;
+    expect(fy2026).toMatchObject({ opCashFlow: '238361.75', rentExpense: '50.72', unit: 'MILLION' });
+  });
+
+  it('row 176: the peer row basis cell reaches peer_companies.financial_statement_type', async () => {
+    const s = makeDeps();
+    const peers = [
+      { name: 'BSE Limited', financial_statement_type: 'Consolidated', pe: '66.67', eps_basic: '60.61', nav: '163.60', is_listed: true },
+      { name: 'Other Peer Limited', financial_statement_type: 'Consolidat ed', pe: '10.00', eps_basic: '1.00', is_listed: true },
+    ];
+    await persist(s.deps, { peer_companies: peers });
+    const written = (s.deps.peerCompanies.replaceForIpo as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>[];
+    expect(written.map((r) => r.financialStatementType)).toEqual(['CONSOLIDATED', undefined]);
+  });
 });

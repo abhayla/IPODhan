@@ -266,6 +266,9 @@ export class PeerCompanyRepository {
             if (out[col] === null || out[col] === undefined) out[col] = prior ? prior[col] : null;
           }
           if (typeof out.isListed !== 'boolean') out.isListed = prior ? prior.isListed : true;
+          // Appendix A row 176: a list that does not state a peer's basis never erases a stored one.
+          if (out.financialStatementType === null || out.financialStatementType === undefined)
+            out.financialStatementType = prior ? prior.financialStatementType : null;
           return out as PeerCompanyInsert;
         });
       }

@@ -437,6 +437,15 @@ export function trusted(extraction: FilingExtraction, name: string): unknown {
   return f.value;
 }
 
+/** Appendix A row 176: a peer table's basis cell as the enum, or undefined when it is not exactly one basis. */
+export function peerStatementBasis(cell: unknown): 'CONSOLIDATED' | 'STANDALONE' | undefined {
+  if (typeof cell !== 'string') return undefined;
+  const w = cell.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (w === 'consolidated') return 'CONSOLIDATED';
+  if (w === 'standalone' || w === 'stand-alone' || w === 'stand alone') return 'STANDALONE';
+  return undefined;
+}
+
 function num(extraction: FilingExtraction, name: string): number | null {
   const v = trusted(extraction, name);
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -3562,6 +3571,9 @@ export async function persistFilingExtraction(
         ronw: fig('ronw', 'ronw_pct'),
         nav: fig('nav', 'nav'),
         pbvRatio: fig('pbvRatio', 'pb'),
+        // Appendix A row 176: the peer row's own "Standalone / consolidated" cell (NSE DRHP p121).
+        // Only the two exact words are a basis; anything else (a wrapped fragment, NA) is no answer.
+        financialStatementType: peerStatementBasis(p.financial_statement_type),
         dataSource: source,
         // OD-156: the real document type; data_source is 'DRHP' for every document.
         sourceDocumentType: options.docType,
@@ -3582,6 +3594,7 @@ export async function persistFilingExtraction(
       childReceipts('peer_companies', row.normalizedName, row as unknown as Record<string, unknown>, [
         'companyName',
         'isListed',
+        'financialStatementType',
         'peRatio',
         'eps',
         'dilutedEps',
@@ -3770,6 +3783,23 @@ export async function persistFilingExtraction(
         fdFields += 1;
       }
     }
+  }
+
+  // Spec rows 69 / 66 (D10): the Capitalisation Statement's pre-offer total borrowings, in the
+  // document's unit -> crore, and total borrowings / total equity (a plain ratio, numeric(10,2)).
+  // The extractor reads them only for a statement dated March 31 of the latest fiscal year (D11).
+  const borrowing = num(extraction, mappedField('financial_data', 'totalBorrowing'));
+  if (borrowing !== null) {
+    const cr = withUnit('financial_data.totalBorrowing', (u) => round2(toCrore(borrowing, u)));
+    if (cr !== null) {
+      fd.totalBorrowing = cr.toString();
+      fdFields += 1;
+    }
+  }
+  const debtToEquity = num(extraction, mappedField('financial_data', 'debtToEquity'));
+  if (debtToEquity !== null) {
+    fd.debtToEquity = round2(debtToEquity).toString();
+    fdFields += 1;
   }
 
   const peCap = num(extraction, mappedField('financial_data', 'peRatio'));

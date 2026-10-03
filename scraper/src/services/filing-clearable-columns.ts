@@ -77,6 +77,10 @@ const ONE_TO_ONE: ReadonlyArray<readonly [ClearableTable, string, string]> = [
   ['financial_data', 'marketCap', 'market_cap_at_cap'],
   ['financial_data', 'promoterHoldingPreIssue', 'promoter_holding_pre_pct'],
   ['financial_data', 'promoterHoldingPostIssue', 'promoter_holding_post_pct_at_cap'],
+  // Spec rows 69 / 66 (D10, 2026-10-04): the Capitalisation Statement's pre-offer total borrowings
+  // (crore after the document's unit) and total borrowings / total equity, read off an offer document.
+  ['financial_data', 'totalBorrowing', 'total_borrowing'],
+  ['financial_data', 'debtToEquity', 'debt_to_equity'],
 ];
 
 /**
@@ -119,7 +123,10 @@ export const NOT_ONE_TO_ONE_COLUMNS: Readonly<Record<string, string>> = {
  * `<table>.<column>`. A column the persister starts writing moves to one of the two lists above.
  */
 export const WALK_ONLY_FINANCIAL_DATA_COLUMNS: Readonly<Record<string, string>> = Object.fromEntries(
-  ['totalBorrowing', 'debtToEquity', 'postIpoEps'].map((c) => [
+  // totalBorrowing and debtToEquity left this list (D10): the persister writes them from an offer
+  // document's Capitalisation Statement, so they are one-to-one (clearable) columns above. The walk
+  // still writes them from a ranked website answer exactly as before.
+  ['postIpoEps'].map((c) => [
     `financial_data.${c}`,
     'written only by the walk from a ranked website answer; never by the filing persister, so no re-read clear applies',
   ])
