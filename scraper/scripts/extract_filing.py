@@ -26,6 +26,7 @@ import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
 import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
 import answer_states  # noqa: E402 — pure-python, stdlib only (#1420)
+import bid_limits  # noqa: E402 — pure-python, stdlib only (rows 73-74)
 import cover_block  # noqa: E402 — pure-python, stdlib only (item 39)
 import objects_of_offer  # noqa: E402 — pure-python, stdlib only (item 40)
 import offer_doc_terms  # noqa: E402 — pure-python, stdlib only (F-242)
@@ -2980,6 +2981,8 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # company website and compliance officer from the cover / Definitions /
     # General Information blocks; candidates must agree, else a MISSED cause.
     cover_block.read_cover_block(page_texts, emit)
+    # Appendix A rows 73-74: the retail and employee maximum bid amounts (bid_limits.py).
+    bid_limits.read_bid_limits(page_texts, emit)
     # W-133 MAJOR-3: `pnl["status"]` (shared core's own OK/PARTIAL verdict —
     # every headline P&L metric present for >= 2 fiscal years) can be PARTIAL
     # even when every per-field check above passed, e.g. a single-fiscal-year
