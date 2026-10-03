@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/ipo-detail?symbol=GREENASIA&series=SME",
+  "capturedAt": "2026-10-03",
+  "company": "Green Asia Impex Ltd.",
+  "note": "NSE ipo-detail answer for GREENASIA via fetchNSEIPODetailPayload (the walk's own client), captured 2026-10-03 05:09 IST, read-only, >=10 s apart; stored as JSON.stringify of the parsed reply (content-identical, whitespace not preserved; sha256 70f08f028e397b38495bb633ee2dfb3d148b03fa11cdb4bcb4d63ca7040f086e). LISTED SME; prints \"Revised/Extended Issue Period \" and \"Revised Cut-off time for UPI Mandate Confirmation\" instead of the original rows; no company-name row. Item 43 NSE ipo-detail mappings."
+}

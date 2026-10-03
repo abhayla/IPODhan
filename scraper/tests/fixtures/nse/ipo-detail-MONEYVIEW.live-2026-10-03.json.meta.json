@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/ipo-detail?symbol=MONEYVIEW",
+  "capturedAt": "2026-10-03",
+  "company": "Moneyview Limited",
+  "note": "NSE ipo-detail answer for MONEYVIEW via fetchNSEIPODetailPayload (the walk's own client), captured 2026-10-03 05:09 IST, read-only, >=10 s apart; stored as JSON.stringify of the parsed reply (content-identical, whitespace not preserved; sha256 3ca2a6112504334500e1038435b128ee352b0138fdfcc192d608b0c74057af92). LISTED mainboard (off the boards). Item 43 NSE ipo-detail mappings."
+}

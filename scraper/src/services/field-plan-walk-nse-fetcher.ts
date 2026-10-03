@@ -63,7 +63,33 @@ type NseBoardRow = Awaited<ReturnType<typeof scrapeNSEIPOs>>['ipos'][number];
  * manifest says NSE is capable of: the manifest states policy, this states
  * what the adapter can serve today.
  */
-export const NSE_SERVEABLE_FIELDS: ReadonlyMap<string, keyof NseBoardRow> = new Map<string, keyof NseBoardRow>([
+/**
+ * Item 43 (OD-164(e); spec §1.2 NSE row: "`/api/ipo-detail` `issueInfo` genuinely carries registrar,
+ * lead managers, issue type, sponsor bank, tick size and market timings"): manifest fields Appendix A
+ * ranks NSE for that only ipo-detail prints -- the boards carry none of them. They are read from the
+ * SAME per-IPO, per-cycle ipo-detail read #1486 added (one request per IPO per cycle, memoised;
+ * identity proven by symbol AND company name), whether or not the IPO is on a board.
+ * Proven on real replies: tests/fixtures/nse/ipo-detail-{RUNWALENTR,MONEYVIEW,EVENTIONS,GREENASIA}.
+ * Not here: ipo_valuation.price_floor/price_cap (rows keyed by a document's pricing event, which an
+ * exchange page is not) and bidDetails share counts (not issueInfo).
+ */
+export const NSE_DETAIL_ONLY_FIELDS: ReadonlyMap<string, NseDetailField> = new Map<string, NseDetailField>([
+  ['ipos.registrar', 'registrar'], // "Name of the Registrar"
+  ['ipos.leadManagers', 'leadManagers'], // "Book Running Lead Managers"
+  ['ipos.faceValue', 'faceValue'], // "Face Value"
+  ['ipo_details.issueType', 'issueType'], // "Issue Type"
+  ['ipo_details.sponsorBanks', 'sponsorBanks'], // "Sponsor Bank"
+  ['ipo_details.tickSize', 'tickSize'], // "Tick Size"
+  ['ipo_details.ipoMarketTimings', 'ipoMarketTimings'], // "IPO Market Timings"
+  ['ipo_details.upiCutoffTime', 'upiCutoffTime'], // "(Revised) Cut-off time for UPI Mandate Confirmation"
+  ['ipo_details.employeeDiscount', 'employeeDiscount'], // "Discount"
+  ['ipo_details.maxRetailSubscription', 'maxRetailSubscription'], // "Maximum Subscription Amount for Retail Investor"
+  ['ipo_details.maxEmployeeSubscription', 'maxEmployeeSubscription'], // "... for Employee Investor"
+  ['ipo_details.categoryDetails', 'categoryDetails'], // "Categories"
+  ['ipo_details.subCategoriesUpi', 'subCategoriesUPI'], // "Sub-Categories applicable for UPI"
+]);
+
+export const NSE_SERVEABLE_FIELDS: ReadonlyMap<string, string> = new Map<string, string>([
   ['ipos.symbol', 'symbol'],
   ['ipos.companyName', 'companyName'],
   ['ipos.openDate', 'openDate'],
@@ -77,6 +103,8 @@ export const NSE_SERVEABLE_FIELDS: ReadonlyMap<string, keyof NseBoardRow> = new 
   ['ipos.priceRangeMax', 'priceRangeMax'],
   ['ipos.lotSize', 'lotSize'],
   ['ipos.isin', 'isin'],
+  // Item 43: ipo-detail-only fields (value = the detail field that carries them).
+  ...NSE_DETAIL_ONLY_FIELDS,
 ]);
 
 export interface NseFetcherDeps {
@@ -151,7 +179,16 @@ export class NseFieldFetcherState {
     if (!ipo) return { status: 'refused', cause: `IPO ${ipoId} not found` };
     try {
       const payload = await deps.fetchNseDetail(symbol, series);
-      return { status: 'read', key: keys[0], parse: parseNseDetailFields(payload, symbol, String(ipo.companyName ?? '')), ipo };
+      return {
+        status: 'read',
+        key: keys[0],
+        parse: parseNseDetailFields(payload, symbol, String(ipo.companyName ?? ''), {
+          series,
+          storedOpenDate: ipo.openDate,
+          storedCloseDate: ipo.closeDate,
+        }),
+        ipo,
+      };
     } catch (error) {
       return { status: 'failed', key: keys[0], cause: error instanceof Error ? error.message : String(error) };
     }
@@ -247,6 +284,13 @@ export function buildNseFetcher(deps: NseFetcherDeps, state: NseFieldFetcherStat
       };
     }
 
+    // Item 43: a field only ipo-detail prints is read from it for every IPO with an ACTIVE NSE key,
+    // on or off the boards; the board is never consulted for it (it carries none of these).
+    const detailOnly = NSE_DETAIL_ONLY_FIELDS.get(key);
+    if (detailOnly) {
+      return answerFromDetail(await state.detailFor(deps, ipoId), detailOnly, tableName === 'ipos' ? camelFieldName : null, null);
+    }
+
     let resolved: Awaited<ReturnType<NseFieldFetcherState['resolveRow']>> | null = null;
     let boardError: string | null = null;
     try {
@@ -263,7 +307,7 @@ export function buildNseFetcher(deps: NseFetcherDeps, state: NseFieldFetcherStat
     }
 
     if (resolved?.status === 'found') {
-      const value = resolved.row[boardKey];
+      const value = resolved.row[boardKey as keyof NseBoardRow];
       if (value === undefined || value === null || value === '') {
         // The board carries this field but this IPO has no value for it yet --
         // re-askable, not a settled "not here".
@@ -273,11 +317,21 @@ export function buildNseFetcher(deps: NseFetcherDeps, state: NseFieldFetcherStat
     }
 
     // Off the boards, or the boards could not be read (#1486): ask ipo-detail by the stored key.
-    return answerFromDetail(await state.detailFor(deps, ipoId), boardKey, boardError);
+    return answerFromDetail(await state.detailFor(deps, ipoId), DETAIL_FIELD_FOR_BOARD_KEY.get(boardKey), boardKey, boardError);
   };
 }
 
-function answerFromDetail(read: DetailRead, boardKey: string, boardError: string | null): FieldFetcherAnswer {
+/**
+ * `detailField` = the ipo-detail field that carries the asked field (undefined: ipo-detail does not
+ * carry it). `storedKey` = the `ipos` property to compare a supplied value with for the
+ * differs-from-stored counter (null: not an `ipos` column).
+ */
+function answerFromDetail(
+  read: DetailRead,
+  detailField: NseDetailField | undefined,
+  storedKey: string | null,
+  boardError: string | null
+): FieldFetcherAnswer {
   const prefix = boardError ? `${boardError}; ` : '';
   switch (read.status) {
     case 'no_key':
@@ -294,11 +348,11 @@ function answerFromDetail(read: DetailRead, boardKey: string, boardError: string
       if (parse.kind === 'identity_mismatch') {
         return { outcome: 'CHECK_FAILED', reason: `ipo-detail ${read.key}: ${parse.cause}` };
       }
-      const detailField = DETAIL_FIELD_FOR_BOARD_KEY.get(boardKey);
       if (!detailField) return { outcome: 'NOT_AVAILABLE_YET' };
       const answer = parse.fields[detailField];
       if ('value' in answer) {
-        logIfDiffersFromStored(read, boardKey, answer.value);
+        const v = answer.value;
+        if (storedKey && (typeof v === 'string' || typeof v === 'number')) logIfDiffersFromStored(read, storedKey, v);
         return { outcome: 'SUPPLIED', value: answer.value as never };
       }
       if ('error' in answer) return { outcome: 'CHECK_FAILED', reason: `ipo-detail ${read.key}: ${answer.error}` };
@@ -315,7 +369,13 @@ function answerFromDetail(read: DetailRead, boardKey: string, boardError: string
 function logIfDiffersFromStored(read: Extract<DetailRead, { status: 'read' }>, boardKey: string, detail: string | number): void {
   const stored = read.ipo[boardKey];
   if (stored === undefined || stored === null || stored === '') return;
-  const same = typeof detail === 'number' ? Number(stored) === detail : (stored instanceof Date ? stored.toISOString() : String(stored)).slice(0, 10) === String(detail);
+  // Dates compare on the calendar day; text (item 43: the registrar) compares whole, trimmed.
+  const same =
+    typeof detail === 'number'
+      ? Number(stored) === detail
+      : stored instanceof Date || /^\d{4}-\d{2}-\d{2}$/.test(detail)
+        ? (stored instanceof Date ? stored.toISOString() : String(stored)).slice(0, 10) === detail
+        : String(stored).trim() === detail;
   if (same) return;
   logger.info(
     { counter: 'nse_detail_differs_from_stored', slug: read.ipo.slug ?? null, key: read.key, field: boardKey, stored, detail },

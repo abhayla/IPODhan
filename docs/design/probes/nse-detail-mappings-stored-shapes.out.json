@@ -1,0 +1,89 @@
+{
+  "measured_at": "2026-10-02T23:40:50.463Z",
+  "details": {
+    "upi_cutoff_time": [
+      {
+        "v": "17:00",
+        "n": 37
+      },
+      {
+        "v": "10:00",
+        "n": 1
+      }
+    ],
+    "ipo_market_timings": [],
+    "category_details": [],
+    "sub_categories_upi": [],
+    "sponsor_banks": [],
+    "tick_size": [],
+    "issue_type": [
+      {
+        "v": "BOOK_BUILDING",
+        "n": 244
+      },
+      {
+        "v": "FIXED_PRICE",
+        "n": 26
+      }
+    ],
+    "employee_discount": [],
+    "max_retail_subscription": [],
+    "max_employee_subscription": []
+  },
+  "ipos": {
+    "registrar": [
+      {
+        "v": "KFin Technologies Limited",
+        "n": 42
+      },
+      {
+        "v": "Bigshare Services Private Limited",
+        "n": 28
+      },
+      {
+        "v": "MUFG Intime India Private Limited",
+        "n": 28
+      },
+      {
+        "v": "Bigshare Services Pvt. Ltd.",
+        "n": 20
+      }
+    ],
+    "lead_managers": [
+      {
+        "v": "[\"Choice Capital Advisors Private Limited\"]",
+        "n": 6
+      },
+      {
+        "v": "[\"GYR Capital Advisors Private Limited\"]",
+        "n": 6
+      },
+      {
+        "v": "[\"Smart Horizon Capital\"]",
+        "n": 6
+      },
+      {
+        "v": "[\"Axis Capital Limited\"]",
+        "n": 5
+      }
+    ],
+    "face_value": [
+      {
+        "v": "10",
+        "n": 350
+      },
+      {
+        "v": "5",
+        "n": 13
+      },
+      {
+        "v": "1",
+        "n": 13
+      },
+      {
+        "v": "2",
+        "n": 11
+      }
+    ]
+  }
+}

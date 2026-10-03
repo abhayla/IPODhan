@@ -2265,6 +2265,33 @@
       "title": "The Chittorgarh financial backfill stores the PRE-IPO market cap; spec row 72 defines market_cap as post-issue shares x cap",
       "detail": "Measured 2026-10-03 on live Chittorgarh detail pages: the valuation table prints 'Market Cap at Offer Price' with a Pre IPO and a Post IPO cell (Runwal Enterprises 4,007.44 Cr / 4,507.61 Cr; Vishal Nirmiti 435.60 / 580.60; Dove Soft 211.55 / 270.69). extractFinancialsFromDetailHtml (chittorgarh-detail-fields.ts, used only by the backfill script) reads the Pre IPO cell, while Appendix A row 72 says market_cap = post-issue shares x cap. The item 43 round 2 walk reader takes the Post IPO cell. Rows written by past backfill runs are unmeasured (needs a read of financial_data.market_cap against each IPO's CG page).",
       "phase1": false
+    },
+    {
+      "id": "F-236",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "scraper/src/scrapers/nse-detail-fields.ts parseNseDetailFields (identity); OD-59, OD-85",
+      "title": "NSE ipo-detail replies for SME issues carry no company name, so the walk's identity check refuses every SME ipo-detail read",
+      "detail": "Measured 2026-10-03 on live ipo-detail replies (fixtures ipo-detail-EVENTIONS / GREENASIA .live-2026-10-03.json, both series=SME): issueInfo.dataList[0].title is null (the first row is the SEBI-circular note), top-level companyName is the SYMBOL ('EVENTIONS', 'GREENASIA') and metaInfo is {}. Mainboard replies (RUNWALENTR, MONEYVIEW) carry the company name as dataList[0].title and metaInfo.companyName. parseNseDetailFields requires the name to match (PR #1488 review), so for every SME IPO each NSE ipo-detail answer (the #1486 off-board fallback and the item 43 detail-only fields) is CHECK_FAILED 'detail identity unproven'. Open for owner decision: whether an exact symbol match on the IPO's own ACTIVE NSE_ISSUE key (OD-85) with series SME proves identity for SME replies. DECIDED 2026-10-03 as OD-170 (decision D3) (owner delegated night decisions to supervisor + reviewer; PR #1497): an SME reply without a name proves identity ONLY when (a) the key's series is SME, dataList[0].title is null and companyName equals the symbol (a reply carrying any other name is still refused), (b) the symbol asked is the IPO's ACTIVE NSE_ISSUE key, and (c) the stated open AND close dates (the 'Revised/Extended Issue Period' row when printed, F-237) equal the stored ipos.open_date and close_date, both present; anything else is CHECK_FAILED 'detail identity unproven'. Side effect, fails closed: a relaunched SME issue with new dates (OD-83) reads CHECK_FAILED until the board path updates the stored dates.",
+      "phase1": false
+    },
+    {
+      "id": "F-237",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "area": "scraper/src/scrapers/nse-detail-fields.ts period(); ipos.open_date / close_date",
+      "title": "NSE prints an extended issue's dates under 'Revised/Extended Issue Period ' (trailing space), which the ipo-detail period reader does not read",
+      "detail": "Measured 2026-10-03 on the live GREENASIA (SME, listed) ipo-detail reply: no 'Issue Period' row; instead 'Revised/Extended Issue Period ' = '\"24-Sep-2026 to 01-Oct-2026 (The Issue is further extended from start date 24-09-2026 to end date 01-10-2026)\"', and 'Revised Cut-off time for UPI Mandate Confirmation' in place of the original cut-off row. The item 43 UPI cut-off reader reads the Revised row first; the open/close-date reader (#1486) reads only 'Issue Period', so an extended issue's dates abstain from ipo-detail. Unmeasured: how many stored IPOs had an extended period. Since OD-170 (PR #1497) both the SME identity check and the open/close-date field readers read the Revised row when printed.",
+      "phase1": false
+    },
+    {
+      "id": "F-238",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "packages/shared/src/db/schema.ts ipo_details.ipo_market_timings varchar(50)",
+      "title": "NSE's SME 'IPO Market Timings' text is 73 characters; the column holds 50",
+      "detail": "Measured 2026-10-03: EVENTIONS and GREENASIA print '10.00 a.m. to 5.00 p.m. (Bidding Timings on Issue Closure upto 4:00 P.M.)' (73 chars); RUNWALENTR and MONEYVIEW print '10.00 a.m. to 5.00 p.m.' (23). The item 43 reader refuses text over 50 chars (CHECK_FAILED with the text) rather than cutting it, so this SME wording is never written until the column is widened or a stored shape is decided.",
+      "phase1": false
     }
   ],
   "false_assertions": [
