@@ -206,11 +206,16 @@ export interface IpoDetailsWriter {
  * this work package's edit scope, so the capability is injected.
  */
 export interface DocumentFilingDateWriter {
-  /** Returns the number of rows updated (0 when no such document row exists). */
+  /**
+   * Returns the number of rows updated (0 when no such document row exists).
+   * F-245: with `documentId` the ONE row of that id (and this IPO and type) is updated; without
+   * it only the IPO's RHP row(s) by type, the price band ad's case (the ad prints the RHP's date).
+   */
   setFilingDate(args: {
     ipoId: string;
     docType: FilingDocType;
     filingDate: string;
+    documentId?: string;
   }): Promise<number>;
 }
 
@@ -1360,6 +1365,25 @@ export async function persistFilingExtraction(
       return true;
     }
   };
+  // F-244: the price-independent headline facts a DRHP now reads (issue type, share counts) are
+  // written only where no other offer document wrote the column. A DRHP ranks last in both OD-154
+  // orders; a stored value with another or no doc type, or an unreadable provenance, is kept.
+  const drhpOutranked = async (tableName: string, column: string): Promise<boolean> => {
+    if (options.docType !== 'DRHP') return false;
+    try {
+      const prior = await deps.fieldSources.findByField(ipoId, tableName, column);
+      if (!prior) return false;
+      const priorDocType = (prior.dataLineage as { docType?: string } | null | undefined)?.docType;
+      if (priorDocType === 'DRHP') return false;
+      skippedLowerPriority.push(
+        `${tableName}.${column} (${priorDocType ? `a ${priorDocType} already set it` : 'stored value has no doc-type provenance'}; a DRHP ranks below it, OD-154)`
+      );
+      return true;
+    } catch {
+      skippedLowerPriority.push(`${tableName}.${column} (provenance unreadable; kept the stored value)`);
+      return true;
+    }
+  };
   const dropOutranked = async (
     tableName: string,
     candidate: Record<string, unknown>,
@@ -1797,6 +1821,7 @@ export async function persistFilingExtraction(
     );
   }
   const listingSentence = listingRead.kind === 'STATED' ? listingRead.sentence : null;
+  let listingExchangesClaimed: string[] | null = null;
   if (listingSentence) {
     let outranked = true;
     let why = 'no listing-precedence reader (fail closed)';
@@ -1819,6 +1844,8 @@ export async function persistFilingExtraction(
       logger.info({ ipoId, docType: options.docType, documentId: options.documentId ?? null, why }, 'OD-129 listing sentence not claimed');
     } else {
       iposCandidate.listingExchanges = listingSentence.exchanges;
+      // RC6 (spec row 41 `ipo_details.exchanges`: DOC first, "equals ipos.listing_exchanges").
+      listingExchangesClaimed = listingSentence.exchanges;
       const segmentNa = segmentNotApplicable(
         (existing as { offeringType?: string | null }).offeringType ?? null,
         deps.fieldManifest ?? loadFieldManifest()
@@ -2038,6 +2065,7 @@ export async function persistFilingExtraction(
   mark('creditOfSharesDate', str(extraction, mappedField('ipo_details', 'creditOfSharesDate')));
   mark('upiCutoffTime', str(extraction, mappedField('ipo_details', 'upiCutoffTime')));
   mark('designatedExchange', str(extraction, mappedField('ipo_details', 'designatedExchange')));
+  if (listingExchangesClaimed) mark('exchanges', [...listingExchangesClaimed]);
   mark('complianceOfficer', str(extraction, mappedField('ipo_details', 'complianceOfficer')));
   mark('complianceOfficerPhone', str(extraction, mappedField('ipo_details', 'complianceOfficerPhone')));
   mark('complianceOfficerEmail', str(extraction, mappedField('ipo_details', 'complianceOfficerEmail')));
@@ -2078,9 +2106,10 @@ export async function persistFilingExtraction(
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
   const regulation = str(extraction, mappedField('ipo_details', 'sebiRegulationCited'));
-  // W-171: same defence-in-depth as priceRangeMin/Max above - a DRHP's cover
-  // wording is never trusted for the issue's price-process type either.
-  const coverPriceType = isDrhp ? null : str(extraction, 'issue_price_type');
+  // F-244: the issue process ("100% Book Built Offer") is not a price, so a
+  // DRHP's cover answers it too; `drhpOutranked` below keeps any value another
+  // document wrote (a DRHP is last in both OD-154 orders).
+  const coverPriceType = str(extraction, 'issue_price_type');
   const priceTypeForWrite =
     coverPriceType === 'FIXED_PRICE' || coverPriceType === 'BOOK_BUILDING' ? coverPriceType : null;
   if (regulation && priceTypeForWrite === 'FIXED_PRICE') {
@@ -2206,6 +2235,7 @@ export async function persistFilingExtraction(
     'lotMultiple',
     'issueType',
   ]);
+  if ('issueType' in details && (await drhpOutranked('ipo_details', 'issueType'))) delete details.issueType;
 
   // Per-field protection: an admin who hand-corrected one ipo_details column
   // must not have it overwritten by the next filing run. The raw Drizzle
@@ -2761,6 +2791,10 @@ export async function persistFilingExtraction(
   vset('faceValueMultipleFloor', num(extraction, 'floor_multiple_of_face'));
   vset('faceValueMultipleCap', num(extraction, 'cap_multiple_of_face'));
 
+  if (options.docType === 'DRHP' && (await drhpOutranked('ipo_valuation', 'PROSPECTUS'))) {
+    for (const col of ['sharesAtFloor', 'sharesAtCap', 'freshSharesAtFloor', 'freshSharesAtCap', 'ofsShares', 'totalSharesAtCap'])
+      delete valuation[col];
+  }
   if (Object.keys(valuation).length > 0) {
     const pricingEvent: 'PRICE_BAND_AD' | 'PROSPECTUS' =
       options.docType === 'PRICE_BAND_AD' ? 'PRICE_BAND_AD' : 'PROSPECTUS';
@@ -3133,14 +3167,21 @@ export async function persistFilingExtraction(
 
   // -------------------------------------------- 6c. documents.filing_date
   //
-  // `rhp_filing_date` is the date the RHP was filed with the RoC. BOTH doc
-  // types print it (the price-band ad states it on its face), so the row this
-  // updates is always the IPO's RHP document — never "the document currently
-  // being persisted", which for an ad would stamp the ad's row with the RHP's
-  // date. UPDATE only: a documents row is created by the discovery runner with
-  // a URL and a sha256, neither of which an extraction carries.
+  // `rhp_filing_date` is the date on the cover being read. A price-band ad
+  // prints the RHP's date, so for an ad the row is the IPO's RHP row (by type).
+  // F-245: for an offer document (DRHP / RHP / PROSPECTUS) the cover date is
+  // THAT document's own ("DRAFT RED HERRING PROSPECTUS Dated: June 17, 2026"),
+  // so it is written to that document's row by id and never to another
+  // document's. No id: an RHP keeps the by-type write (CLI runs); any other
+  // type is skipped (fail closed). UPDATE only: a documents row is created by
+  // the discovery runner with a URL and a sha256, neither of which an
+  // extraction carries.
   const rhpFilingDate = toIsoOrUndefined(trusted(extraction, 'rhp_filing_date'));
-  if (rhpFilingDate !== undefined) {
+  const ownCoverDate = options.docType !== 'PRICE_BAND_AD';
+  const ownDocumentId = ownCoverDate ? (options.documentId ?? undefined) : undefined;
+  if (rhpFilingDate !== undefined && ownCoverDate && !ownDocumentId && options.docType !== 'RHP') {
+    skippedNoColumn.push(`rhp_filing_date (${options.docType} cover date with no document id; not written)`);
+  } else if (rhpFilingDate !== undefined) {
     receiptFields.push(receipt('documents', 'filingDate', rhpFilingDate));
     const documentsWritable = await filterFields('documents', { filingDate: rhpFilingDate });
     if ('filingDate' in documentsWritable) {
@@ -3151,15 +3192,18 @@ export async function persistFilingExtraction(
       } else {
         let updatedRows = 1;
         if (apply) {
-          updatedRows = await deps.documentFilingDateWriter.setFilingDate({
-            ipoId,
-            docType: 'RHP',
-            filingDate: rhpFilingDate,
-          });
+          updatedRows = await deps.documentFilingDateWriter.setFilingDate(
+            ownDocumentId
+              ? { ipoId, docType: options.docType, filingDate: rhpFilingDate, documentId: ownDocumentId }
+              : { ipoId, docType: 'RHP', filingDate: rhpFilingDate }
+          );
           if (updatedRows > 0) await trackField('documents', 'filingDate');
         }
         if (updatedRows > 0) bump(written, 'documents', updatedRows);
-        else skippedNoColumn.push('rhp_filing_date (no stored RHP documents row to update)');
+        else
+          skippedNoColumn.push(
+            `rhp_filing_date (no stored ${ownDocumentId ? `${options.docType} documents row ${ownDocumentId}` : 'RHP documents row'} to update)`
+          );
       }
     }
   }

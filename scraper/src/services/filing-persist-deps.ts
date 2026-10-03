@@ -107,16 +107,17 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
 }
 
 /**
- * `documents.filing_date` is an UPDATE on the RHP row the discovery runner
- * already created — never an insert (see `DocumentFilingDateWriter`'s own
- * doc comment). Only RHP is wired here because that is the one doc type this
- * work package's writer scope covers; other doc types report 0 rows updated.
+ * `documents.filing_date` is an UPDATE on a row the discovery runner already
+ * created — never an insert (see `DocumentFilingDateWriter`'s own doc comment).
+ * F-245: with a document id the one row of that id, IPO and type is updated;
+ * without one only the RHP row(s) by type (the price band ad's case).
  */
 export function makeDocumentFilingDateWriter(
   documentRepository: DocumentRepository
 ): DocumentFilingDateWriter {
   return {
-    async setFilingDate({ ipoId, docType, filingDate }) {
+    async setFilingDate({ ipoId, docType, filingDate, documentId }) {
+      if (documentId) return documentRepository.setFilingDateById(ipoId, documentId, docType, filingDate);
       if (docType !== 'RHP') return 0;
       return documentRepository.setFilingDateForRhp(ipoId, filingDate);
     },
