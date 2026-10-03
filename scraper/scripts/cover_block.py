@@ -12,6 +12,8 @@ Information":
     registrar_website / registrar_sebi_reg
     company_website
     compliance_officer / compliance_officer_email / compliance_officer_phone
+    company_phone / company_email   the same issuer contact reading (Appendix A rows 62-63)
+    company_address / company_city / company_state / company_pincode   issuer_address.py
 
 Every field is read from more than one SEBI-mandated place where the document
 has them (the cover table, the "Definitions" row, the single-column "General
@@ -42,6 +44,7 @@ stated-absence allow-list (scraper/src/config/stated-absence-reasons.json).
 import re
 
 import answer_states
+import issuer_address
 
 COVER_PAGES = 4
 DEFINITIONS_PAGES = 40
@@ -513,6 +516,8 @@ def read_cover_block(page_texts, emit):
 
     # ---- issuer contact block: website + compliance officer ---------------- #
     _issuer_contacts(page_texts, emit)
+    # ---- the issuer's registered office (rows 61, 64-66) ---------------------- #
+    issuer_address.read_issuer_address(page_texts, emit)
     return {"lead_managers": value, "registrar_name": rname}
 
 
@@ -623,6 +628,12 @@ def _issuer_contacts(page_texts, emit):
             "name": "email_domain_matches_website", "passed": dom == host or dom.endswith("." + host) or host.endswith("." + dom)}
     phone, ppage, why = _agree(phones, lambda p: re.sub(r"\D", "", p)[-10:])
     _emit_or_null(emit, "compliance_officer_phone", phone, ppage, why, "indian_phone_form", check_indian_phone, phones)
+    # Appendix A rows 62-63 (supervisor decision 2026-10-03, conforms to rows 62-63): the cover's
+    # issuer contact block ("TELEPHONE AND E-MAIL") is the company's own contact, so the same agreed
+    # reading is also the company's phone and email - the same answer, never a second reading.
+    for company, officer in (("company_phone", "compliance_officer_phone"),
+                             ("company_email", "compliance_officer_email")):
+        emit.fields[company] = {k: v for k, v in emit.fields[officer].items() if k != "cross_check"}
 
 
 def _emit_or_null(emit, name, value, page, why, check_name, check, cands=()):

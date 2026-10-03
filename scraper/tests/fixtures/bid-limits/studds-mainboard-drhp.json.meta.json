@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "local corpus pdf-parser-test/drhps/studds-drhp.pdf (SEBI-filed DRHP; not in git)",
+  "capturedAt": "2026-10-03",
+  "pages": "0-based page indices of pdfplumber extract_text, as extract_filing.run receives",
+  "company": "Studds Accessories"
+}
