@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/ipo-detail?symbol=EVENTIONS&series=SME",
+  "capturedAt": "2026-10-03",
+  "company": "Eventions Ltd.",
+  "note": "NSE ipo-detail answer for EVENTIONS via fetchNSEIPODetailPayload (the walk's own client), captured 2026-10-03 05:09 IST, read-only, >=10 s apart; stored as JSON.stringify of the parsed reply (content-identical, whitespace not preserved; sha256 51698a6136708d36725be5128347e4223189135aa00d7cf79bc4089cbad004f5). OPEN SME, on the current board; no company-name row anywhere in the reply (dataList[0].title is null, companyName = the symbol). Item 43 NSE ipo-detail mappings."
+}

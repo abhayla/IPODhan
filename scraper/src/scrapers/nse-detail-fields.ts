@@ -14,29 +14,55 @@
  */
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { parseNSEDate, parsePriceRange } from './nse-api-client.js';
+import { parseNseLeadManagers } from '../services/nse-party-parser.js';
 
-export type NseDetailField = 'symbol' | 'openDate' | 'closeDate' | 'priceRangeMin' | 'priceRangeMax' | 'lotSize';
+export type NseDetailField =
+  | 'symbol'
+  | 'openDate'
+  | 'closeDate'
+  | 'priceRangeMin'
+  | 'priceRangeMax'
+  | 'lotSize'
+  // Item 43 (OD-164(e)): issueInfo rows Appendix A ranks NSE for, read from the SAME payload.
+  | 'registrar'
+  | 'leadManagers'
+  | 'faceValue'
+  | 'issueType'
+  | 'sponsorBanks'
+  | 'tickSize'
+  | 'ipoMarketTimings'
+  | 'upiCutoffTime'
+  | 'employeeDiscount'
+  | 'maxRetailSubscription'
+  | 'maxEmployeeSubscription'
+  | 'categoryDetails'
+  | 'subCategoriesUPI';
 
-export type NseDetailFieldAnswer = { value: string | number } | { absent: true } | { error: string };
+export type NseDetailFieldValue = string | number | string[] | { codes: string[]; original: string };
+
+export type NseDetailFieldAnswer = { value: NseDetailFieldValue } | { absent: true } | { error: string };
 
 export type NseDetailParse =
   | { kind: 'empty' }
   | { kind: 'identity_mismatch'; cause: string }
   | { kind: 'ok'; fields: Record<NseDetailField, NseDetailFieldAnswer> };
 
-interface DataRow {
+export interface DataRow {
   title: string | null;
   value: string;
 }
 
 const ABSENT: NseDetailFieldAnswer = { absent: true };
 
-/** The rows with exactly this title (trimmed, case-insensitive). */
+/**
+ * The rows with exactly this title (trimmed, case-insensitive). NSE wraps many values in literal
+ * double quotes ('"Rs. 2,00,000"'); they are stripped here, as `nseDataListValue` does.
+ */
 function rowsTitled(rows: DataRow[], title: string): string[] {
   const want = title.toLowerCase();
   return rows
     .filter((r) => typeof r.title === 'string' && r.title.trim().toLowerCase() === want)
-    .map((r) => (typeof r.value === 'string' ? r.value.trim() : ''));
+    .map((r) => (typeof r.value === 'string' ? r.value.replace(/^\s*"+|"+\s*$/g, '').trim() : ''));
 }
 
 /** One row's value, or why there is none. Two rows with the same title is never resolved by picking one. */
@@ -122,17 +148,230 @@ export function parseNseDetailFields(payload: unknown, expectedSymbol: string, e
     return { kind: 'identity_mismatch', cause: `detail is a different company: "${nameTitle}", stored "${expectedCompanyName}"` };
   }
 
+  return { kind: 'ok', fields: readNseDetailRowFields(rows) };
+}
+
+/**
+ * Every field read off one identity-proven `dataList`. Exported so the readers can be tested on a
+ * real payload whose identity the walk refuses (SME replies carry no company-name row), never so a
+ * caller can skip the identity check.
+ */
+export function readNseDetailRowFields(rows: DataRow[]): Record<NseDetailField, NseDetailFieldAnswer> {
+  const symbolRow = single(rows, 'Symbol');
   const b = band(rows);
   const p = period(rows);
   return {
-    kind: 'ok',
-    fields: {
-      symbol: 'value' in symbolRow ? { value: symbolRow.value.toUpperCase() } : symbolRow,
-      openDate: p.open,
-      closeDate: p.close,
-      priceRangeMin: b.min,
-      priceRangeMax: b.max,
-      lotSize: lot(rows),
-    },
+    symbol: 'value' in symbolRow ? { value: symbolRow.value.toUpperCase() } : symbolRow,
+    openDate: p.open,
+    closeDate: p.close,
+    priceRangeMin: b.min,
+    priceRangeMax: b.max,
+    lotSize: lot(rows),
+    registrar: registrar(rows),
+    leadManagers: leadManagers(rows),
+    faceValue: faceValue(rows),
+    issueType: issueType(rows),
+    sponsorBanks: nameList(rows, 'Sponsor Bank'),
+    tickSize: tickSize(rows),
+    ipoMarketTimings: marketTimings(rows),
+    upiCutoffTime: upiCutoff(rows),
+    employeeDiscount: employeeDiscount(rows),
+    maxRetailSubscription: rupees(rows, 'Maximum Subscription Amount for Retail Investor'),
+    maxEmployeeSubscription: rupees(rows, 'Maximum Subscription Amount for Employee Investor'),
+    categoryDetails: categories(rows),
+    subCategoriesUPI: subCategories(rows),
   };
+}
+
+// ---- item 43 readers. Each answers value / absent / error, never a guess (B4(c)). ----
+
+/** Printed words that state "no value here": an abstention (OD-60), never a value or a failure. */
+const ABSTAIN_TEXT = /^(?:-+|na|n\.a\.?|n\/a|nil|not applicable|to be announced|tba)$/i;
+
+/** `single`, plus the abstention words: the row's printed value, or why there is none. */
+function printed(rows: DataRow[], title: string): { value: string } | { absent: true } | { error: string } {
+  const row = single(rows, title);
+  if ('value' in row && ABSTAIN_TEXT.test(row.value)) return ABSENT as { absent: true };
+  return row;
+}
+
+/** Ordinary money / count text "2,00,000" -> 200000, parsed once; null when it is not exactly a number. */
+function plainNumber(text: string): number | null {
+  if (!/^\d{1,3}(?:,\d{2,3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$/.test(text)) return null;
+  const n = Number(text.replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Split a printed list of names or codes on commas and a standalone "and" / "&", but only OUTSIDE
+ * parentheses: "IND (Up to Rs. 5,00,000)" is one item, not three. A leading "and" after a comma
+ * ("IND, and NOH") is the list's own conjunction. Items keep their printed text.
+ */
+function splitPrintedList(text: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let current = '';
+  const flush = () => {
+    const item = current.replace(/\s+/g, ' ').trim().replace(/^(?:and|&)\s+/i, '');
+    if (item) items.push(item);
+    current = '';
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0) {
+      if (ch === ',') {
+        flush();
+        continue;
+      }
+      const conj = /^\s+(?:and|&)\s+/i.exec(text.slice(i));
+      if (conj) {
+        flush();
+        i += conj[0].length - 1;
+        continue;
+      }
+    }
+    current += ch;
+  }
+  flush();
+  return items;
+}
+
+function registrar(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Name of the Registrar');
+  if (!('value' in row)) return row;
+  const name = row.value.replace(/\s+/g, ' ').trim();
+  // ipos.registrar is varchar(255): a longer value is refused, never cut (a cut name is another name).
+  if (name.length > 255) return { error: `ipo-detail "Name of the Registrar" is ${name.length} chars (column holds 255)` };
+  return { value: name };
+}
+
+/** Lead managers through the project's one NSE parser (`parseNseLeadManagers`), on the single row. */
+function leadManagers(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Book Running Lead Managers');
+  if (!('value' in row)) return row;
+  const names = parseNseLeadManagers({ dataList: [{ title: 'Book Running Lead Managers', value: row.value }] });
+  return names.length > 0 ? { value: names } : { error: `ipo-detail "Book Running Lead Managers" unparseable: "${row.value}"` };
+}
+
+/** "Re. 2 per Equity Share" / "Rs.10 per Equity Share" -> 2 / 10. ipos.face_value is an integer of {1,2,5,10}. */
+function faceValue(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Face Value');
+  if (!('value' in row)) return row;
+  const m = /^R[se]\.?\s*([\d,]+(?:\.\d+)?)\s*(?:\/-)?\s*(?:per\s+equity\s+share)?\.?$/i.exec(row.value);
+  const n = m ? plainNumber(m[1]) : null;
+  if (n === null) return { error: `ipo-detail "Face Value" unparseable: "${row.value}"` };
+  // Same rule as the BSE fetcher (spec row 18): refuse, never round (OD-62).
+  if (![1, 2, 5, 10].includes(n)) return { error: `FAILED_VALIDATION: ipo-detail face value ${n} not in {1,2,5,10}` };
+  return { value: n };
+}
+
+const ISSUE_TYPES: ReadonlyMap<string, string> = new Map([
+  ['book building', 'BOOK_BUILDING'],
+  ['fixed price', 'FIXED_PRICE'],
+]);
+
+/** "Book Building" -> BOOK_BUILDING; any other wording is refused, never mapped by resemblance. */
+function issueType(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Issue Type');
+  if (!('value' in row)) return row;
+  const v = ISSUE_TYPES.get(row.value.replace(/\s+/g, ' ').trim().toLowerCase());
+  return v ? { value: v } : { error: `ipo-detail "Issue Type" not a known issue type: "${row.value}"` };
+}
+
+/** A printed list of names (sponsor banks), items as printed. */
+function nameList(rows: DataRow[], title: string): NseDetailFieldAnswer {
+  const row = printed(rows, title);
+  if (!('value' in row)) return row;
+  const items = splitPrintedList(row.value);
+  return items.length > 0 ? { value: items } : { error: `ipo-detail "${title}" unparseable: "${row.value}"` };
+}
+
+/** "Re. 1" / "Re.1" -> 1 (rupees). */
+function tickSize(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Tick Size');
+  if (!('value' in row)) return row;
+  const m = /^R[se]\.?\s*(\d+(?:\.\d+)?)$/i.exec(row.value);
+  const n = m ? plainNumber(m[1]) : null;
+  if (n === null || n <= 0) return { error: `ipo-detail "Tick Size" unparseable: "${row.value}"` };
+  return { value: n };
+}
+
+/** As printed. ipo_details.ipo_market_timings is varchar(50): longer text is refused, never cut. */
+function marketTimings(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'IPO Market Timings');
+  if (!('value' in row)) return row;
+  const text = row.value.replace(/\s+/g, ' ').trim();
+  if (text.length > 50) return { error: `ipo-detail "IPO Market Timings" is ${text.length} chars (column holds 50): "${text}"` };
+  return { value: text };
+}
+
+/**
+ * The mandate cut-off TIME as the column already stores it ("17:00", written by the document
+ * extractor): "29-Sep-2026 (upto 5:00 PM) ..." -> "17:00". NSE prints a "Revised ..." row when the
+ * issue is extended; it supersedes the original row by its own label, so it is read first.
+ */
+function upiCutoff(rows: DataRow[]): NseDetailFieldAnswer {
+  const revised = printed(rows, 'Revised Cut-off time for UPI Mandate Confirmation');
+  const row = 'absent' in revised ? printed(rows, 'Cut-off time for UPI Mandate Confirmation') : revised;
+  if (!('value' in row)) return row;
+  const times = new Set<string>();
+  for (const m of row.value.matchAll(/\bup\s*to\s+(\d{1,2})[:.](\d{2})\s*([ap])\.?\s*m\b\.?/gi)) {
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h < 1 || h > 12 || min > 59) continue;
+    const h24 = (h % 12) + (m[3].toLowerCase() === 'p' ? 12 : 0);
+    times.add(`${String(h24).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
+  }
+  if (times.size !== 1) {
+    return { error: `ipo-detail UPI cut-off states ${times.size} times (need exactly one): "${row.value.slice(0, 120)}"` };
+  }
+  return { value: [...times][0] };
+}
+
+/** "Discount of Rs. 14 per equity share ..." -> 14; "NA" -> abstention. */
+function employeeDiscount(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Discount');
+  if (!('value' in row)) return row;
+  const amounts = [...row.value.matchAll(/R[se]\.?\s*([\d,]+(?:\.\d+)?)\s*(?:\/-)?\s*per\s+equity\s+share/gi)].map((m) =>
+    plainNumber(m[1])
+  );
+  const distinct = new Set(amounts);
+  if (amounts.length === 0 || distinct.size !== 1 || amounts[0] === null || amounts[0] <= 0) {
+    return { error: `ipo-detail "Discount" unparseable: "${row.value.slice(0, 120)}"` };
+  }
+  return { value: amounts[0] };
+}
+
+/** '"Rs. 2,00,000"' -> 200000 (rupees, the manifest's unit for these columns). */
+function rupees(rows: DataRow[], title: string): NseDetailFieldAnswer {
+  const row = printed(rows, title);
+  if (!('value' in row)) return row;
+  const m = /^R[se]\.?\s*([\d,]+(?:\.\d+)?)\s*(?:\/-)?$/i.exec(row.value);
+  const n = m ? plainNumber(m[1]) : null;
+  if (n === null || n <= 0) return { error: `ipo-detail "${title}" unparseable: "${row.value}"` };
+  return { value: n };
+}
+
+/** "FI, IC, MF, ... IND, and NOH" -> { codes, original }, the shape the NSE orchestrator stores. */
+function categories(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Categories');
+  if (!('value' in row)) return row;
+  const codes = splitPrintedList(row.value);
+  if (codes.length === 0 || codes.some((c) => !/^[A-Z]{2,5}$/.test(c))) {
+    return { error: `ipo-detail "Categories" is not a list of category codes: "${row.value}"` };
+  }
+  return { value: { codes, original: row.value } };
+}
+
+/** "IND and EMP (upto 5 Lakhs)" -> ["IND", "EMP (upto 5 Lakhs)"]: codes with their printed limits kept. */
+function subCategories(rows: DataRow[]): NseDetailFieldAnswer {
+  const row = printed(rows, 'Sub-Categories applicable for UPI');
+  if (!('value' in row)) return row;
+  const items = splitPrintedList(row.value);
+  if (items.length === 0 || items.some((c) => !/^[A-Z]{2,5}(?:\s*\(.*\))?$/.test(c))) {
+    return { error: `ipo-detail "Sub-Categories applicable for UPI" unparseable: "${row.value}"` };
+  }
+  return { value: items };
 }

@@ -4561,6 +4561,19 @@ ipo-detail by the IPO's ACTIVE `NSE_ISSUE` key (OD-85, never a name search) when
 empty detail is an abstention (OD-60), a failed read is CHECK_FAILED (OD-145). No timer: the read happens
 only when the walk asks (§2, OD-56).
 
+**Item 43, NSE ipo-detail fields (OD-164(e), §2.5.6 item 5, 2026-10-03):** the walk's NSE fetcher maps the
+`issueInfo` rows this table names, for the fields Appendix A ranks NSE for: `ipos.registrar`, `lead_managers`,
+`face_value`, and `ipo_details.issue_type`, `sponsor_banks`, `tick_size`, `ipo_market_timings`,
+`upi_cutoff_time`, `employee_discount`, `max_retail_subscription`, `max_employee_subscription`,
+`category_details`, `sub_categories_upi`. They come from the same one-per-IPO-per-cycle ipo-detail read as
+F-235, for IPOs on or off the boards (the boards carry none of them). Names as printed; a duplicated label,
+an unparseable value or one the column cannot hold is CHECK_FAILED (fail closed); "NA", "-" or a missing row
+is an abstention (OD-60). Open: SME replies carry no company name, so identity is unproven for every SME read
+(F-236, open for owner decision); an extended issue's "Revised/Extended Issue Period" row is not read for
+dates (F-237); NSE's 73-character SME market-timings text exceeds the 50-character column (F-238). Not mapped:
+`ipo_valuation` price floor/cap (rows keyed by a document's pricing event) and the `bidDetails` share counts
+(not `issueInfo`).
+
 **The Moneycontrol result has a consequence worth stating.** After correction, **Moneycontrol earns
 zero ranks** — not because it is excluded, but because for all nine fields it serves, the document
 and both exchanges are better and already available. It never reaches the top three. It contributes

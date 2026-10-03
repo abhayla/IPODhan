@@ -1,0 +1,1738 @@
+{
+  "measured_at": "2026-10-02T23:38:58.260Z",
+  "nseRankedRows": [
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "rows": 190
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "rows": 190
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "rows": 188
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "rows": 190
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "rows": 190
+    }
+  ],
+  "byField": [
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "category_details",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "employee_discount",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 225,
+      "ipos": 225
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 22,
+      "ipos": 22
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "",
+      "rows": 21,
+      "ipos": 21
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e80ddb2003d14|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 11,
+      "ipos": 11
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e80ddb2003d14|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 6,
+      "ipos": 6
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e80ddb2003d14|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e80ddb2003d14|f79a39db908c6|xextract_filing.py@2026-10-04|p:n",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD d2fd7c2d-bead-4631-bb16-70561c7f41f3: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD e7380d56-363b-410a-970a-873846559615: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by RHP 9127a692-a6b1-4f44-b9be-e9b76d1b2be6: RHP (50) outra",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by RHP bf9e0357-cfa3-4db6-a2e7-d7d76015681e: RHP (50) outra",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD 293a4f53-2e70-4782-83a7-996c9ae48048: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e80ddb2003d14|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e80ddb2003d14|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e80ddb2003d14|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e80ddb2003d14|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD 1e978aa8-8ed5-4a29-ad2e-cd74dec510e5: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 228,
+      "ipos": 228
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "ipo_market_timings",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f08e639321156|xextract_filing.py@2026-09-27|pa0",
+      "rows": 25,
+      "ipos": 25
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "",
+      "rows": 20,
+      "ipos": 20
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|pa0",
+      "rows": 6,
+      "ipos": 6
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 5,
+      "ipos": 5
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f08e639321156|xextract_filing.py@2026-10-02|pa0",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f08e639321156|xextract_filing.py@2026-09-27|pa0",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|fa8676bf6daad|xextract_filing.py@2026-09-03|pa0",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|fa8676bf6daad|xextract_filing.py@2026-09-03|pa0",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|pb6",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD 293a4f53-2e70-4782-83a7-996c9ae48048: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD d2fd7c2d-bead-4631-bb16-70561c7f41f3: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|pa0",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|p76",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f2feb1b777403|xextract_filing.py@2026-09-26|pa0",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|p44",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "issue_type",
+      "state": "PENDING",
+      "cause": "superseded by PRICE_BAND_AD 90b3f7c3-a675-4a3c-a993-71db7e67ac59: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e589b4e7c260a|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 228,
+      "ipos": 228
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_employee_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "max_retail_subscription",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sponsor_banks",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 228,
+      "ipos": 228
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "sub_categories_upi",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ef67061130ac2|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 40,
+      "ipos": 40
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 16,
+      "ipos": 16
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 10,
+      "ipos": 10
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "tick_size",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea882aa0a4b0d|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 228,
+      "ipos": 228
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 21,
+      "ipos": 21
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "",
+      "rows": 17,
+      "ipos": 17
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 8,
+      "ipos": 8
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 7,
+      "ipos": 7
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 6,
+      "ipos": 6
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD e7380d56-363b-410a-970a-873846559615: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e68af733c373a|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD 293a4f53-2e70-4782-83a7-996c9ae48048: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD d2fd7c2d-bead-4631-bb16-70561c7f41f3: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|f79a39db908c6|xextract_filing.py@2026-10-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipo_details",
+      "field_name": "upi_cutoff_time",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e68af733c373a|fc561e7cbb781|xextract_filing.py@2026-10-04|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 225,
+      "ipos": 225
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f08e639321156|xextract_filing.py@2026-09-27|p5a",
+      "rows": 23,
+      "ipos": 23
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "",
+      "rows": 13,
+      "ipos": 13
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 9,
+      "ipos": 9
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f2feb1b777403|xextract_filing.py@2026-09-26|p2b",
+      "rows": 8,
+      "ipos": 8
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f84679b73b157|xextract_filing.py@2026-09-03|p5a",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f84679b73b157|xextract_filing.py@2026-09-03|p2b",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f2feb1b777403|xextract_filing.py@2026-09-26|pa0",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:ea43ad93935a2|f08e639321156|xextract_filing.py@2026-10-02|p:n",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f84679b73b157|xextract_filing.py@2026-09-03|pa0",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:ea43ad93935a2|f08e639321156|xextract_filing.py@2026-10-02|p5a",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD 1e978aa8-8ed5-4a29-ad2e-cd74dec510e5: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD 293a4f53-2e70-4782-83a7-996c9ae48048: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD d2fd7c2d-bead-4631-bb16-70561c7f41f3: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by PRICE_BAND_AD e7380d56-363b-410a-970a-873846559615: PRIC",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by RHP 9127a692-a6b1-4f44-b9be-e9b76d1b2be6: RHP (50) outra",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "SUPPLIED",
+      "cause": "superseded by RHP bf9e0357-cfa3-4db6-a2e7-d7d76015681e: RHP (50) outra",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "face_value",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:ea43ad93935a2|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 227,
+      "ipos": 227
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-09-27|p5a",
+      "rows": 35,
+      "ipos": 35
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f84679b73b157|xextract_filing.py@2026-09-03|p5a",
+      "rows": 12,
+      "ipos": 12
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f2feb1b777403|xextract_filing.py@2026-09-26|p2b",
+      "rows": 9,
+      "ipos": 9
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-09-27|p2b",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f20cd7c947636|xextract_filing.py@2026-10-02|p2b",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-10-02|p5a",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f84679b73b157|xextract_filing.py@2026-09-03|p2b",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|fc561e7cbb781|xextract_filing.py@2026-10-04|p2b",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "SUPPLIED",
+      "cause": "",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f20cd7c947636|xextract_filing.py@2026-10-02|p5a",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f2feb1b777403|xextract_filing.py@2026-09-26|p5a",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f79a39db908c6|xextract_filing.py@2026-10-03|p2b",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "lead_managers",
+      "state": "CHECK_FAILED",
+      "cause": "[held-read:CLOSED|3] [gap-key:e72142820404a|f08e639321156|xextract_fil",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET",
+      "rows": 228,
+      "ipos": 228
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-09-27|p5a",
+      "rows": 36,
+      "ipos": 36
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f84679b73b157|xextract_filing.py@2026-09-03|p5a",
+      "rows": 13,
+      "ipos": 13
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f2feb1b777403|xextract_filing.py@2026-09-26|p2b",
+      "rows": 6,
+      "ipos": 6
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-09-27|p:n",
+      "rows": 4,
+      "ipos": 4
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "PENDING",
+      "cause": "",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f2feb1b777403|xextract_filing.py@2026-09-26|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f84679b73b157|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|fa8676bf6daad|xextract_filing.py@2026-09-03|p:n",
+      "rows": 3,
+      "ipos": 3
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f20cd7c947636|xextract_filing.py@2026-10-02|p:n",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-10-02|p:n",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "SUPPLIED",
+      "cause": "[gap-key:e72142820404a|f08e639321156|xextract_filing.py@2026-10-02|p5a",
+      "rows": 2,
+      "ipos": 2
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[gap-key:e72142820404a|f2feb1b777403|xextract_filing.py@2026-09-26|p5a",
+      "rows": 1,
+      "ipos": 1
+    },
+    {
+      "table_name": "ipos",
+      "field_name": "registrar",
+      "state": "CHECK_FAILED",
+      "cause": "[held-read:CLOSED|1] [gap-key:e72142820404a|f08e639321156|xextract_fil",
+      "rows": 1,
+      "ipos": 1
+    }
+  ],
+  "candidates": [
+    {
+      "slug": "smc-global-securities-ltd",
+      "status": "UPCOMING",
+      "segment": null,
+      "company_name": "SMC Global Securities Limited",
+      "key_value": "SMCG04|DEBT"
+    },
+    {
+      "slug": "r-k-fashion-accessories-ltd",
+      "status": "UPCOMING",
+      "segment": "SME",
+      "company_name": "R.K. Fashion Accessories Limited",
+      "key_value": "RKFAL|SME"
+    },
+    {
+      "slug": "nityas-gems-and-jewellery-ltd",
+      "status": "OPEN",
+      "segment": "MAINBOARD",
+      "company_name": "NITYAS GEMS AND JEWELLERY LIMITED",
+      "key_value": "NITYAS|EQ"
+    },
+    {
+      "slug": "vishal-nirmiti-ltd",
+      "status": "OPEN",
+      "segment": "MAINBOARD",
+      "company_name": "Vishal Nirmiti Ltd.",
+      "key_value": "VNL|EQ"
+    },
+    {
+      "slug": "eventions-ltd",
+      "status": "OPEN",
+      "segment": "SME",
+      "company_name": "Eventions Ltd.",
+      "key_value": "EVENTIONS|SME"
+    },
+    {
+      "slug": "papadmalji-agro-foods-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "company_name": "Papadmalji Agro Foods Ltd.",
+      "key_value": "PAPADMALJI|SME"
+    },
+    {
+      "slug": "shah-investor-s-home-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "company_name": "Shah Investor's Home Limited",
+      "key_value": "SHAHINVEST|EQ"
+    },
+    {
+      "slug": "srit-india-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "company_name": "SRIT India Ltd.",
+      "key_value": "SRIT|EQ"
+    },
+    {
+      "slug": "himalayan-solar-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "company_name": "Himalayan Solar Ltd.",
+      "key_value": "HIMALAYAN|SME"
+    },
+    {
+      "slug": "orient-cables-india-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "company_name": "Orient Cables (India) Ltd.",
+      "key_value": "ORIENTCABL|EQ"
+    },
+    {
+      "slug": "acevector-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "company_name": "Acevector Ltd.",
+      "key_value": "ACEVECTOR|EQ"
+    },
+    {
+      "slug": "runwal-enterprises-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "company_name": "Runwal Enterprises Ltd.",
+      "key_value": "RUNWALENTR|EQ"
+    },
+    {
+      "slug": "german-green-steel-and-power-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "company_name": "German Green Steel and Power Limited",
+      "key_value": "GERMAN|EQ"
+    },
+    {
+      "slug": "bench-mark-infotech-services-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "company_name": "Bench Mark Infotech Services Ltd.",
+      "key_value": "BMISL|SME"
+    },
+    {
+      "slug": "moneyview-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "Moneyview Ltd.",
+      "key_value": "MONEYVIEW|EQ"
+    },
+    {
+      "slug": "green-asia-impex-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "company_name": "Green Asia Impex Ltd.",
+      "key_value": "GREENASIA|SME"
+    },
+    {
+      "slug": "a-one-steels-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "A-One Steels India Ltd.",
+      "key_value": "AONESTEELS|EQ"
+    },
+    {
+      "slug": "elevate-campuses-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "Elevate Campuses Ltd.",
+      "key_value": "ELEVATE|EQ"
+    },
+    {
+      "slug": "armee-infotech-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "ArMee Infotech Ltd.",
+      "key_value": "ARMEE|EQ"
+    },
+    {
+      "slug": "swastika-infra-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "Swastika Infra Ltd.",
+      "key_value": "SWASTIKAIN|EQ"
+    },
+    {
+      "slug": "pooja-logistics-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "company_name": "Pooja Logistics Limited",
+      "key_value": "POOJALOGIS|SME"
+    },
+    {
+      "slug": "coreintegra-consulting-services-ltd",
+      "status": "LISTED",
+      "segment": "SME",
+      "company_name": "Coreintegra Consulting Services Ltd.",
+      "key_value": "COREIN|SME"
+    },
+    {
+      "slug": "adroit-industries-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "Adroit Industries (India) Ltd.",
+      "key_value": "ADROITIND|EQ"
+    },
+    {
+      "slug": "varmora-granito-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "company_name": "Varmora Granito Ltd.",
+      "key_value": "VARMORA|EQ"
+    }
+  ]
+}
