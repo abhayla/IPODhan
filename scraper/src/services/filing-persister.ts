@@ -1756,6 +1756,20 @@ export async function persistFilingExtraction(
     status: existing.status,
   };
 
+  // D4 (owner, 2026-10-04; spec row 2 ranks DOC first): the cover's issuer name is always filed in
+  // the document's record, and written ONLY to an empty column. A stored name is never replaced:
+  // it drives identity matching (slug, F-132 name variants).
+  const coverName = str(extraction, 'company_name');
+  if (coverName !== null) {
+    receiptFields.push(receipt('ipos', 'companyName', coverName.slice(0, 255)));
+    const stored = typeof existing.companyName === 'string' ? existing.companyName.trim() : '';
+    if (stored) {
+      skippedNoColumn.push('company_name: D4, a stored name is never replaced (the record keeps the cover name)');
+    } else {
+      scraped.companyName = coverName.slice(0, 255);
+    }
+  }
+
   // MIN-9, same class as the dates: 'BSE' was a FABRICATED default for a row
   // with no listing exchange on file. Only a real value is sent.
   const exchanges = (existing.listingExchanges || []).filter(Boolean);
@@ -2183,6 +2197,13 @@ export async function persistFilingExtraction(
     .filter((w) => typeof w.activity === 'string' && typeof w.window === 'string')
     .map((w) => ({ activity: w.activity as string, window: w.window as string }));
   if (windows.length > 0) mark('bidWindows', windows);
+  // D5 (owner, 2026-10-04): the bidding hours as the offer document prints them, in NSE's own
+  // text shape ("10.00 a.m. to 5.00 p.m."). varchar(50): longer text is refused, never cut.
+  const timings = str(extraction, mappedField('ipo_details', 'ipoMarketTimings'));
+  if (timings !== null) {
+    if (timings.length <= 50) mark('ipoMarketTimings', timings);
+    else skippedFailedCheck.push(`ipo_details.ipoMarketTimings: ${timings.length} chars (column holds 50)`);
+  }
 
   // W-88 (D2): the AGGREGATE promoter holding. promoters.shares_held stays null
   // (it is per-promoter and the ad never prints a per-person split).
@@ -3655,6 +3676,45 @@ export async function persistFilingExtraction(
     const ronw = byFy(extraction, 'ronw_by_fy');
     if (ronw[lk] !== undefined) {
       fd.ronw = round2(ronw[lk]).toString();
+      fdFields += 1;
+    }
+    // OD-165 item 46, spec §1.4 rows 65/67/68: the statement's TOTAL ASSETS and reserves
+    // ("Other equity") in crore, and the KPI table's Return on Equity in percent, for the
+    // latest fiscal year of the P&L the other financial_data values come from.
+    const assetsMn = byFy(extraction, 'total_assets_by_fy')[lk];
+    const assetsCr =
+      assetsMn === undefined ? null : withUnit('financial_data.totalAssets', (u) => round2(toCrore(assetsMn, u)));
+    if (assetsCr !== null) {
+      fd.totalAssets = assetsCr.toString();
+      fdFields += 1;
+    }
+    const reservesMn = byFy(extraction, 'reserves_by_fy')[lk];
+    const reservesCr =
+      reservesMn === undefined
+        ? null
+        : withUnit('financial_data.reservesAndSurplus', (u) => round2(toCrore(reservesMn, u)));
+    if (reservesCr !== null) {
+      fd.reservesAndSurplus = reservesCr.toString();
+      fdFields += 1;
+    }
+    const roe = byFy(extraction, 'roe_by_fy');
+    if (roe[lk] !== undefined) {
+      // numeric(5,2): an out-of-range value (a loss year can exceed 100%) would abort the
+      // whole financial_data write, so only this field is skipped.
+      if (Math.abs(round2(roe[lk])) > 999.99) {
+        skippedNoColumn.push(`roe_by_fy (ratio_out_of_numeric_range:roe=${roe[lk]})`);
+      } else {
+        fd.roe = round2(roe[lk]).toString();
+        fdFields += 1;
+      }
+    }
+    // Row 73 (decided under delegation; the spec names no formula): the pre-IPO EPS is the
+    // latest fiscal year's restated basic EPS, the per-share figure on the pre-offer capital.
+    // C6: written only when its sign matches that year's PAT; the post-IPO EPS is not printed.
+    const preEps = epsBasicW[lk];
+    const patLatest = patW[lk];
+    if (preEps !== undefined && patLatest !== undefined && Math.sign(preEps) === Math.sign(patLatest)) {
+      fd.preIpoEps = round2(preEps).toString(); // per-share: never unit-scaled
       fdFields += 1;
     }
   }

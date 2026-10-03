@@ -70,6 +70,7 @@ const ONE_TO_ONE: ReadonlyArray<readonly [ClearableTable, string, string]> = [
   ['ipo_details', 'promoterGroupTransactionsSinceDrhp', 'promoter_group_transactions_since_drhp'],
   ['ipo_details', 'registrarLink', 'registrar_website'],
   ['ipo_details', 'leadManagers', 'lead_managers'],
+  ['ipo_details', 'ipoMarketTimings', 'ipo_market_timings'],
   ['financial_data', 'currentRatio', 'current_ratio'],
   ['financial_data', 'inventoryTurnover', 'inventory_turnover'],
   ['financial_data', 'peRatio', 'pe_at_cap'],
@@ -96,6 +97,10 @@ export const NOT_ONE_TO_ONE_COLUMNS: Readonly<Record<string, string>> = {
   'financial_data.netWorth': 'latest FY of a per-FY series; the series also feeds financial_statements child rows',
   'financial_data.eps': 'latest FY of a per-FY series; the series also feeds financial_statements child rows',
   'financial_data.ronw': 'latest FY of a per-FY series',
+  'financial_data.roe': 'latest FY of a per-FY series (OD-165 item 46)',
+  'financial_data.totalAssets': 'latest FY of a per-FY series (OD-165 item 46)',
+  'financial_data.reservesAndSurplus': 'latest FY of a per-FY series (OD-165 item 46)',
+  'financial_data.preIpoEps': 'latest FY of the basic EPS series, written only when its sign matches PAT',
   ...Object.fromEntries(
     [2022, 2023, 2024].flatMap((fy) =>
       ['revenueFy', 'profitFy', 'ebitdaFy', 'totalIncomeFy'].map((p) => [
@@ -114,7 +119,7 @@ export const NOT_ONE_TO_ONE_COLUMNS: Readonly<Record<string, string>> = {
  * `<table>.<column>`. A column the persister starts writing moves to one of the two lists above.
  */
 export const WALK_ONLY_FINANCIAL_DATA_COLUMNS: Readonly<Record<string, string>> = Object.fromEntries(
-  ['reservesAndSurplus', 'totalAssets', 'totalBorrowing', 'debtToEquity', 'roe', 'preIpoEps', 'postIpoEps'].map((c) => [
+  ['totalBorrowing', 'debtToEquity', 'postIpoEps'].map((c) => [
     `financial_data.${c}`,
     'written only by the walk from a ranked website answer; never by the filing persister, so no re-read clear applies',
   ])

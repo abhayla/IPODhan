@@ -88,6 +88,7 @@ try:
         check_yoy_ratio_within_bounds,
         check_cross_document_agreement,
     )
+    import issuer_balance_rows  # OD-165 item 46: reuses the financials module's column helpers
 except BaseException as _import_exc:  # noqa: BLE001
     _emit_memory_ceiling_and_exit(_import_exc)
 
@@ -2901,6 +2902,15 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # Only the price band ad read it before, so an IPO filed as RHP/DRHP alone
     # never got a `promoters` row. Same field names as the ad, so the persister's
     # existing promoters block writes them unchanged.
+    # D4 (owner, 2026-10-04): the cover's own issuer name (the line above the CIN) is the
+    # document's answer for ipos.company_name; the persister records it always and writes the
+    # column only when it is empty. No cover name line, no answer (never a guess).
+    cover_name = read_cover_company_name(page_texts)
+    if cover_name is None:
+        emit.null("company_name", "cover_name_above_cin_not_found")
+    else:
+        emit.put("company_name", cover_name, None, "cover_name_above_cin", (True, cover_name))
+
     cover_names, cover_page = read_cover_promoters(page_texts)
     stated_none_page = cover_states_no_identifiable_promoter(page_texts)
     if not cover_names and stated_none_page is not None:
@@ -2964,6 +2974,23 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
                 "ebitda": "ebitda_by_fy", "netWorth": "net_worth_by_fy"}.get(key)
         if name:
             emit.put(name, None, None, "plausibility_rejected", (False, reason))
+
+    # OD-165 (item 46), spec §1.4 rows 65/67/68: the statement's TOTAL ASSETS and reserves
+    # ("Other equity" under Ind AS) rows, and the issuer's Return on Equity KPI row.
+    for name, (series, page, why) in issuer_balance_rows.read_balance_totals(
+            cleaned, pnl.get("pnlPage")).items():
+        if series is None:
+            emit.null(name, why, page)
+        else:
+            emit.put_c_money(unit, name, series, page, "%s_year_series" % name,
+                             (True, "%d years %s" % (len(series), sorted(series))))
+    roe, roe_page, roe_why = issuer_balance_rows.read_roe(cleaned, fiscal_years,
+                                                          metrics.get("profit"))
+    if roe is None:
+        emit.null("roe_by_fy", roe_why, roe_page)
+    else:
+        emit.put("roe_by_fy", roe, roe_page, "roe_by_fy_year_series",
+                 (True, "%d years %s" % (len(roe), sorted(roe))))
 
     # E5: objects of the offer — the price band advertisement has no objects
     # section at all, so this is an RHP-only field.
@@ -3219,6 +3246,64 @@ def read_advert_cover_fields(page_texts, emit):
 # F-242: the offer documents in the PRICE_BAND_AD field family (document-families.json).
 OFFER_TERM_DOC_TYPES = ("DRHP", "RHP", "PROSPECTUS")
 
+# D5 (owner decision 2026-10-04): ipo_details.ipo_market_timings is the bidding hours the offer
+# document prints, as "10.00 a.m. to 5.00 p.m." - the widest window over its bid-submission rows.
+_WINDOW_TIMES_RX = re.compile(
+    r"^Only\s+between\s+(\d{1,2})[.:](\d{2})\s*([ap])\.?\s*m\.?\s+and\s+(?:up\s+to\s+)?"
+    r"(\d{1,2})[.:](\d{2})\s*([ap])\.?\s*m\.?\s+IST(?![A-Za-z])", re.I)
+
+
+def _minutes(h, m, ap):
+    h = int(h) % 12 + (12 if ap.lower() == "p" else 0)
+    return h * 60 + int(m)
+
+
+def _clock(mins):
+    h, m = divmod(mins, 60)
+    return "%d.%02d %s.m." % (h % 12 or 12, m, "p" if h >= 12 else "a")
+
+
+def market_timings_from_windows(windows):
+    """(text, None) for the widest printed window, or (None, why). Every row must parse:
+    a window this cannot read (another clock form) fails the whole field closed."""
+    spans = []
+    for row in windows:
+        m = _WINDOW_TIMES_RX.match(row.get("window") or "")
+        if not m:
+            return None, "bid window not in the 'Only between <time> and <time> IST' form: %r" % (
+                row.get("window"),)
+        start, end = _minutes(*m.group(1, 2, 3)), _minutes(*m.group(4, 5, 6))
+        if end <= start:
+            return None, "bid window ends before it starts: %r" % (row.get("window"),)
+        spans.append((start, end))
+    if not spans:
+        return None, "submission_of_bids_heading_not_found"
+    return "%s to %s" % (_clock(min(s for s, _e in spans)), _clock(max(e for _s, e in spans))), None
+
+
+def read_offer_doc_bid_windows(page_texts, emit):
+    """D5: the offer document's own "Submission of Bids" table, read with the advert's row
+    reader (`bid_windows`, the same normaliser and output shape), never the advert reader."""
+    lines, page_of = [], []
+    for idx, text in page_texts:
+        for ln in (text or "").splitlines():
+            lines.append(ln)
+            page_of.append(idx)
+    windows, anchor = bid_windows(lines)
+    page = page_of[anchor] if anchor is not None else None
+    if not windows:
+        emit.null("bid_windows", "submission_of_bids_heading_not_found")
+        emit.null("ipo_market_timings", "submission_of_bids_heading_not_found")
+        return
+    emit.put("bid_windows", windows, page, "bid_window_rows_bounded",
+             (len(windows) <= 20, "%d rows" % len(windows)))
+    text, why = market_timings_from_windows(windows)
+    if text is None:
+        emit.put("ipo_market_timings", None, page, "bid_window_times_readable", (False, why))
+    else:
+        emit.put("ipo_market_timings", text, page, "bid_window_times_readable",
+                 (True, "widest of %d printed windows" % len(windows)))
+
 
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
         issue_size_rupees=None, tables_for_page=None, unread_pages=None,
@@ -3253,6 +3338,7 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         # document's own sentences, fail closed (offer_doc_terms.py); never the advert reader.
         if doc_type in OFFER_TERM_DOC_TYPES:
             offer_doc_terms.read_offer_terms(page_texts, emit, check_allocation)
+            read_offer_doc_bid_windows(page_texts, emit)
 
     # W-133 MAJOR-3: fold the shared core's own financial-completeness verdict
     # (pnl["status"], surfaced above as meta["financial_status"]) into the
