@@ -25,7 +25,10 @@ import re
 from extract_financials_pdf import (
     _BALANCE_SHEET_HEADING,
     _align_factory,
+    _PERIOD_END,
+    _YEARS_ONLY_LINE,
     _is_clean_data_row,
+    _stacked_header_columns,
     _year_header_years,
 )
 
@@ -106,11 +109,24 @@ def read_balance_totals(page_texts, pnl_page):
     if page is None:
         return {"total_assets_by_fy": (None, None, why), "reserves_by_fy": (None, None, why)}
     lines = text.split("\n")
-    years = _year_header_years("\n".join(lines[:_HEADER_LINES]))
+    # Round 4 item 2 (D11): an RHP's statement stacks its header ("June 30, June 30, March 31, March 31,
+    # March 31," over "2026 2025 2026 2025 2024", NSE RHP p86). The two lines are paired column for
+    # column; a stub column is read and dropped, so each fiscal year takes its own March 31 column. A
+    # stacked header that does not pair is refused, never read as the plain year list.
+    stacked = _stacked_header_columns(lines[:_HEADER_LINES])
+    if stacked == "UNRESOLVED":
+        why = "balance_sheet_stacked_header_unresolved"
+        return {"total_assets_by_fy": (None, page, why), "reserves_by_fy": (None, page, why)}
+    if stacked is not None:
+        column_fy = list(stacked)
+        years = [y for y in column_fy if y is not None]
+    else:
+        years = _year_header_years("\n".join(lines[:_HEADER_LINES]))
+        column_fy = years
     if len(years) < 2:
         why = "balance_sheet_year_header_not_found"
         return {"total_assets_by_fy": (None, page, why), "reserves_by_fy": (None, page, why)}
-    align = _align_factory(years, years)
+    align = _align_factory(column_fy, years)
     assets, a_why = _one_series(_clean_rows(lines, TOTAL_ASSETS_RX), align, "total_assets")
     reserves, r_why = _one_series(_clean_rows(lines, RESERVES_RX), align, "reserves")
     if assets is not None and any(v <= 0 for v in assets.values()):
@@ -123,17 +139,72 @@ def read_balance_totals(page_texts, pnl_page):
             "reserves_by_fy": (reserves, page, r_why)}
 
 
+_GROUP_HEADER_LINES = 3
+
+
+def _is_march_31(m):
+    return (m.group(1) or m.group(4)).lower() == "march" and int(m.group(2) or m.group(3)) == 31
+
+
+def _row_columns(lines, row_index, annual_years):
+    """column_fy for the table a row sits in, from the nearest years-only header line above it, or
+    None (no such header: the caller keeps the annual-columns-only reading).
+
+    Round 4 item 2 (D11). Two header shapes carry a stub period beside the fiscal years:
+    * stacked, one period end per column ("June 30, June 30, March 31, ..." over the years) - paired
+      column for column by `_stacked_header_columns`;
+    * grouped, one label per GROUP of columns ("As of and for the three months period ended June 30,
+      | As of and for the Fiscal ended March 31," over "2026 2025 2026 2025 2024", NSE RHP p141/p212).
+      pdfplumber wraps the group labels, so their text order is not the column order (p141 prints
+      "March 31," before the wrapped "June 30,"). Accepted only when the label block names both a
+      March 31 and another period end, the years line ends with exactly the statement's fiscal years
+      (newest first), and the one or two leading years (the stub group) run newest first: those leading
+      columns are read and dropped. A fiscal-first layout (2026 2025 2024 2026 2025) does not end with
+      the fiscal years and is refused. Any other grouped header is "UNRESOLVED" (never guessed)."""
+    for k in range(row_index - 1, -1, -1):
+        if not _YEARS_ONLY_LINE.match(lines[k]):
+            continue
+        window = lines[max(0, k - _GROUP_HEADER_LINES):k + 1]
+        stacked = _stacked_header_columns(window)
+        if stacked is not None and stacked != "UNRESOLVED":
+            return stacked
+        label = " ".join(lines[max(0, k - _GROUP_HEADER_LINES):k])
+        ends = list(_PERIOD_END.finditer(label))
+        stubs = [m for m in ends if not _is_march_31(m)]
+        if not stubs or len(stubs) == len(ends):
+            # No stub period named (or no March 31): the table carries only fiscal-year columns, and
+            # the annual-columns-only reading applies unchanged.
+            return None
+        years = [int(y) for y in re.findall(r"20\d{2}", lines[k])]
+        fy = sorted(annual_years, reverse=True)
+        n = len(years) - len(fy)
+        lead = years[:n]
+        if (not 1 <= n <= 2 or years[n:] != fy
+                or any(a <= b for a, b in zip(lead, lead[1:]))):
+            return "UNRESOLVED"
+        return [None] * n + fy
+    return None
+
+
 def read_roe(page_texts, annual_years, pat_by_fy=None):
     """(series, page, reason) for the issuer's Return on Equity, in percent."""
     if len(annual_years) < 1:
         return None, None, "fiscal_years_unknown"
-    align = _align_factory(list(annual_years), list(annual_years))
+    plain = _align_factory(list(annual_years), list(annual_years))
     found, unmapped = [], None
     for i, t in page_texts:
-        for ln in _clean_rows((t or "").split("\n"), ROE_RX):
-            if "%" not in ln:
+        lines = (t or "").split("\n")
+        for j, ln in enumerate(lines):
+            m = ROE_RX.search(ln)
+            if not (m and _is_clean_data_row(ln, m.end())) or "%" not in ln:
                 continue
-            s = align(ln.replace("%", " "))
+            columns = _row_columns(lines, j, annual_years)
+            if columns == "UNRESOLVED":
+                s = None
+            elif columns is not None:
+                s = _align_factory(list(columns), [y for y in columns if y is not None])(ln.replace("%", " "))
+            else:
+                s = plain(ln.replace("%", " "))
             if s:
                 found.append((i, {str(k): v for k, v in s.items()}))
             elif unmapped is None:

@@ -597,17 +597,23 @@ def _read_eps_rows(lines, align):
 
 def _continuation_eps(page_texts, best):
     """The EPS block printed on the page right after the chosen statement page (NSE DRHP p78 -> p79), read
-    with the statement's own columns. Only when that page repeats the SAME annual year header and the
-    statement has no interim columns; anything else is not read (fail closed)."""
-    if best.get("columns") != best["years"]:
-        return None, False, False, None
+    with the statement's own columns. Only when that page repeats the SAME column header: the same annual
+    year header when the statement has no interim columns, or (round 4 item 2, NSE RHP p88 -> p89) the
+    same stacked period/year header, stub columns included and in the same places, when it has. Anything
+    else is not read (fail closed)."""
     nxt_idx = best["page"] + 1
     text = next((t for i, t in page_texts if i == nxt_idx), None)
     if not text:
         return None, False, False, None
     lines = text.split("\n")
     top = lines[:8]
-    if _stacked_header_columns(top) is not None:
+    stacked = _stacked_header_columns(top)
+    if stacked is not None:
+        if stacked == "UNRESOLVED" or list(stacked) != list(best.get("columns") or []):
+            return None, False, False, None
+        series, combined, ambiguous = _read_eps_rows(lines, best["align"])
+        return series, combined, ambiguous, nxt_idx
+    if best.get("columns") != best["years"]:
         return None, False, False, None
     years = None
     for i in range(len(top)):
