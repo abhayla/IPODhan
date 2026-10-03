@@ -497,6 +497,26 @@ export function coverRegistrar(extraction: FilingExtraction): string | null {
   return str(extraction, 'registrar_name');
 }
 
+/** Spec rows 164-165: a period row's printed {low, high} acquisition range, both ends positive and low <= high. */
+function acquisitionRange(extraction: FilingExtraction, name: string): { low: number; high: number } | null {
+  const v = trusted(extraction, name) as { low?: unknown; high?: unknown } | null | undefined;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const { low, high } = v;
+  if (typeof low !== 'number' || typeof high !== 'number' || !(low > 0) || !(high >= low)) return null;
+  return { low, high };
+}
+
+/** Row 158: {document BRLM name: grievance e-mail}; entries that are not a name -> e-mail string pair are dropped. */
+function brlmGrievanceEmails(extraction: FilingExtraction): Record<string, string> {
+  const v = trusted(extraction, 'brlm_grievance_emails');
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [name, email] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)) out[name] = email;
+  }
+  return out;
+}
+
 function list<T>(extraction: FilingExtraction, name: string): T[] {
   const v = trusted(extraction, name);
   return Array.isArray(v) ? (v as T[]) : [];
@@ -3069,31 +3089,32 @@ export async function persistFilingExtraction(
   // every period the `acquisition_period` enum defines is mapped, and the whole
   // set goes through `replaceAllowed` exactly like `promoters`.
   //
-  // priceLow/priceHigh stay null: the extractor prints no per-period price
-  // range today (only the aggregate band, which is an `ipos` field). The
-  // columns exist; nothing in the document fills them, and inventing a range
-  // from the band would publish a figure the filing never printed.
+  // priceLow/priceHigh come from the period row's own "lowest - highest" range cell
+  // (`acquisition_price_range_<p>`, offer documents, spec rows 164-165); a range the extractor did
+  // not read as two printed prices stays null, never derived from the band.
   const ACQUISITION_PERIODS: Array<{
     period: '1Y' | '18M' | '3Y';
     wacaField: string;
     capField: string;
+    rangeField: string;
   }> = [
-    { period: '1Y', wacaField: 'waca_last_1y', capField: 'cap_multiple_last_1y' },
-    { period: '18M', wacaField: 'waca_last_18m', capField: 'cap_multiple_last_18m' },
-    { period: '3Y', wacaField: 'waca_last_3y', capField: 'cap_multiple_last_3y' },
+    { period: '1Y', wacaField: 'waca_last_1y', capField: 'cap_multiple_last_1y', rangeField: 'acquisition_price_range_1y' },
+    { period: '18M', wacaField: 'waca_last_18m', capField: 'cap_multiple_last_18m', rangeField: 'acquisition_price_range_18m' },
+    { period: '3Y', wacaField: 'waca_last_3y', capField: 'cap_multiple_last_3y', rangeField: 'acquisition_price_range_3y' },
   ];
   const acquisitionRows: PromoterAcquisitionRangeInsert[] = [];
   for (const spec of ACQUISITION_PERIODS) {
     const waca = num(extraction, spec.wacaField);
     const capMultiple = num(extraction, spec.capField);
-    if (waca === null && capMultiple === null) continue;
+    const range = acquisitionRange(extraction, spec.rangeField);
+    if (waca === null && capMultiple === null && range === null) continue;
     acquisitionRows.push({
       ipoId,
       period: spec.period,
       waca: waca?.toString() ?? null,
       capMultiple: capMultiple?.toString() ?? null,
-      priceLow: null,
-      priceHigh: null,
+      priceLow: range?.low.toString() ?? null,
+      priceHigh: range?.high.toString() ?? null,
     });
   }
   for (const row of acquisitionRows) {
@@ -3102,6 +3123,8 @@ export async function persistFilingExtraction(
       'period',
       'waca',
       'capMultiple',
+      'priceLow',
+      'priceHigh',
     ], ACQUISITION_PERIOD_FIELDS[row.period] ?? []);
   }
   if (acquisitionRows.length > 0) {
@@ -3318,6 +3341,10 @@ export async function persistFilingExtraction(
   const docBrlmsHeld =
     docBrlms !== null && normalizeReceiptValue(docBrlms) === normalizeReceiptValue(brlmNames);
   const soleBrlmReg = docBrlmsHeld && brlmNames.length === 1 ? str(extraction, 'lead_manager_sebi_reg') : null;
+  // Row 158: each BRLM's investor grievance e-mail, read by word position under that firm's own
+  // heading (extractor `brlm_grievance_emails`, keyed by the document's BRLM name). Filed only
+  // when the held BRLM list IS the document's, so a name maps to the firm the document printed.
+  const grievanceByName = docBrlmsHeld ? brlmGrievanceEmails(extraction) : {};
   // Item 1 slice s1 (row-key prep, F-74): built without `normalizedName`
   // here — every entry (the initial map, and each subsequent push below)
   // carries only a bare `name`; `normalizedName` is derived once, uniformly,
@@ -3336,7 +3363,7 @@ export async function persistFilingExtraction(
     contactPerson: null,
     phone: null,
     email: null,
-    grievanceEmail: null,
+    grievanceEmail: grievanceByName[name] ?? null,
   }));
   const registrarReg = str(extraction, 'registrar_sebi_reg');
   const docRegistrarName = coverRegistrar(extraction);

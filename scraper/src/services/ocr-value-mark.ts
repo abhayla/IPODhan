@@ -173,7 +173,7 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
 
 /** ipo_intermediaries: every column of a row is read from the fields of that row's role. */
 export const INTERMEDIARY_ROLE_FIELDS: Readonly<Record<string, readonly string[]>> = {
-  BRLM: ['lead_managers', 'lead_manager_sebi_reg'],
+  BRLM: ['lead_managers', 'lead_manager_sebi_reg', 'brlm_grievance_emails'],
   REGISTRAR: ['registrar_name', 'registrar_sebi_reg', 'registrar_contact_person', 'registrar_phone', 'registrar_email'],
   SYNDICATE: ['syndicate_members'],
   SUB_SYNDICATE: ['syndicate_members'],
@@ -184,9 +184,9 @@ export const INTERMEDIARY_ROLE_FIELDS: Readonly<Record<string, readonly string[]
 
 /** promoter_acquisition_ranges: every column of a period's row is read from that period's two fields. */
 export const ACQUISITION_PERIOD_FIELDS: Readonly<Record<string, readonly string[]>> = {
-  '1Y': ['waca_last_1y', 'cap_multiple_last_1y'],
-  '18M': ['waca_last_18m', 'cap_multiple_last_18m'],
-  '3Y': ['waca_last_3y', 'cap_multiple_last_3y'],
+  '1Y': ['waca_last_1y', 'cap_multiple_last_1y', 'acquisition_price_range_1y'],
+  '18M': ['waca_last_18m', 'cap_multiple_last_18m', 'acquisition_price_range_18m'],
+  '3Y': ['waca_last_3y', 'cap_multiple_last_3y', 'acquisition_price_range_3y'],
 };
 
 /** The mark of a value built from `names`, or null when it is unknown. */
