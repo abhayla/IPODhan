@@ -166,5 +166,103 @@ class RunWiring(unittest.TestCase):
                          "brlm_grievance_emails_unread: ['no_document_brlm_list']")
 
 
+# ------------------------------------------------- step-3b review fixes (B1-B4)
+# Edits below are MINIMAL EDITS of the real NSE DRHP page text for shapes this document does not
+# print; each says which line it changes.
+def _nse_pages(edit=None):
+    out = []
+    for i, t in _pages("nse-drhp-pages.json"):
+        out.append((i, edit(i, t) if edit else t))
+    return out
+
+
+_NO_PROMOTER = "Our Company does not have an identifiable promoter"
+
+
+class WacaGroupGate(unittest.TestCase):
+    def test_selling_shareholder_table_needs_the_no_promoter_statement(self):
+        # Minimal edit: p105's "does not have an identifiable promoter" sentence removed.
+        p = _nse_pages(lambda i, t: t.replace(_NO_PROMOTER, "Our Company has a promoter") if i == 105 else t)
+        got = odt.read_acquisition_ranges(p)
+        self.assertIsNone(got["rows"])
+        self.assertTrue(got["reason"].startswith("group_not_promoter"), got["reason"])
+        self.assertEqual(got["page"], 105)
+
+    def test_a_promoter_caption_is_read(self):
+        # Minimal edits: no no-promoter sentence, and the caption names the Promoters.
+        def edit(i, t):
+            if i != 105:
+                return t
+            return (t.replace(_NO_PROMOTER, "Our Company has a promoter")
+                    .replace("transacted by the Selling Shareholders and", "transacted by our Promoters and"))
+        got = odt.read_acquisition_ranges(_nse_pages(edit))
+        self.assertEqual(got["rows"]["1Y"]["waca"], 1909.02)
+        self.assertIn("Promoters", got["group"])
+
+    def test_never_the_first_caption_a_later_promoter_caption_wins(self):
+        # Minimal edits: no no-promoter sentence; a promoter table (p107, 1Y WACA 1,111.11) after
+        # the selling-shareholder one.
+        base = _nse_pages(lambda i, t: t.replace(_NO_PROMOTER, "Our Company has a promoter") if i == 105 else t)
+        p106 = dict(base)[106]
+        promoter = ("10. Weighted average cost of acquisition of all Equity Shares transacted by our Promoters in\n"
+                    "one year, 18 months and three years preceding this Draft Red Herring Prospectus\n"
+                    + p106.replace("Last one year 1,909.02", "Last one year 1,111.11"))
+        got = odt.read_acquisition_ranges(base + [(107, promoter)])
+        self.assertEqual(got["page"], 107)
+        self.assertEqual(got["rows"]["1Y"]["waca"], 1111.11)
+
+
+class TrackRecordAliases(unittest.TestCase):
+    def test_short_caption_must_name_the_heading_firm(self):
+        # Minimal edit: p435's "handled by JM:" caption reads "handled by Citi:" under the JM heading.
+        p = _nse_pages(lambda i, t: t.replace("handled by JM", "handled by Citi") if i == 435 else t)
+        rows, _p, problems = odt.read_brlm_track_record(p, NSE_BRLMS)
+        self.assertNotIn("JM Financial Limited", {r["brlm"] for r in rows})
+        self.assertTrue(any("caption_alias_does_not_name_heading_firm" in x for x in problems), problems)
+
+    def test_alias_matching(self):
+        self.assertTrue(odt.alias_names_firm("Kotak", "Kotak Mahindra Capital Company Limited"))
+        self.assertTrue(odt.alias_names_firm("JM", "JM Financial Limited"))
+        self.assertTrue(odt.alias_names_firm("JPM", "J.P. Morgan India Private Limited"))
+        self.assertTrue(odt.alias_names_firm("MS", "Morgan Stanley India Company Private Limited"))
+        self.assertTrue(odt.alias_names_firm("I-Sec", "ICICI Securities Limited"))
+        self.assertTrue(odt.alias_names_firm("SBICAPS", "SBI Capital Markets Limited"))
+        self.assertFalse(odt.alias_names_firm("JM", "J.P. Morgan India Private Limited"))
+        self.assertFalse(odt.alias_names_firm("Citi", "JM Financial Limited"))
+        self.assertFalse(odt.alias_names_firm("Axis", "IIFL Capital Services Limited"))
+
+    def test_ltd_and_limited_are_one_firm(self):
+        # B4: a full caption printing "Ltd" takes the document list's "Limited" spelling.
+        self.assertEqual(odt._match_firm("DAM Capital Advisors Ltd", NSE_BRLMS), "DAM Capital Advisors Limited")
+        p = _nse_pages(lambda i, t: t.replace("DAM Capital Advisors Limited", "DAM Capital Advisors Ltd"))
+        rows, _p, _pr = odt.read_brlm_track_record(p, NSE_BRLMS)
+        self.assertIn("DAM Capital Advisors Limited", {r["brlm"] for r in rows})
+        self.assertEqual(odt.name_key("X Pvt Ltd"), odt.name_key("X Private Limited"))
+
+
+class GrievanceStopHeadings(unittest.TestCase):
+    def test_label_below_a_registrar_heading_is_never_a_brlms(self):
+        with open(os.path.join(FIX, "nse-drhp-brlm-contacts-p89.json"), encoding="utf-8") as fh:
+            fx = json.load(fh)
+        words = fx["words"]
+        ms_top = min(w["top"] for w in words if w["text"] == "Morgan" and w["x0"] < 100)
+        kotak_label_top = min(w["top"] for w in words if w["text"] == "kmccredressal@kotak.com")
+        # Minimal edit of the real word boxes: the Kotak/JM row only, Kotak's own grievance line
+        # removed, then a "Registrar to the Offer" block in Kotak's column below it.
+        top_part = [w for w in words if w["top"] < ms_top - 2 and abs(w["top"] - kotak_label_top) > 1]
+        base = max(w["top"] for w in top_part) + 14
+        add = []
+        for k, line in enumerate(["Registrar to the Offer", "KFin Technologies Limited",
+                                  "Investor grievance e-mail: einward.ris@kfintech.com"]):
+            x = 54.0
+            for word in line.split():
+                add.append({"text": word, "x0": x, "x1": x + 6 * len(word), "top": base + 12 * k})
+                x += 6 * len(word) + 3
+        got, problems = odt.read_grievance_emails([(89, fx["page_text"])], lambda i: top_part + add, NSE_BRLMS)
+        self.assertNotIn("Kotak Mahindra Capital Company Limited", got or {})
+        self.assertEqual((got or {}).get("JM Financial Limited"), "grievance.ibd@jmfl.com")
+        self.assertTrue(any("label_under_a_non_brlm_heading" in x for x in problems), problems)
+
+
 if __name__ == "__main__":
     unittest.main()

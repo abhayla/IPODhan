@@ -20,12 +20,51 @@ def canon_firm(name):
     return " ".join(s.split())
 
 
+_SUFFIX_KEY = ((r"\bltd\b", "limited"), (r"\bpvt\b", "private"), (r"\bco\b", "company"))
+
+
+def name_key(name):
+    """canon_firm with the usual abbreviations spelled out, so "X Ltd" and "X Limited" are one
+    firm (step-3b review B4)."""
+    k = canon_firm(name)
+    for rx, full in _SUFFIX_KEY:
+        k = re.sub(rx, full, k)
+    return k
+
+
+def _word_prefix_split(a, words):
+    """True when `a` is the concatenation of non-empty prefixes of words[0], words[1], ... in
+    order ("isec" = "i"cici + "sec"urities; "jpm" = j + p + morgan)."""
+    if not a:
+        return True
+    if not words:
+        return False
+    w = words[0]
+    return any(a[:k] == w[:k] and _word_prefix_split(a[k:], words[1:])
+               for k in range(min(len(a), len(w)), 0, -1))
+
+
+def alias_names_firm(alias, firm):
+    """Step-3b review B3: a short caption name ("handled by JM:") names a heading's firm only when
+    it is built from the firm's own words, in order, from the first word: each piece a prefix of
+    the next word ("Kotak", "JM", "JPM" for J.P. Morgan, "I-Sec" for ICICI Securities, "SBICAPS"
+    for SBI Capital Markets with its plural s). "Citi" never names JM Financial."""
+    a = canon_firm(alias).replace(" ", "")
+    words = canon_firm(firm).split()
+    if not a or not words:
+        return False
+    return _word_prefix_split(a, words) or (a.endswith("s") and _word_prefix_split(a[:-1], words))
+
+
 def _match_firm(text, names):
     """The one name in `names` that `text` names, or None (zero or several = None)."""
     c = canon_firm(re.sub(r"\*+", "", text))
     if not c:
         return None
     hits = [n for n in names if canon_firm(n) == c]
+    if not hits:
+        # B4: "X Ltd" printed for the list's "X Limited" is the same firm, in the list's spelling.
+        hits = [n for n in names if name_key(n) == name_key(c)]
     if not hits:
         # A heading that wraps "Equirus Capital Limited (formerly known as ...": the printed
         # line is a firm name ending in Limited and the list name starts with it.
@@ -140,6 +179,7 @@ def read_brlm_track_record(page_texts, lead_managers=None):
             continue
         brlm = None
         if alias and _FIRM_END_RX.search(canon_firm(alias)):
+            # B4: a full caption name takes the document's own BRLM spelling when the list is known.
             brlm = _match_firm(alias, names) if names else alias
         elif not names:
             problems.append("p%d %s: short_name_and_no_document_brlm_list" % (page, alias))
@@ -157,6 +197,10 @@ def read_brlm_track_record(page_texts, lead_managers=None):
             if brlm is None:
                 problems.append("p%d %s: no_brlm_heading_above_the_table" % (page, alias))
                 continue
+            if not alias or not alias_names_firm(alias, brlm):
+                # B3: the heading above is not the firm the caption's short name names.
+                problems.append("p%d %s: caption_alias_does_not_name_heading_firm %s" % (page, alias, brlm))
+                continue
         if brlm is None:
             problems.append("p%d %s: not_one_of_the_documents_brlms" % (page, alias))
             continue
@@ -173,9 +217,9 @@ def read_brlm_track_record(page_texts, lead_managers=None):
         if bad:
             problems.append("p%d %s: day30_buckets_exceed_total" % (page, alias))
             continue
-        if any(r["brlm"] == brlm for r in rows):
+        if any(name_key(r["brlm"]) == name_key(brlm) for r in rows):
             problems.append("p%d %s: second_table_for_the_same_brlm" % (page, alias))
-            rows = [r for r in rows if r["brlm"] != brlm]
+            rows = [r for r in rows if name_key(r["brlm"]) != name_key(brlm)]
             continue
         rows.append({"brlm": brlm, "issues_3y": sum(totals), "closed_below": None,
                      "fiscal_years": ["%d-%02d" % (fy, (fy + 1) % 100) for fy, _c in table_rows],
@@ -251,19 +295,32 @@ def _parse_period_row(rest):
     return out, None
 
 
+_NO_PROMOTER_RX = re.compile(
+    r"(?:does\s+not\s+have\s+(?:an?\s+|any\s+)?identifiable\s+promoters?|no\s+identifiable\s+promoters?)", re.I)
+_PROMOTER_GROUP_RX = re.compile(r"\bpromoters?\b", re.I)
+_SELLING_RX = re.compile(r"\bselling\s+shareholders?\b", re.I)
+
+
 def read_acquisition_ranges(page_texts):
     """{"rows": {period: parsed}, "page", "group"} or {"rows": None, "reason", "page"}.
 
-    The table read is the one under the "weighted average cost of acquisition of all
-    (equity) shares transacted ..." caption: the same table the advertisement prints and
-    `promoter_acquisition_ranges` already holds. `group` is the caption's own wording of
-    whose transactions it covers (e.g. the selling shareholders when no promoter exists)."""
+    The table read is the one under a "weighted average cost of acquisition of all (equity)
+    shares transacted ..." caption: the same table the advertisement prints and
+    `promoter_acquisition_ranges` holds. `group` is the caption's own wording of whose
+    transactions it covers.
+
+    Step-3b review B1 / owner decision D15: a caption must name the Promoter(s) (or the promoter
+    group); a caption naming only the selling shareholders is accepted ONLY when the document states
+    the issuer has no identifiable promoter (NSE DRHP p105: "does not have an identifiable
+    promoter"). Every caption is weighed, never the first one found; when no caption qualifies the
+    answer is null with reason group_not_promoter."""
     flat = []
     for idx, text in page_texts:
         for ln in (text or "").split("\n"):
             flat.append((idx, ln))
     lines = [ln for _i, ln in flat]
-    found = []
+    no_promoter = any(_NO_PROMOTER_RX.search(t or "") for _i, t in page_texts)
+    found, rejected = [], None
     for i, ln in enumerate(lines):
         if not _WACA_CAPTION_RX.search(ln):
             continue
@@ -271,6 +328,8 @@ def read_acquisition_ranges(page_texts):
         gm = re.search(r"transacted\s+(?:by\s+(.+?)\s+)?in\s+(?:the\s+)?(?:last\s+)?(?:one|three)",
                        cap, re.I)
         group = gm.group(1) if gm and gm.group(1) else "all shareholders"
+        eligible = bool(_PROMOTER_GROUP_RX.search(group)) or (
+            no_promoter and bool(_SELLING_RX.search(group)))
         got, why_rows = {}, {}
         for k in range(i + 1, min(len(lines), i + 40)):
             if k > i + 1 and _WACA_CAPTION_RX.search(lines[k]) and got:
@@ -289,10 +348,17 @@ def read_acquisition_ranges(page_texts):
                         why_rows.pop(period, None)
             if len(got) == 3:
                 break
-        if got or why_rows:
-            found.append((i, got, why_rows, group))
-            break
+        if not (got or why_rows):
+            continue
+        if not eligible:
+            rejected = rejected or (i, group)
+            continue
+        found.append((i, got, why_rows, group))
+        break
     if not found:
+        if rejected is not None:
+            return {"rows": None, "page": flat[rejected[0]][0],
+                    "reason": "group_not_promoter: %s" % rejected[1][:80]}
         return {"rows": None, "reason": "waca_period_table_not_found", "page": None}
     i, got, why_rows, group = found[0]
     page = flat[i][0]
@@ -306,6 +372,14 @@ def read_acquisition_ranges(page_texts):
 
 
 # ------------------------------------------------------ row 158: BRLM grievance e-mail
+# Step-3b review B2: a heading that opens another intermediary's block ends the BRLM block above it
+# in that column; a grievance label below such a heading is never filed under a BRLM.
+_NON_BRLM_HEAD_RX = re.compile(
+    r"^\s*(?:registrar\s+to\s+the\s+(?:offer|issue)|(?:domestic\s+|international\s+)?legal\s+counsel"
+    r"|syndicate\s+members?|statutory\s+auditors?|(?:joint\s+)?statutory\s+auditor"
+    r"|bankers?\s+to\s+(?:the\s+)?(?:offer|issue|our\s+company|the\s+company)|escrow\s+collection\s+bank"
+    r"|refund\s+bank|public\s+offer\s+account\s+bank|sponsor\s+banks?|monitoring\s+agency"
+    r"|company\s+secretary|chief\s+financial\s+officer|independent\s+chartered\s+accountant)", re.I)
 _LABEL_WORD_RX = re.compile(r"^(?:Telephone|Tel|E-?mail|Website|Contact|SEBI|Investor)\b:?", re.I)
 _EMAIL_RX = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
@@ -392,6 +466,8 @@ def read_grievance_emails(page_texts, words_for_page, lead_managers):
                 heads.append((s[0]["x0"], s[0]["top"], nm))
         if not heads:
             continue
+        stops = [(s[0]["x0"], s[0]["top"]) for _li, s in segs
+                 if _NON_BRLM_HEAD_RX.match(" ".join(w["text"] for w in s))]
 
         page_hits = []
         for li, s in segs:
@@ -417,6 +493,12 @@ def read_grievance_emails(page_texts, words_for_page, lead_managers):
                 problems.append("p%d %s: no_firm_heading_above_in_column" % (idx, email))
                 continue
             head = max(above, key=lambda h: h[1])
+            # Any column: a section heading ("Registrar to the Offer") often spans the page from the
+            # left margin, and it ends every BRLM block above it (fail closed).
+            stop = [t for _x, t in stops if head[1] + 3 < t < s[0]["top"]]
+            if stop:
+                problems.append("p%d %s: label_under_a_non_brlm_heading" % (idx, email))
+                continue
             page_hits.append((head, email))
         # One grievance label per firm block. A heading that collects two labels means the page
         # is not the heading-over-block grid this reader understands (a cover table whose firm
