@@ -534,13 +534,84 @@ def _stacked_header_columns(window):
 _SEGMENT_PROFIT = re.compile(r"\b(?:dis)?continu(?:ing|ed)\s+operations", re.I)
 
 
+# EPS rows (Appendix A rows 88, 118, 119; C6). A statement with discontinued operations prints one EPS row
+# per segment and a total, often each labelled "Basic & Diluted" (NSE DRHP p79: continuing 41.13, discontinued
+# 0.49, continuing AND discontinued 41.62). The label block a row sits under decides which it is: a block
+# naming only continuing or only discontinued operations is a segment row and never the EPS. Two non-segment
+# rows that disagree are ambiguous and give no EPS (fail closed). A "Basic & Diluted" / "Basic and Diluted"
+# row prints one figure for both, so the caller may emit it as diluted too; a "Basic" row never is.
+_EPS_ROW_RX = next(rx for rx, key in PNL_METRICS if key == "eps")
+_EPS_COMBINED_RX = re.compile(r"basic\s*(?:&|and|/)\s*diluted", re.I)
+_EPS_TOTAL_RX = re.compile(r"continuing\s+and\s+discontinued", re.I)
+_EPS_LABEL_LINES = 4
+
+
+def _read_eps_rows(lines, align):
+    """(series, combined, ambiguous) for the EPS rows of one page; series None when there is none or the
+    rows disagree."""
+    found = []
+    context = []
+    for raw in lines:
+        ln = _rejoin_split_initial(raw)
+        if _EPS_ROW_RX.search(ln):
+            label = " ".join(context + [ln])
+            segment = _SEGMENT_PROFIT.search(label) and not _EPS_TOTAL_RX.search(label)
+            mapped = None if segment else align(ln)
+            if mapped:
+                found.append((mapped, bool(_EPS_COMBINED_RX.search(ln))))
+            context = []
+            continue
+        if re.search(r"\d[\d,]*\.\d{2}", ln):
+            context = []  # a data row closes the label block above the next row
+        else:
+            context = (context + [ln])[-_EPS_LABEL_LINES:]
+    if not found:
+        return None, False, False
+    if len({tuple(sorted(series.items())) for series, _c in found}) > 1:
+        return None, False, True
+    return found[0][0], all(c for _s, c in found), False
+
+
+def _continuation_eps(page_texts, best):
+    """The EPS block printed on the page right after the chosen statement page (NSE DRHP p78 -> p79), read
+    with the statement's own columns. Only when that page repeats the SAME annual year header and the
+    statement has no interim columns; anything else is not read (fail closed)."""
+    if best.get("columns") != best["years"]:
+        return None, False, False, None
+    nxt_idx = best["page"] + 1
+    text = next((t for i, t in page_texts if i == nxt_idx), None)
+    if not text:
+        return None, False, False, None
+    lines = text.split("\n")
+    top = lines[:8]
+    if _stacked_header_columns(top) is not None:
+        return None, False, False, None
+    years = None
+    for i in range(len(top)):
+        cand = top[i] + ("\n" + top[i + 1] if i + 1 < len(top) else "")
+        ys = _year_header_years(cand)
+        if ys:
+            years = sorted(ys, reverse=True)
+            break
+    if years != best["years"]:
+        return None, False, False, None
+    series, combined, ambiguous = _read_eps_rows(lines, best["align"])
+    return series, combined, ambiguous, nxt_idx
+
+
 def _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table):
     align = _align_factory(column_fy, annual_years)
 
     metrics = {}
+    eps_series, eps_combined, eps_ambiguous = _read_eps_rows(lines, align)
+    if eps_series:
+        metrics["eps"] = eps_series
     for raw_ln in lines:
         ln = _rejoin_split_initial(raw_ln)
         for rx, key in PNL_METRICS:
+            if key == "eps":
+                # Read once above, over the whole page (segment rows skipped, disagreeing rows refused).
+                continue
             if key in metrics:
                 continue
             if rx.search(ln):
@@ -566,6 +637,9 @@ def _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table):
         "align": align,
         "score": len(metrics),
         "isKpiTable": is_kpi_table,
+        "columns": list(column_fy),
+        "epsCombined": bool(eps_series) and eps_combined,
+        "epsAmbiguous": eps_ambiguous,
     }
 
 
@@ -1116,8 +1190,21 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
     # 2.5. W-133: the KPI/summary table often has no EPS or Total income row —
     #      fill ONLY those from the richest other candidate page (the restated
     #      P&L), never overwriting a KPI-table value already present.
+    result["epsCombined"] = bool(best.get("epsCombined"))
+    result["epsAmbiguous"] = bool(best.get("epsAmbiguous"))
+    result["epsPage"] = best["page"] if "eps" in result["metrics"] else None
+    if "eps" not in result["metrics"] and not result["epsAmbiguous"]:
+        series, combined, ambiguous, page = _continuation_eps(page_texts, best)
+        result["epsAmbiguous"] = ambiguous
+        if series:
+            result["metrics"]["eps"] = series
+            result["epsCombined"] = combined
+            result["epsPage"] = page
     result["metrics"], pnl_fill_check = _fill_missing_from_pnl_page(
         result["metrics"], best, candidates)
+    if result["epsPage"] is None and "eps" in result["metrics"]:
+        # Filled from another candidate page: read as basic only (never emitted as diluted).
+        result["epsCombined"] = False
     extra_checks = [pnl_fill_check] if pnl_fill_check else None
 
     # 3. Plausibility gate (W-33): a metric that fails a named check is DROPPED,

@@ -2912,6 +2912,12 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
         series = {str(k): v for k, v in (metrics.get(key) or {}).items()}
         emit.put_c_money(unit, name, series or None, None, "%s_year_series" % name,
                           check_fy_series(series, fiscal_years))
+    # Rows 118-119 (C6): a "Basic & Diluted" EPS row prints ONE figure for both, so the diluted series is
+    # that same series. A plain "Basic" row says nothing about diluted EPS, so nothing is emitted for it.
+    eps_series = {str(k): v for k, v in (metrics.get("eps") or {}).items()}
+    if eps_series and pnl.get("epsCombined"):
+        emit.put_c_money(unit, "eps_diluted_by_fy", eps_series, None, "eps_diluted_by_fy_year_series",
+                          check_fy_series(eps_series, fiscal_years))
 
     # The RHP cover states its own date: "RED HERRING PROSPECTUS / Dated: August 25, 2026".
     rhp_date = None
