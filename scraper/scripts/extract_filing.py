@@ -2660,7 +2660,7 @@ def _drhp_single_leg_count(row, kind):
     return counts[0], None
 
 
-def _drhp_price_independent(blob, cover_page, emit):
+def _drhp_price_independent(blob, cover_page, emit, label="DRHP"):
     """Answer states per field: a printed share count is put; a leg the data row states
     as NIL / not applicable is put as 0; anything the table does not settle (no table, a
     header-only table, a placeholder or rupee figure where a count belongs, two different
@@ -2675,7 +2675,7 @@ def _drhp_price_independent(blob, cover_page, emit):
 
     def null_all(why, names=_DRHP_SHARE_FIELDS):
         for name in names:
-            emit.null(name, "DRHP: %s" % why, cover_page)
+            emit.null(name, "%s: %s" % (label, why), cover_page)
 
     kind, row, why = _drhp_offer_row(blob)
     if why is not None:
@@ -2691,7 +2691,7 @@ def _drhp_price_independent(blob, cover_page, emit):
         cells["total_offer_shares_at_floor"] = cells["total_offer_shares_at_cap"]
         for name, (v, reason) in cells.items():
             if v is None:
-                emit.null(name, "DRHP: %s" % reason, cover_page)
+                emit.null(name, "%s: %s" % (label, reason), cover_page)
             else:
                 emit.put(name, v, cover_page, "cover_share_count_plausible",
                          check_cover_share_count(v))
@@ -2790,6 +2790,7 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
                       "total_offer_shares_at_cap", "issue_structure")
                      + _HEADLINE_MONEY_FIELDS):
             emit.null(name, why, cover_page)
+        _fill_price_independent_counts(blob, cover_page, emit, doc_type)
         return
 
     # ---- face value, price / band, share count, aggregate -------------------
@@ -2900,6 +2901,33 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
              fresh_check)
     emit.put("total_offer_shares_at_cap", shares, cover_page, "cover_share_count_plausible",
              share_check)
+    _fill_price_independent_counts(blob, cover_page, emit, doc_type)
+
+
+# The fields the cover's offer table settles without a price: the share counts of each leg,
+# the offer structure, and the rupee amount of a leg the table states nil / not applicable.
+_TABLE_FILL_FIELDS = _DRHP_SHARE_FIELDS + ("fresh_issue_amount", "ofs_amount")
+
+
+def _fill_price_independent_counts(blob, cover_page, emit, doc_type):
+    """RHP / PROSPECTUS (round 4 item 1): the cover's "details of the offer" table is the same
+    table a DRHP prints, and its share counts do not depend on the price. The offer sentence
+    above reads a share count only for an entirely fresh offer, so a pure offer for sale or a
+    mixed offer whose band is still "[*]" (NSE RHP: OFS-only, up to 126,436,650 shares) left
+    every leg null. The table reader fills ONLY the fields the sentence left without a value;
+    it never replaces one, and every price-dependent field (band, lot, an offered leg's rupee
+    amount) stays exactly as the sentence path set it. A table it cannot resolve fills nothing."""
+    table = Emitter(emit.source_doc)
+    _drhp_price_independent(blob, cover_page, table, label=doc_type or "OFFER DOCUMENT")
+    for name in _TABLE_FILL_FIELDS:
+        got = table.fields.get(name)
+        if got is None:
+            continue
+        if name not in emit.fields or (got["value"] is not None
+                                       and emit.fields[name].get("value") is None):
+            # A field the sentence never answered takes the table's answer, null included
+            # (with its reason); a null the sentence gave takes only a table VALUE.
+            emit.fields[name] = got
 
 
 def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):

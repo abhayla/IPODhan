@@ -718,3 +718,72 @@ def test_ofs_only_nil_after_the_ofs_count_is_not_the_fresh_cell():
     f = drhp(text)
     for name in ("shares_at_floor", "fresh_issue_amount", "ofs_shares"):
         assert value(f, name) is None, name
+
+
+# --------------------------------------------------------------------------- #
+# Round 4 item 1 — the same offer table on a RED HERRING PROSPECTUS cover. Five REAL
+# RHP covers (fixtures/rhp-covers/rhp-covers.json). Values read by hand off each table:
+#   NSE       "Offer for Sale" | fresh "Not applicable" | up to 126,436,650 | band "[*]"
+#   Acevector mixed | fresh "Up to [*]" (Rs 2,870.00 million) | OFS 41,562,500 | total [*]
+#   Orient, Hero  mixed | every share count "[*]" (legs sized in rupees)
+#   Jindal    mixed | 1,07,41,149 + 26,86,851 = 1,34,28,000, but pdfplumber interleaves the
+#             table's cells with the eligibility column, so the row is not resolvable and
+#             nothing is filled from it (fail closed; the sentence's total is kept).
+# The table fills ONLY what the cover sentence left without a value; a price-dependent
+# field (band, lot, an offered leg's rupee amount) is never filled from it.
+# --------------------------------------------------------------------------- #
+_RHP_COVERS = {c["slug"]: c["text"] for c in json.load(open(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "fixtures", "rhp-covers", "rhp-covers.json"), encoding="utf-8"))["covers"]}
+
+# slug -> (issue_structure, fresh shares, OFS shares, total at cap, total at floor)
+_RHP_EXPECTED = {
+    "national-stock-exchange-of-india-ltd":
+        ("OFS_ONLY", 0.0, 126436650.0, 126436650.0, 126436650.0),
+    "acevector-ltd": ("FRESH_AND_OFS", None, 41562500.0, None, None),
+    "orient-cables-india-ltd": ("FRESH_AND_OFS", None, None, None, None),
+    "hero-motors-ltd": ("FRESH_AND_OFS", None, None, None, None),
+    # Page 1 only here; Jindal's offer sentence (total 1,34,28,000) sits on a later page.
+    "jindal-supreme-india-ltd": (None, None, None, None, None),
+}
+
+
+def rhp(text):
+    return headline(text, segment="MAINBOARD", doc_unit="millions", doc_type="RHP")
+
+
+def test_every_rhp_fixture_cover_has_an_expectation():
+    assert sorted(_RHP_COVERS) == sorted(_RHP_EXPECTED)
+
+
+@pytest.mark.parametrize("slug", sorted(_RHP_EXPECTED))
+def test_rhp_reads_price_independent_counts_off_real_covers(slug):
+    structure, fresh, ofs, total_cap, total_floor = _RHP_EXPECTED[slug]
+    f = rhp(_RHP_COVERS[slug])
+    assert value(f, "issue_structure") == structure
+    assert value(f, "shares_at_floor") == fresh
+    assert value(f, "shares_at_cap") == fresh
+    assert value(f, "ofs_shares") == ofs
+    assert value(f, "total_offer_shares_at_cap") == total_cap
+    assert value(f, "total_offer_shares_at_floor") == total_floor
+    # Every one of these covers prints its band as "[*]": nothing priced may appear.
+    for name in ("price_band_floor", "price_band_cap", "lot_size", "ofs_amount",
+                 "ofs_amount_at_cap", "total_offer_amount_at_cap"):
+        assert value(f, name) is None, name
+
+
+def test_rhp_pure_ofs_states_the_fresh_leg_as_zero_rupees():
+    """NSE RHP p1: fresh issue size "Not applicable" -> 0 (spec row 35, OFS-only legitimately
+    0); the OFS leg's rupee amount is "[*] million" and stays null."""
+    f = rhp(_RHP_COVERS["national-stock-exchange-of-india-ltd"])
+    assert value(f, "fresh_issue_amount") == 0.0
+    assert f["fresh_issue_amount"]["state"] == "VALUE"
+    assert value(f, "ofs_amount") is None
+
+
+def test_rhp_table_fill_never_replaces_a_sentence_value():
+    """Horizon's sentence reads the fresh-only count; a table on the same cover cannot
+    overwrite it (the fill only fills nulls)."""
+    f = headline(HORIZON_COVER, doc_type="RHP")
+    assert value(f, "shares_at_cap") == 5269200.0
+    assert value(f, "total_offer_shares_at_cap") == 5269200.0
