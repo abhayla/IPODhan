@@ -113,8 +113,9 @@ mapping). Group the fields by cause. One cause usually explains many fields.
 ## STEP 5: Report to the owner
 
 In chat: counts per status, the top causes (with the number of fields each one explains), and what is next.
-On the Artifact page: the full table (field | printed? page | value in the document | value saved | status |
-cause). Publish to the SAME URL every round (the URL is kept in `references/progress.md`).
+On the Artifact page: render it from the round's data files, never by hand (every number counted, stamp from the clock):
+`python .claude/skills/offer-document-staging-test/scripts/render_report.py <out.html> "<IPO>: <n>. <TYPE> (<filing>)=<truth.json>,<causes.json>,<compare.json>" ...`
+(one argument per document tested so far, in test order). Publish to the SAME URL every round (`references/progress.md`).
 
 ## STEP 6: Fix each cause generically
 

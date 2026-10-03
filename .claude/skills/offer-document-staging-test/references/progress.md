@@ -1,6 +1,6 @@
 # Round state (update at the end of every step that changes it)
 
-Artifact page URL: (not published yet)
+Artifact page URL: https://claude.ai/artifact/XucBMmPTJMQQE8oQnd8xTa (publish with this `url`; never a second page)
 
 ## national-stock-exchange-of-india-ltd (round 1, started 2026-10-03)
 
