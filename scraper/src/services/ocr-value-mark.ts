@@ -40,9 +40,15 @@ export interface MarkableExtraction {
 
 /**
  * The extractor fields each receipted column is computed from, as read in
- * filing-persister.ts. Only the scalar columns of `ipos` and `ipo_details` are
- * receipted (item 6), so only they are mapped; anything else is unknown.
+ * filing-persister.ts. F-241 (OD-91): the record covers every table the persister
+ * writes, so every receipted column of every table is mapped; a receipt's mark is
+ * never null for a current envelope (round 2 of #1515). Child rows whose source
+ * depends on the row (an intermediary's role, an acquisition range's period) pass
+ * their own fields to `fieldsMark` instead (`INTERMEDIARY_ROLE_FIELDS`,
+ * `ACQUISITION_PERIOD_FIELDS`).
  */
+const STATEMENT_SERIES: readonly string[] = ['revenue_by_fy', 'total_income_by_fy', 'ebitda_by_fy', 'pat_by_fy', 'net_worth_by_fy', 'eps_basic_by_fy', 'eps_diluted_by_fy', 'op_cash_flow_by_fy', 'dscr_by_fy', 'rent_by_fy'];
+
 export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   ipos: {
     issueSize: ['total_offer_amount_at_cap', 'fresh_issue_amount', 'ofs_amount_at_cap', 'ofs_amount'],
@@ -60,6 +66,7 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
     // never replaces a website's stored value, so the mark must be known, not null.
     leadManagers: ['lead_managers'],
     registrar: ['registrar_name'],
+    companyWebsite: ['company_website'],
   },
   ipo_details: {
     basisOfAllotmentDate: ['basis_of_allotment_date'],
@@ -82,6 +89,94 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
     bidWindows: ['bid_windows'],
     promoterSharesHeld: ['promoter_shares_held'],
   },
+  // ---- F-241: child tables and side writers (filing-persister.ts sections 3-10).
+  // A row's identity columns (fiscalYear, basis) come from the series that produced the row.
+  financial_statements: {
+    fiscalYear: STATEMENT_SERIES,
+    basis: ['financial_basis', ...STATEMENT_SERIES],
+    unit: ['unit'],
+    revenue: ['revenue_by_fy'],
+    totalIncome: ['total_income_by_fy'],
+    ebitda: ['ebitda_by_fy'],
+    pat: ['pat_by_fy'],
+    netWorth: ['net_worth_by_fy'],
+    epsBasic: ['eps_basic_by_fy'],
+    epsDiluted: ['eps_diluted_by_fy'],
+    opCashFlow: ['op_cash_flow_by_fy'],
+    dscr: ['dscr_by_fy'],
+    rentExpense: ['rent_by_fy'],
+  },
+  ipo_valuation: {
+    priceFloor: ['price_band_floor'],
+    priceCap: ['price_band_cap'],
+    sharesAtFloor: ['shares_at_floor'],
+    sharesAtCap: ['shares_at_cap'],
+    freshSharesAtFloor: ['shares_at_floor'],
+    freshSharesAtCap: ['shares_at_cap'],
+    ofsShares: ['ofs_shares'],
+    totalSharesAtFloor: ['total_offer_shares_at_floor'],
+    totalSharesAtCap: ['total_offer_shares_at_cap'],
+    mcapAtFloor: ['market_cap_at_floor'],
+    mcapAtCap: ['market_cap_at_cap'],
+    peAtFloor: ['pe_at_floor'],
+    peAtCap: ['pe_at_cap'],
+    ronwWeighted3y: ['weighted_average_ronw'],
+    faceValueMultipleFloor: ['floor_multiple_of_face'],
+    faceValueMultipleCap: ['cap_multiple_of_face'],
+  },
+  promoters: {
+    name: ['promoter_names', 'promoter_name'],
+    waca: ['promoter_selling_shareholders', 'promoter_waca'],
+  },
+  ipo_risk_factors: { heading: ['risk_factors'], body: ['risk_factors'], kpis: ['risk_factors'] },
+  peer_companies: Object.fromEntries(
+    ['companyName', 'isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'].map((c) => [c, ['peer_companies']])
+  ),
+  brlm_track_record: {
+    brlmName: ['brlm_track_record'],
+    asOfDate: ['rhp_filing_date'],
+    issues3y: ['brlm_track_record'],
+    closedBelowIssuePrice: ['brlm_track_record'],
+  },
+  documents: { filingDate: ['rhp_filing_date'] },
+  financial_data: {
+    ...Object.fromEntries(
+      [2022, 2023, 2024].flatMap((fy) => [
+        [`revenueFy${fy}`, ['revenue_by_fy']],
+        [`profitFy${fy}`, ['pat_by_fy']],
+        [`ebitdaFy${fy}`, ['ebitda_by_fy']],
+        [`totalIncomeFy${fy}`, ['total_income_by_fy']],
+      ])
+    ),
+    netWorth: ['net_worth_by_fy'],
+    eps: ['eps_basic_by_fy'],
+    ronw: ['ronw_by_fy'],
+    currentRatio: ['current_ratio'],
+    quickRatio: ['quick_ratio'],
+    inventoryTurnover: ['inventory_turnover'],
+    peRatio: ['pe_at_cap'],
+    marketCap: ['market_cap_at_cap'],
+    promoterHoldingPreIssue: ['promoter_holding_pre_pct'],
+    promoterHoldingPostIssue: ['promoter_holding_post_pct_at_cap'],
+  },
+};
+
+/** ipo_intermediaries: every column of a row is read from the fields of that row's role. */
+export const INTERMEDIARY_ROLE_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  BRLM: ['lead_managers', 'lead_manager_sebi_reg'],
+  REGISTRAR: ['registrar_name', 'registrar_sebi_reg', 'registrar_contact_person', 'registrar_phone', 'registrar_email'],
+  SYNDICATE: ['syndicate_members'],
+  SUB_SYNDICATE: ['syndicate_members'],
+  SPONSOR_BANK: ['issue_banks'],
+  ESCROW_BANK: ['issue_banks'],
+  PUBLIC_ISSUE_BANK: ['issue_banks'],
+};
+
+/** promoter_acquisition_ranges: every column of a period's row is read from that period's two fields. */
+export const ACQUISITION_PERIOD_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  '1Y': ['waca_last_1y', 'cap_multiple_last_1y'],
+  '18M': ['waca_last_18m', 'cap_multiple_last_18m'],
+  '3Y': ['waca_last_3y', 'cap_multiple_last_3y'],
 };
 
 /** The mark of a value built from `names`, or null when it is unknown. */
