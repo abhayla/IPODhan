@@ -1,0 +1,13 @@
+{
+  "class_id": "a field reader gated by the document type it was first written for, not by which documents print the field",
+  "feature": "any extractor that dispatches readers by input type (if type == X run readers for X) where several input types print the same fields",
+  "symptom": "readers written while building support for one input type are placed inside that type's branch, so every other type that prints the same field silently never offers it. The miss looks like 'the document does not print it' and is never investigated, because nothing failed: the reader simply did not run.",
+  "first_seen": "2026-10-03 -- IPODhan extract_filing.py:3047 calls extract_price_band_ad (about 20 readers) only for PRICE_BAND_AD; the NSE DRHP prints allocation %, bid windows, designated exchange, RoNW, KPIs, BRLM track record and more, none offered. 22 of 94 misses. F-242.",
+  "fix_prs": "open -- run each reader for every type in the field's document family (scraper/config/document-families.json), each proven on real fixtures of every type before it is enabled",
+  "detection_check": "none -- an owner-test truth fixture per document type (offer-document-staging-test skill) is the first measure",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5",
+    "§2.5.6"
+  ]
+}

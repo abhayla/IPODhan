@@ -1,0 +1,12 @@
+{
+  "class_id": "a rule 'this document cannot state X' applied to a list that also holds fields not dependent on X",
+  "feature": "any extractor rule that nulls a group of fields because a document type legally lacks one input (price, date, count)",
+  "symptom": "the group was written as 'everything in the headline', so facts that do not depend on the missing input are blanked with the same reason, and the reason makes the blank look correct.",
+  "first_seen": "2026-10-03 -- IPODhan extract_filing.py:2520-2538 (W-171): 'DRHP has no price band by law' also nulls ofs_shares (NSE DRHP prints 148,905,525), fresh issue 'Not applicable' and '100% Book Built Offer'. 9 of 94 misses. F-244.",
+  "fix_prs": "open -- null only the price-dependent fields; read the price-independent ones",
+  "detection_check": "none",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5"
+  ]
+}

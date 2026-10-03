@@ -1,0 +1,13 @@
+{
+  "class_id": "a fragment read from a hard layout vetoes a complete value read elsewhere in the same document",
+  "feature": "any reader that cross-checks the same value across places in one document and fails closed on disagreement, where one place has a layout (multi-column, wrapped table) that the text extraction splits",
+  "symptom": "fail-closed agreement is meant to stop wrong values, but when one place yields a truncated fragment ('India Private Limited') or a row that overruns, the disagreement nulls the correct full value too, and with it every attribute read alongside it. The field ends up empty for every document with that layout.",
+  "first_seen": "2026-10-03 -- IPODhan NSE DRHP page 2: lead_managers_row_overrun nulls all 20 BRLMs; registrar 'India Private Limited' (cover) vs 'MUFG Intime India Private Limited' (GI p91) -> registrar_sources_disagree nulls name, email, phone, website. F-243.",
+  "fix_prs": "open -- treat a fragment that is a suffix/subset of the full reading as agreement, and isolate an overrunning row instead of failing the whole list; proven on 3 real covers",
+  "detection_check": "none",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5.6",
+    "§2.5.6"
+  ]
+}
