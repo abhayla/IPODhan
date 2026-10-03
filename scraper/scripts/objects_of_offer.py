@@ -64,7 +64,23 @@ _OFS_ONLY_RX = re.compile(
 
 NO_FRESH_ISSUE_REASON = "no_fresh_issue_pure_offer_for_sale"
 FRESH_ISSUE_ELSEWHERE_REASON = "fresh_issue_mentioned_outside_objects_page"
-_FRESH_ISSUE_RX = re.compile(r"fresh\s+(?:issue|offer)", re.I)
+# A fresh issue of THIS offer. Not one: the plural "fresh issues" (industry prose, "capital raised through
+# IPO (fresh issues and OFS)"), "a fresh offer document" (the withdrawal undertaking), and the cover's
+# "FRESH ISSUE SIZE" column header when the cover states that column "Not applicable". Real NSE DRHP
+# (d88fad44) pages 153, 191, 501 and its cover; every other mention still blocks STATED_NONE (fail closed).
+_FRESH_ISSUE_RX = re.compile(r"fresh\s+(?:issue(?!s)|offer(?!s|\s+documents?\b))", re.I)
+_FRESH_HEADER_NA_RX = re.compile(r"fresh\s+issue\s+size\b[^\d]{0,400}?\bnot\s+applicable\b", re.I)
+
+
+def _mentions_fresh_issue(text):
+    text = text or ""
+    for m in _FRESH_ISSUE_RX.finditer(text):
+        if _FRESH_HEADER_NA_RX.match(text, m.start()):
+            continue
+        return True
+    return False
+
+
 GCP_MAX_SHARE_OF_GROSS = 0.25
 F4_TOLERANCE = 0.01
 
@@ -313,7 +329,7 @@ def read_objects_of_offer(page_texts):
     # A stated absence clears a stored value (OD-160), so "no fresh issue" needs the whole offer, not one
     # page: any page that mentions a fresh issue (cover, "The Offer", the objects chapter) means the offer
     # may be mixed and the answer is a miss.
-    fresh_anywhere = any(_FRESH_ISSUE_RX.search(t or "") for _i, t in page_texts)
+    fresh_anywhere = any(_mentions_fresh_issue(t) for _i, t in page_texts)
     for pos, (idx, text) in enumerate(page_texts):
         if not any(_OBJECTS_HEAD_RX.match(ln) for ln in (text or "").split("\n")):
             continue

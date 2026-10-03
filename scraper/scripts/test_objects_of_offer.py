@@ -222,6 +222,38 @@ def test_pure_ofs_with_a_fresh_issue_on_the_cover_is_not_stated_none():
     assert f["state"] == answer_states.MISSED and f["value"] is None
 
 
+def test_nse_drhp_pure_ofs_is_stated_none_despite_non_offer_fresh_mentions():
+    # OD-164(c) / spec 2.5.6 item 3: "A pure offer for sale keeps the manifest's not-applicable reason."
+    # Real NSE DRHP text: industry prose "IPO (fresh issues and OFS)" (153, 191) and the undertaking to
+    # "file a fresh offer document" (501) describe no fresh issue in THIS offer.
+    pages = load("nse-mainboard-drhp-pure-ofs")
+    assert oo.read_objects_of_offer(pages) == {"state": "STATED_NONE", "reason": oo.NO_FRESH_ISSUE_REASON,
+                                               "page": 114}
+    f = envelope(pages, "DRHP")
+    assert f["state"] == answer_states.STATED_NOT_PRINTED and f["value"] is None
+    assert f["check"]["detail"] == oo.NO_FRESH_ISSUE_REASON
+
+
+@pytest.mark.parametrize("mention", [
+    "Fresh Issue of up to 1,000 million equity shares",
+    "The Offer comprises a Fresh Issue and an Offer for Sale",
+    "FRESH ISSUE SIZE Up to 1,000 million",
+    "Fresh Offer of 50,00,000 Equity Shares",
+])
+def test_an_offer_fresh_issue_still_blocks_stated_none(mention):
+    # Fail closed: a singular fresh issue / offer of THIS offer (including a cover header with an amount)
+    # still means the offer may be mixed.
+    a = oo.read_objects_of_offer([(1, "RED HERRING PROSPECTUS\n" + mention), (50, OFS_PAGE)])
+    assert a["state"] == "UNREADABLE" and a["reason"] == oo.FRESH_ISSUE_ELSEWHERE_REASON
+
+
+def test_cover_fresh_issue_size_header_stated_not_applicable_is_not_a_fresh_issue():
+    # The other text layer of the same NSE DRHP cover (PDF page 1): the column header with "Not applicable".
+    cover = "DETAILS OF THE OFFER TO THE PUBLIC\nTYPE\nFRESH\nISSUE SIZE\nSIZE OF THE\nOFFER FOR\nSALE\nOffer for Sale\nNot\napplicable"
+    a = oo.read_objects_of_offer([(0, cover), (50, OFS_PAGE)])
+    assert a["state"] == "STATED_NONE"
+
+
 def test_pure_ofs_with_no_fresh_issue_anywhere_stays_stated_none():
     a = oo.read_objects_of_offer([(1, "RED HERRING PROSPECTUS\nOffer for Sale of equity shares"), (50, OFS_PAGE)])
     assert a["state"] == "STATED_NONE"
