@@ -60,8 +60,9 @@ rounds learned and where the last round stopped.
 ## STEP 1: List the IPO's documents in test order
 
 ```bash
-export PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"\r')
-node .claude/skills/offer-document-staging-test/scripts/measure-doc-saved.cjs <ipo-slug>
+export DATABASE_HOST=localhost DATABASE_PORT=15432 DATABASE_NAME=ipodhan_staging DATABASE_USER=ipodhan_app
+export DATABASE_PASSWORD=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"\r')
+node .claude/skills/offer-document-staging-test/scripts/measure-doc-saved.mjs <ipo-slug>
 ```
 
 Offer documents are marked `*`. Pick the first one not marked DONE in `references/progress.md`. If an
