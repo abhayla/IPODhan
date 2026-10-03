@@ -662,7 +662,7 @@ def _iso_ocr(text):
 # mangles (a leading digit dropped, a share count split across a space) while the
 # sentence survives — so it is the fallback source for exactly those two figures.
 _PROSE_FRESH_RX = re.compile(
-    r"FRESH ISSUE OF UP TO[^\n]{0,120}?AGGREGATING UP TO\s*[^\d\n]{0,4}"
+    r"FRESH ISSUE OF UP TO[^\n]{0,300}?AGGREGATING UP TO\s*[^\d\n]{0,4}"
     r"([\d,]+(?:\.\d+)?)\s*MILLION", re.I)
 _PROSE_OFS_SHARES_RX = re.compile(
     r"OFFER FOR SALE OF UP TO\s+(\d[\d,\s]{4,14}?)\s*EQUITY SHARES", re.I)
@@ -2499,6 +2499,96 @@ def _offer_sentence(blob):
 _HEADLINE_MONEY_FIELDS = ("fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
                           "total_offer_amount_at_cap")
 
+# F-244: the draft's "DETAILS OF THE OFFER/ISSUE" table. pdfplumber interleaves its
+# columns, so the reader keys on three things that survive the interleave: the TYPE
+# cell (the first line after the ELIGIBILITY header that starts with a type), the
+# "up to N" share counts, and a NIL / "Not applicable" leg.
+DRHP_TABLE_START_RX = re.compile(r"DETAILS\s+OF\s+(?:THE\s+)?(?:OFFER|ISSUE)\b", re.I)
+DRHP_TABLE_END_RX = re.compile(
+    r"OFFER\s+FOR\s+SALE\s+BY|SELLING\s+SHAREHOLDERS|RISKS\s+IN\s+RELATION", re.I)
+DRHP_TYPE_RX = re.compile(
+    r"^\s*(FRESH\s+ISSUE\s+AND\b|FRESH\s+ISSUE\b|OFFER\s+FOR\s+SALE\b)", re.I)
+DRHP_UPTO_COUNT_RX = re.compile(r"\bUP\s*TO\s+([\d,]+)(?!\s*[\d,])", re.I)
+DRHP_PLACEHOLDER_COUNT_RX = re.compile(r"\bUP\s*TO\s+\[\S{0,3}\]\s+EQUITY", re.I)
+# "Not applicable" may be split by the interleave: "Not Up to 148,905,525 ..." / "applicable ...".
+DRHP_NIL_LEG_RX = re.compile(
+    r"\bNOT\s+APPLICABLE\b|\bNOT\b[^\n]{0,300}\n\s*APPLICABLE\b|\bNIL\b", re.I)
+_DRHP_SHARE_FIELDS = ("shares_at_floor", "shares_at_cap", "ofs_shares",
+                      "total_offer_shares_at_cap", "issue_structure")
+
+
+def _drhp_offer_table(blob):
+    """(offer type, [share counts], nil leg stated, None) or (None, None, None, why)."""
+    start = DRHP_TABLE_START_RX.search(blob)
+    if not start:
+        return None, None, None, "no 'details of the offer' table on the cover"
+    end = DRHP_TABLE_END_RX.search(blob, start.end())
+    region = blob[start.end():end.start() if end else start.end() + 3000]
+    lines = region.split("\n")
+    head = next((k for k, l in enumerate(lines) if re.search(r"ELIGIBILITY|ELIGIBLITY", l, re.I)), -1)
+    if head < 0:
+        return None, None, None, "offer table header (eligibility column) not found"
+    kind = type_count = None
+    for line in lines[head + 1:]:
+        m = DRHP_TYPE_RX.match(line)
+        if m:
+            # A table "by number of shares" prints the count right after the type
+            # cell with no "up to" (Panchatv: "Fresh Issue 16,75,200 NIL 1809.22").
+            tc = re.match(r"\s+(\d{1,3}(?:,\d{2,3})+)(?![\d.])", line[m.end():])
+            type_count = _num(tc.group(1)) if tc else None
+            word = re.sub(r"\s+", " ", m.group(1).upper())
+            kind = ("FRESH_AND_OFS" if word.startswith("FRESH ISSUE AND")
+                    else "FRESH_ONLY" if word.startswith("FRESH") else "OFS_ONLY")
+            break
+    if kind is None:
+        return None, None, None, "offer table type cell not readable"
+    if DRHP_PLACEHOLDER_COUNT_RX.search(region):
+        return kind, None, None, "share count printed as a placeholder"
+    counts = [c for c in (_num(c) for c in DRHP_UPTO_COUNT_RX.findall(region)) if c]
+    if not counts and type_count:
+        counts = [type_count]
+    return kind, counts, bool(DRHP_NIL_LEG_RX.search(region)), None
+
+
+def _drhp_price_independent(blob, cover_page, emit):
+    """Answer states per field: a printed value is put; a leg the cover states as
+    NIL / not applicable is put as 0; anything the table does not settle (no table,
+    a mixed fresh + OFS split, two different counts, a placeholder count) is null
+    with the reason, never guessed."""
+    fixed = bool(FIXED_PRICE_RX.search(blob))
+    book = bool(BOOK_BUILT_RX.search(blob))
+    price_type = "FIXED_PRICE" if fixed and not book else "BOOK_BUILDING" if book and not fixed else None
+    emit.put("issue_price_type", price_type, cover_page, "issue_process_named_on_cover",
+             (price_type is not None,
+              price_type or ("both 'fixed price' and 'book built' on the cover"
+                             if fixed and book else "neither wording on the cover")))
+
+    kind, counts, nil_leg, why = _drhp_offer_table(blob)
+    if why is None and kind == "FRESH_AND_OFS":
+        why = "fresh/OFS split not readable from a mixed offer table"
+    elif why is None and len(set(counts)) != 1:
+        why = ("no 'up to N' share count in the offer table" if not counts
+               else "offer table prints different share counts %s" % sorted(set(counts)))
+    elif why is None and not nil_leg:
+        why = "the other leg is not stated as nil / not applicable"
+    if why is not None:
+        for name in _DRHP_SHARE_FIELDS:
+            emit.null(name, "DRHP: %s" % why, cover_page)
+        return
+    shares = counts[0]
+    share_check = check_cover_share_count(shares)
+    nil = (True, "the cover's offer table states the other leg as nil / not applicable")
+    fresh = shares if kind == "FRESH_ONLY" else 0.0
+    emit.put("shares_at_floor", fresh, cover_page, "cover_share_count_plausible",
+             share_check if fresh else nil)
+    emit.put("shares_at_cap", fresh, cover_page, "cover_share_count_plausible",
+             share_check if fresh else nil)
+    emit.put("ofs_shares", shares - fresh, cover_page, "cover_share_count_plausible",
+             share_check if not fresh else nil)
+    emit.put("total_offer_shares_at_cap", shares, cover_page, "cover_share_count_plausible",
+             share_check)
+    emit.put("issue_structure", kind, cover_page, "offer_type_named_on_cover", nil)
+
 
 def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=None,
                                doc_type=None):
@@ -2516,6 +2606,11 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
     those patterns is tried. `face_value` is different: it is the company's par
     value, fixed at registration and legitimately printed on a DRHP cover, so it
     is still read.
+
+    F-244: the rule blanks only what depends on a price. The cover's offer table
+    states the issue process and the share counts in shares, which a draft prints
+    by law too, so `_drhp_price_independent` reads those (and fails closed on any
+    table it cannot resolve). Rupee amounts stay null: on a draft they are "[*]".
     """
     if doc_type == "DRHP":
         skip_reason = "DRHP has no price band by law (face value kept)"
@@ -2530,11 +2625,10 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
         emit.put("face_value", face, cover_page, "cover_face_value_plausible",
                  check_cover_face_value(face))
 
-        for name in (("price_band_floor", "price_band_cap", "lot_size",
-                      "shares_at_floor", "shares_at_cap", "ofs_shares",
-                      "total_offer_shares_at_cap", "issue_structure", "issue_price_type")
+        for name in (("price_band_floor", "price_band_cap", "lot_size")
                      + _HEADLINE_MONEY_FIELDS):
             emit.null(name, skip_reason)
+        _drhp_price_independent(blob, cover_page, emit)
         return
 
     blob, _lines, pages = _cover_lines(page_texts)

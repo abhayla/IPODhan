@@ -423,11 +423,13 @@ def test_drhp_never_emits_a_price_band_even_when_the_cover_would_match():
     f = headline(KANOHAR_SHAPE_COVER, doc_type="DRHP")
     for name in ("price_band_floor", "price_band_cap", "lot_size",
                  "shares_at_floor", "shares_at_cap", "ofs_shares",
-                 "total_offer_shares_at_cap", "issue_structure", "issue_price_type",
+                 "total_offer_shares_at_cap", "issue_structure",
                  "fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
                  "total_offer_amount_at_cap"):
         assert value(f, name) is None, name
     assert value(f, "face_value") == 10.0
+    # F-244: the process is not a price; "100% Book Built Issue" is read on a draft.
+    assert value(f, "issue_price_type") == "BOOK_BUILDING"
     assert value(f, "headline_source") is None
     assert value(f, "headline_skipped_reason") is None
     assert f["headline_skipped_reason"]["check"]["detail"] == \
@@ -452,3 +454,77 @@ def test_headline_helper_default_doc_type_is_unaffected():
     (defaults to None) and must keep parsing exactly as before."""
     f = headline(AUTOFURNISH_COVER)
     assert value(f, "price_band_floor") == 41.0
+
+
+# --------------------------------------------------------------------------- #
+# F-244 — W-171 blanks only what depends on a price. Five REAL DRHP covers
+# (fixtures/drhp-covers/drhp-covers.json, page 1 as pdfplumber returns it).
+# Values read by hand off each cover:
+#   NSE      "Offer for Sale" | fresh "Not applicable" | up to 148,905,525 | 100% Book Built Offer
+#   Nityas   "Fresh Issue" | up to 14,456,000 | OFS "Not applicable" | 100% Book Built Issue
+#   Orient   "Fresh Issue and Offer for Sale" | counts "[*]" | 100% Book Built Offer
+#   RK       "Fresh Issue" | upto 42,67,200 | OFS "NIL" | 100% BOOK BUILT ISSUE (SME)
+#   Panchatv "Fresh Issue" 16,75,200 | OFS "NIL" | 100% Fixed Price Issue (SME draft prospectus)
+# --------------------------------------------------------------------------- #
+import json  # noqa: E402
+
+_COVERS = {c["slug"]: c["text"] for c in json.load(open(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "fixtures", "drhp-covers", "drhp-covers.json"), encoding="utf-8"))["covers"]}
+
+_DRHP_EXPECTED = {
+    "national-stock-exchange-of-india-ltd":
+        ("BOOK_BUILDING", "OFS_ONLY", 0.0, 148905525.0, 148905525.0),
+    "nityas-gems-and-jewellery-ltd":
+        ("BOOK_BUILDING", "FRESH_ONLY", 14456000.0, 0.0, 14456000.0),
+    "r-k-fashion-accessories-ltd":
+        ("BOOK_BUILDING", "FRESH_ONLY", 4267200.0, 0.0, 4267200.0),
+    "panchatv-bharat-ltd":
+        ("FIXED_PRICE", "FRESH_ONLY", 1675200.0, 0.0, 1675200.0),
+}
+
+
+@pytest.mark.parametrize("slug", sorted(_DRHP_EXPECTED))
+def test_drhp_reads_price_independent_facts_off_real_covers(slug):
+    ptype, structure, fresh, ofs, total = _DRHP_EXPECTED[slug]
+    f = headline(_COVERS[slug], segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+    assert value(f, "issue_price_type") == ptype
+    assert value(f, "issue_structure") == structure
+    assert value(f, "shares_at_floor") == fresh
+    assert value(f, "shares_at_cap") == fresh
+    assert value(f, "ofs_shares") == ofs
+    assert value(f, "total_offer_shares_at_cap") == total
+    # Everything priced stays null on a draft (W-171 unchanged).
+    for name in ("price_band_floor", "price_band_cap", "lot_size", "fresh_issue_amount",
+                 "ofs_amount", "ofs_amount_at_cap", "total_offer_amount_at_cap"):
+        assert value(f, name) is None, name
+
+
+def test_drhp_mixed_offer_with_placeholder_counts_fails_closed():
+    """Orient: a fresh + OFS table whose counts are "[*]" cannot be split -> null, with the reason."""
+    f = headline(_COVERS["orient-cables-india-ltd"], segment="MAINBOARD", doc_unit="millions",
+                 doc_type="DRHP")
+    assert value(f, "issue_price_type") == "BOOK_BUILDING"
+    for name in ("shares_at_floor", "shares_at_cap", "ofs_shares", "total_offer_shares_at_cap",
+                 "issue_structure"):
+        assert value(f, name) is None, name
+        assert f[name]["check"]["detail"] == "DRHP: share count printed as a placeholder"
+
+
+def test_drhp_unstated_other_leg_fails_closed():
+    """The NSE cover with its "Not applicable" cell removed: the count alone does not say which
+    leg is empty, so nothing share-related is written."""
+    text = _COVERS["national-stock-exchange-of-india-ltd"].replace("Not", "Up").replace(
+        "applicable", "")
+    f = headline(text, segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+    assert value(f, "ofs_shares") is None
+    assert f["ofs_shares"]["check"]["detail"] ==         "DRHP: the other leg is not stated as nil / not applicable"
+
+
+def test_drhp_two_different_counts_fail_closed():
+    text = _COVERS["nityas-gems-and-jewellery-ltd"].replace(
+        "Up to 14,456,000 Not applicable Up to 14,456,000",
+        "Up to 14,456,000 Not applicable Up to 14,465,000")
+    f = headline(text, segment="MAINBOARD", doc_unit="millions", doc_type="DRHP")
+    assert value(f, "total_offer_shares_at_cap") is None
+    assert "different share counts" in f["total_offer_shares_at_cap"]["check"]["detail"]
