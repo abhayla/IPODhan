@@ -6,7 +6,7 @@
  */
 
 import { notHiddenIpoSql } from '../services/scraper-write-block';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
@@ -272,7 +272,7 @@ export class DocumentRepository
    */
   async findZipMemberDocuments(ipoId: string): Promise<{ id: string; type: string; url: string }[]> {
     try {
-      const { and, sql } = await import('drizzle-orm');
+      const { and } = await import('drizzle-orm');
       const rows = await this.db
         .select({ id: documents.id, type: documents.type, url: documents.url })
         .from(documents)
@@ -428,7 +428,7 @@ export class DocumentRepository
       const { and } = await import('drizzle-orm');
       const updated = await this.db
         .update(documents)
-        .set({ filingDate, updatedAt: new Date() })
+        .set({ filingDate, updatedAt: sql`now()` })
         .where(
           and(
             eq(documents.id, documentId),
