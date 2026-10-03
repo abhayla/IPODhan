@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Lives under tests/ because it is test-database seeding (writes ipodhan_test only, refuses any other
+// database), the same category the write ratchet exempts for test setup code.
 // Copy ONE IPO's rows (its registrar and other FK parents, the ipos row, its documents rows) from
 // ipodhan_staging (read only) into ipodhan_test (the laptop loop's database), then prove the copy is
 // exact column by column. --reset first deletes that IPO's rows (and its receipts) from ipodhan_test.

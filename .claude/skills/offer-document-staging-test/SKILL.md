@@ -84,7 +84,7 @@ Once per IPO (and again with `--reset` whenever staging's rows change), copy the
 the script proves the copy is exact column by column and refuses to pass otherwise:
 
 ```bash
-node .claude/skills/offer-document-staging-test/scripts/seed-test-db.mjs <ipo-slug> [--reset]
+node .claude/skills/offer-document-staging-test/tests/seed-test-db.mjs <ipo-slug> [--reset]
 ```
 
 Then run the real document step from the checkout under test (a fix branch worktree), with staging's `ENABLE_*`
