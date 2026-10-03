@@ -2041,6 +2041,19 @@ export async function persistFilingExtraction(
   mark('complianceOfficer', str(extraction, mappedField('ipo_details', 'complianceOfficer')));
   mark('complianceOfficerPhone', str(extraction, mappedField('ipo_details', 'complianceOfficerPhone')));
   mark('complianceOfficerEmail', str(extraction, mappedField('ipo_details', 'complianceOfficerEmail')));
+  // Appendix A rows 61-66: the issuer's registered office and contact (issuer_address.py; rows 62-63
+  // are the cover's issuer contact block, the same reading as the compliance officer's, supervisor
+  // decision 2026-10-03). Rows 73-74: the retail and employee maximum bid amounts in rupees (OD-48).
+  mark('companyAddress', str(extraction, mappedField('ipo_details', 'companyAddress')));
+  mark('companyCity', str(extraction, mappedField('ipo_details', 'companyCity')));
+  mark('companyState', str(extraction, mappedField('ipo_details', 'companyState')));
+  mark('companyPincode', str(extraction, mappedField('ipo_details', 'companyPincode')));
+  mark('companyPhone', str(extraction, mappedField('ipo_details', 'companyPhone')));
+  mark('companyEmail', str(extraction, mappedField('ipo_details', 'companyEmail')));
+  const maxRetail = num(extraction, mappedField('ipo_details', 'maxRetailSubscription'));
+  if (maxRetail !== null) mark('maxRetailSubscription', maxRetail.toString());
+  const maxEmployee = num(extraction, mappedField('ipo_details', 'maxEmployeeSubscription'));
+  if (maxEmployee !== null) mark('maxEmployeeSubscription', maxEmployee.toString());
   mark('companyDescription', description);
   if (faceValue !== null) mark('faceValue', faceValue.toString());
   const lotMultiple = num(extraction, mappedField('ipo_details', 'lotMultiple'));
