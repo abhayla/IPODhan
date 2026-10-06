@@ -25,6 +25,7 @@ import re
 from extract_financials_pdf import (
     _BALANCE_SHEET_HEADING,
     _align_factory,
+    _inline_period_columns,
     _PERIOD_END,
     _YEARS_ONLY_LINE,
     _is_clean_data_row,
@@ -129,6 +130,16 @@ def read_balance_totals(page_texts, pnl_page):
     align = _align_factory(column_fy, years)
     assets, a_why = _one_series(_clean_rows(lines, TOTAL_ASSETS_RX), align, "total_assets")
     reserves, r_why = _one_series(_clean_rows(lines, RESERVES_RX), align, "reserves")
+    mismatch = "_row_columns_do_not_match_the_year_header"
+    if stacked is None and any(w and w.endswith(mismatch) for w in (a_why, r_why)):
+        # D11, AceVector DRHP p314: a one-line header naming each column's period end with its year
+        # ("September 30, 2025 ... March 31, 2023"). Tried only when the plain year reading could
+        # not map a row, so a statement read today is read exactly as before; unpairable = refused.
+        inline = _inline_period_columns(lines[:_HEADER_LINES])
+        if inline is not None and inline != "UNRESOLVED":
+            align = _align_factory(inline, [y for y in inline if y is not None])
+            assets, a_why = _one_series(_clean_rows(lines, TOTAL_ASSETS_RX), align, "total_assets")
+            reserves, r_why = _one_series(_clean_rows(lines, RESERVES_RX), align, "reserves")
     if assets is not None and any(v <= 0 for v in assets.values()):
         assets, a_why = None, "total_assets_not_positive"
     if assets is not None and reserves is not None and any(

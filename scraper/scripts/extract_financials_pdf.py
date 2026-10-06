@@ -469,16 +469,22 @@ def _parse_pnl_page(text):
         if _year_header_years(candidate):
             year_header = candidate
             break
-    if year_header is None:
-        return None
-    annual_years = _year_header_years(year_header)
-    annual_years.sort(reverse=True)
-    if not annual_years:
-        return None
-
-    interim = _count_interim_columns(header)
-    column_fy = ([None] * interim) + annual_years
-    return _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table)
+    parsed = None
+    if year_header is not None:
+        annual_years = _year_header_years(year_header)
+        annual_years.sort(reverse=True)
+        if annual_years:
+            interim = _count_interim_columns(header)
+            column_fy = ([None] * interim) + annual_years
+            parsed = _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table)
+    if parsed is None:
+        # D11, AceVector DRHP p315: tried only when the readings above read NOTHING from the page,
+        # so a page read today is read exactly as before.
+        inline = _inline_period_columns(window)
+        if inline is not None and inline != "UNRESOLVED":
+            annual = [y for y in inline if y is not None]
+            parsed = _finish_pnl_page(text, lines, inline, annual, is_kpi_table)
+    return parsed
 
 
 # Item 46 round 2 (OD-165, §5.6 C): a mainboard restated summary often STACKS its
@@ -526,6 +532,42 @@ def _stacked_header_columns(window):
             column_fy.append(year if (month == "march" and day == 31) else None)
         annual = [y for y in column_fy if y is not None]
         if not annual or len(set(annual)) != len(annual):
+            return "UNRESOLVED"
+        return column_fy
+    return None
+
+
+# D11, AceVector DRHP p315 / p314: the header prints every column's period end WITH its own year on
+# one line, stub columns first ("September 30, 2025 September 30, 2024 March 31, 2025 March 31, 2024
+# March 31, 2023"). The year reader above takes only the March 31 years and counts only December
+# stubs, so five-cell rows met a three-column header and the statement was dropped. Here each period
+# end is one column, in printed order: March 31 is that fiscal year, any other period end a stub
+# (read and dropped).
+_PERIOD_END_WITH_YEAR = re.compile(
+    r"\b(%s)\s+(\d{1,2}),?\s*(20\d{2})\b|\b(\d{1,2})\s+(%s),?\s*(20\d{2})\b" % (_MONTHS, _MONTHS),
+    re.I)
+
+
+def _inline_period_columns(window):
+    """column_fy for the nearest line in `window` (bottom up) naming two or more dated period ends,
+    None when no line does, or "UNRESOLVED" when that line cannot be paired column for column: any
+    other digit on the line (a stray year, a note number), no March 31 column, a fiscal year named
+    twice, or fiscal years not newest first. Never a guessed column map. The caller's row aligner
+    then requires each row to carry exactly one cell per column (plus at most two note numbers)."""
+    for line in reversed(window):
+        ends = list(_PERIOD_END_WITH_YEAR.finditer(line))
+        if len(ends) < 2:
+            continue
+        if re.search(r"\d", _PERIOD_END_WITH_YEAR.sub(" ", line)):
+            return "UNRESOLVED"
+        column_fy = []
+        for m in ends:
+            month = (m.group(1) or m.group(5)).lower()
+            day = int(m.group(2) or m.group(4))
+            year = int(m.group(3) or m.group(6))
+            column_fy.append(year if (month == "march" and day == 31) else None)
+        annual = [y for y in column_fy if y is not None]
+        if not annual or annual != sorted(set(annual), reverse=True):
             return "UNRESOLVED"
         return column_fy
     return None
