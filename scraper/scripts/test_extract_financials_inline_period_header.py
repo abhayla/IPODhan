@@ -93,3 +93,60 @@ def test_rows_with_more_cells_than_the_header_read_nothing():
     out = extract_from_texts([(315, broken)])
     assert out["annualYears"] == [] or 3719.63 not in out["metrics"].get("revenue", {}).values()
     assert "revenue" not in out["metrics"]
+
+
+# Revise round 1 (independent review): the inline path's aligner is strict - one cell per column.
+from extract_financials_pdf import _align_factory  # noqa: E402
+
+STUB_COLUMNS = [None, None, 2025, 2024, 2023]
+
+
+def test_strict_aligner_never_reads_a_short_row_positionally():
+    strict = _align_factory(STUB_COLUMNS, [2025, 2024, 2023], strict=True)
+    assert strict("Revenue from operations 21 3,950.19 3,797.61") is None
+
+
+def test_strict_aligner_reads_the_full_row_with_its_note_number():
+    strict = _align_factory(STUB_COLUMNS, [2025, 2024, 2023], strict=True)
+    row = "Revenue from operations 21 2,444.21 1,811.74 3,950.19 3,797.61 3,719.63"
+    assert strict(row) == {2025: 3950.19, 2024: 3797.61, 2023: 3719.63}
+
+
+def test_strict_aligner_refuses_a_dash_cell_and_a_shifted_note():
+    strict = _align_factory(STUB_COLUMNS, [2025, 2024, 2023], strict=True)
+    # "-" is dropped by money_values; the note 4 would otherwise land in the first column.
+    assert strict("Intangible assets under development 4 - 45.10 63.10 1.00 2.00") is None
+    assert strict("Other equity 15 1,248.50 988.11 (1,689.02) (169.17)") is None
+
+
+def test_existing_callers_keep_the_annual_only_reading():
+    plain = _align_factory(STUB_COLUMNS, [2025, 2024, 2023])
+    assert plain("Revenue from operations 21 3,950.19 3,797.61") == {2025: 21.0, 2024: 3950.19,
+                                                                     2023: 3797.61}
+
+
+def test_day_month_order_header():
+    line = "30 September 2025 30 September 2024 31 March 2025 31 March 2024 31 March 2023"
+    assert _inline_period_columns([line]) == STUB_COLUMNS
+
+
+def test_stub_columns_after_the_annual_ones_pair_in_printed_order():
+    cols = _inline_period_columns(["March 31, 2025 March 31, 2024 September 30, 2025"])
+    assert cols == [2025, 2024, None]
+    strict = _align_factory(cols, [2025, 2024], strict=True)
+    assert strict("Revenue from operations 100.00 90.00 55.00") == {2025: 100.0, 2024: 90.0}
+
+
+def test_abbreviated_month_and_fiscal_headers_resolve_nothing():
+    assert _inline_period_columns(["Mar 31, 2025 Mar 31, 2024 Mar 31, 2023"]) is None
+    assert _inline_period_columns(["Fiscal 2025 Fiscal 2024 Fiscal 2023"]) is None
+
+
+def test_balance_sheet_keeps_a_series_the_plain_reading_already_read():
+    page = ("Restated Statement of Assets and Liabilities\n(in million)\n"
+            "Particulars September 30, 2025 March 31, 2025 March 31, 2024\n"
+            "Total assets 200.00 150.00\n"
+            "Other equity 15 30.00 20.00 10.00\n")
+    got = issuer_balance_rows.read_balance_totals([(10, page)], None)
+    assert got["total_assets_by_fy"] == ({"2025": 200.0, "2024": 150.0}, 10, None)
+    assert got["reserves_by_fy"] == ({"2025": 20.0, "2024": 10.0}, 10, None)

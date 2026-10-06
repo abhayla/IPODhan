@@ -137,9 +137,12 @@ def read_balance_totals(page_texts, pnl_page):
         # not map a row, so a statement read today is read exactly as before; unpairable = refused.
         inline = _inline_period_columns(lines[:_HEADER_LINES])
         if inline is not None and inline != "UNRESOLVED":
-            align = _align_factory(inline, [y for y in inline if y is not None])
-            assets, a_why = _one_series(_clean_rows(lines, TOTAL_ASSETS_RX), align, "total_assets")
-            reserves, r_why = _one_series(_clean_rows(lines, RESERVES_RX), align, "reserves")
+            strict = _align_factory(inline, [y for y in inline if y is not None], strict=True)
+            # Only a series that failed on the mismatch is re-read; one already read stays as it is.
+            if a_why and a_why.endswith(mismatch):
+                assets, a_why = _one_series(_clean_rows(lines, TOTAL_ASSETS_RX), strict, "total_assets")
+            if r_why and r_why.endswith(mismatch):
+                reserves, r_why = _one_series(_clean_rows(lines, RESERVES_RX), strict, "reserves")
     if assets is not None and any(v <= 0 for v in assets.values()):
         assets, a_why = None, "total_assets_not_positive"
     if assets is not None and reserves is not None and any(

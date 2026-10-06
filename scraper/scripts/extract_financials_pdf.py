@@ -370,7 +370,7 @@ def _is_clean_data_row(line, label_end):
     return not _HAS_LETTER.search(tail_no_parens)
 
 
-def _align_factory(column_fy, annual_years):
+def _align_factory(column_fy, annual_years, strict=False):
     """Build an aligner for a known column structure (closes over the FY mapping).
 
     `column_fy` lists the fiscal year for every data column, left to right, with
@@ -395,6 +395,8 @@ def _align_factory(column_fy, annual_years):
         tokens = MONEY.findall(_normalize_numbers(line))
         vals = money_values(line)
         extra = len(vals) - ncols
+        if strict:
+            return _strict_cells(line, tokens, vals, extra)
         if ncols >= 1 and 0 <= extra <= 2 and len(tokens) == len(vals):
             leading = tokens[:extra]
             if all(NOTE_TOKEN.match(t) for t in leading):
@@ -403,6 +405,25 @@ def _align_factory(column_fy, annual_years):
         if len(vals) == len(annual_years):  # row carries only the annual columns
             return {annual_years[i]: vals[i] for i in range(len(vals))}
         return None
+
+    def _strict_cells(line, tokens, vals, extra):
+        # strict (the one-line period header, D11): exactly one cell per column, stubs included.
+        # No annual-only reading: under a stub header a three-cell row is a row with cells missing,
+        # and reading it positionally put a note number in the FY column ("Revenue 21 3,950.19
+        # 3,797.61" -> {2025: 21.0}). A "-" cell is dropped by money_values, so a row printing one
+        # cannot be placed column for column and is refused; so is a row whose first taken cell is
+        # note-shaped while the others are decimals (a note number shifted into a column).
+        if not (0 <= extra <= 2) or len(tokens) != len(vals):
+            return None
+        if re.search(r"(?:^|\s)[-\u2013\u2014](?=\s|$)", line):
+            return None
+        if not all(NOTE_TOKEN.match(t) for t in tokens[:extra]):
+            return None
+        taken = tokens[extra:]
+        if NOTE_TOKEN.match(taken[0]) and any("." in t for t in taken[1:]):
+            return None
+        tail = vals[extra:]
+        return {column_fy[i]: tail[i] for i in range(ncols) if column_fy[i] is not None}
 
     return align
 
@@ -483,7 +504,7 @@ def _parse_pnl_page(text):
         inline = _inline_period_columns(window)
         if inline is not None and inline != "UNRESOLVED":
             annual = [y for y in inline if y is not None]
-            parsed = _finish_pnl_page(text, lines, inline, annual, is_kpi_table)
+            parsed = _finish_pnl_page(text, lines, inline, annual, is_kpi_table, strict=True)
     return parsed
 
 
@@ -670,8 +691,8 @@ def _continuation_eps(page_texts, best):
     return series, combined, ambiguous, nxt_idx
 
 
-def _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table):
-    align = _align_factory(column_fy, annual_years)
+def _finish_pnl_page(text, lines, column_fy, annual_years, is_kpi_table, strict=False):
+    align = _align_factory(column_fy, annual_years, strict=strict)
 
     metrics = {}
     eps_series, eps_combined, eps_ambiguous = _read_eps_rows(lines, align)
