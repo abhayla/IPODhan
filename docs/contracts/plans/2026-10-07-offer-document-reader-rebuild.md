@@ -70,7 +70,15 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
 3b. Same locator + grid + dictionary for the other mandated sections that print them: "Other Financial Information"
    (accounting ratios: net worth, RoNW, EBITDA), KPI tables in "Basis for Offer Price", the capitalisation statement
    (total borrowings), notes (rent). Bar: those 5 families wrong = 0, found >= today's (EBITDA 23, net worth 20,
-   borrowing 3, RoNW 6, rent 6).
+   borrowing 3, RoNW 6, rent 6). -- MET 2026-10-07: EBITDA 28/0/18, net worth 24/0/14, borrowing 3/0/3, RoNW 6/0/2,
+   rent 18/0/0; ALL families 326 correct / 0 wrong / 56 missed vs today's reader 164 / 30 / 188 (382 keyed values,
+   8 documents). Sources located by contents title: Other Financial Information, Basis for Offer Price, Capitalisation
+   Statement, restated notes, and the Offer Document Summary (SEBI-mandated section of the same document; it is where
+   the keys take Hero/ARC/Orient net worth and borrowings). Any two disagreeing printed values -> field refused (F-248).
+   RISK: 11 wrong values were fixed while iterating against these same 8 keys, so 0 wrong is a TRAINING-SET result.
+3c. BLIND HOLD-OUT (next): answer keys for 4 mainboard DRHPs the pipeline was never tuned on, built from the PDF by a
+   worker that never sees pipeline output; bar: wrong = 0 on the hold-out. A wrong value there means the method is
+   overfit -> fix the class, then a NEW hold-out (never re-score the same hold-out after tuning on it).
 4. Validation (copies + identities) wired; bar: the 3 wrong-value classes from 2026-10-07 are rejected by
    construction (tests), wrong = 0, found >= baseline.
 5. Swap the new financial reader in behind the existing output shape; NSE DRHP 89/90 and RHP 88/90 in the test DB
