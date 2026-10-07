@@ -3045,8 +3045,9 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # report passed=None (not evaluated), never a false rejection.
     # W-148: the segment decides the year-on-year plausibility band — an SME
     # issuer legitimately grows far faster than the mainboard band allows.
+    # D11 wrapped header: the word boxes of a titled P&L page no text-only reading reads.
     pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees,
-                                 segment=segment)
+                                 segment=segment, words_for_page=words_for_page)
     fiscal_years = pnl.get("annualYears") or []
     metrics = pnl.get("metrics") or {}
     # MAJOR-1 (C7): do NOT trust `pnl["unit"]` — the shared module's own detector

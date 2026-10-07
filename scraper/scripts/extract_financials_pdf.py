@@ -594,6 +594,157 @@ def _inline_period_columns(window):
     return None
 
 
+# D11, wrapped header (Runwal DRHP p77, Rentomojo DRHP p259, Deepa DRHP p80): each column's period
+# end wraps over two to four lines and the stub column's lines interleave with the fiscal columns'
+# ("ended March" / "31, 2024 31, 2023" / "September 30," / "2024"), so no text line pairs a column
+# with its period. The page's word boxes do: every column is anchored on its figure in the revenue
+# row, and each header phrase above it falls under exactly one column. A March 31 period end is that
+# fiscal year, "Fiscal YYYY" / "FY YYYY" is that fiscal year, any other period end a stub (read and
+# dropped). Tried only when every text-only reading reads nothing from the page.
+_DATA_ANCHOR_RX = re.compile(r"revenue\s+from\s+operations|total\s+income", re.I)
+_NUMERIC_WORD = re.compile(r"^[(\-]?[\d,.]*\d[\d,.]*\)?$")
+_GEOMETRY_PERIOD = re.compile(
+    r"\b(%s)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(20\d{2})(?!\d)"
+    r"|(?<!\d)(\d{1,2})(?:st|nd|rd|th)?\s+(%s),?\s*(20\d{2})(?!\d)" % (_MONTHS, _MONTHS), re.I)
+_GEOMETRY_FISCAL = re.compile(r"\b(?:Fiscal|FY)\s*(20\d{2})(?!\d)", re.I)
+_GEOMETRY_STOP_RX = re.compile(r"statement\s+of\s+profit|key\s+performance\s+indicators", re.I)
+_LINE_TOL = 3.0
+_PHRASE_GAP = 5.0
+_CELL_GAP = 3.0
+_HEADER_LINES = 10
+
+
+def _word_lines(words):
+    """Word boxes grouped into lines (top within _LINE_TOL), top to bottom, each left to right."""
+    lines = []
+    for w in sorted(words, key=lambda w: (w["top"], w["x0"])):
+        if lines and abs(w["top"] - lines[-1][0]) <= _LINE_TOL:
+            lines[-1][1].append(w)
+        else:
+            lines.append([w["top"], [w]])
+    return [sorted(ws, key=lambda w: w["x0"]) for _t, ws in lines]
+
+
+def _runs(words, gap):
+    """Left-to-right runs of words whose gaps are at most `gap` points: (text, x0, x1)."""
+    out = []
+    for w in words:
+        if out and w["x0"] - out[-1][2] <= gap:
+            out[-1] = (out[-1][0] + " " + w["text"], out[-1][1], max(out[-1][2], w["x1"]))
+        else:
+            out.append((w["text"], w["x0"], w["x1"]))
+    return out
+
+
+def _column_period(text):
+    """("FY", year) / ("STUB", None) for the one period a column header names, else None."""
+    ends = list(_GEOMETRY_PERIOD.finditer(text))
+    fiscal = list(_GEOMETRY_FISCAL.finditer(text))
+    years = re.findall(r"(?<!\d)20\d{2}(?!\d)", text)
+    if len(ends) == 1 and not fiscal and len(years) == 1:
+        if len(re.findall(r"\b(?:%s)\b" % _MONTHS, text, re.I)) != 1:
+            return None
+        m = ends[0]
+        month = (m.group(1) or m.group(5)).lower()
+        day = int(m.group(2) or m.group(4))
+        year = int(m.group(3) or m.group(6))
+        return ("FY", year) if (month == "march" and day == 31) else ("STUB", None)
+    if len(fiscal) == 1 and not ends and len(years) == 1 and not re.search(
+            r"\b(?:%s)\b" % _MONTHS, text, re.I):
+        return ("FY", int(fiscal[0].group(1)))
+    return None
+
+
+def _geometry_period_columns(text, words):
+    """column_fy from the page's word boxes, None when the page has no anchor row in its word boxes,
+    or "UNRESOLVED" when the header cannot be paired column for column: a column naming no period
+    end or two (a leading note-number column excepted), a figure count that differs from the text
+    row's, a fiscal year named twice, or fiscal years not newest first. Never a guessed column map."""
+    if not words:
+        return None
+    lines = _word_lines(words)
+    text_lines = text.split("\n")
+    data_start = next((i for i, ln in enumerate(text_lines)
+                       if _DATA_ANCHOR_RX.search(_rejoin_split_initial(ln))), None)
+    if data_start is None:
+        return None
+    for li, line in enumerate(lines):
+        joined = _rejoin_split_initial(" ".join(w["text"] for w in line))
+        if not _DATA_ANCHOR_RX.search(joined):
+            continue
+        k = len(line)
+        while k > 0 and _NUMERIC_WORD.match(line[k - 1]["text"]):
+            k -= 1
+        if k == 0 or len(line) - k < 2:
+            continue
+        cells = _runs(line[k:], _CELL_GAP)
+        break
+    else:
+        return None
+    if len(cells) != len(money_values(text_lines[data_start])):
+        return "UNRESOLVED"
+    label_x1 = line[k - 1]["x1"]
+    centers = [(x0 + x1) / 2.0 for _t, x0, x1 in cells]
+    bounds = [(label_x1 + cells[0][1]) / 2.0]
+    bounds += [(centers[i] + centers[i + 1]) / 2.0 for i in range(len(centers) - 1)]
+    bounds.append(centers[-1] + (centers[-1] - bounds[-1]))
+    header_text = [[] for _c in cells]
+    taken = 0
+    for above in reversed(lines[:li]):
+        joined = " ".join(w["text"] for w in above)
+        if _GEOMETRY_STOP_RX.search(joined) or re.search(r"\d[\d,]*\.\d{2}\b", joined):
+            break
+        taken += 1
+        if taken > _HEADER_LINES:
+            break
+        for phrase, x0, x1 in _runs(above, _PHRASE_GAP):
+            centre = (x0 + x1) / 2.0
+            for c in range(len(cells)):
+                if bounds[c] <= centre < bounds[c + 1]:
+                    header_text[c].insert(0, phrase)
+                    break
+    column_fy = []
+    for c, (cell, _x0, _x1) in enumerate(cells):
+        period = _column_period(" ".join(header_text[c]))
+        if period is None:
+            if c == 0 and re.match(r"^\(?\d{1,2}\)?$", cell) and not re.search(
+                    r"20\d{2}|\b(?:%s)\b" % _MONTHS, " ".join(header_text[c]), re.I):
+                continue  # the note-number column: its figures are note references, never money
+            return "UNRESOLVED"
+        column_fy.append(period[1] if period[0] == "FY" else None)
+    annual = [y for y in column_fy if y is not None]
+    if not annual or annual != sorted(set(annual), reverse=True):
+        return "UNRESOLVED"
+    return column_fy
+
+
+def _parse_pnl_page_by_geometry(text, words):
+    """The P&L page read on its word-box column map (see _geometry_period_columns); None when the
+    map does not resolve. Rows are read one cell per column (the strict aligner)."""
+    is_kpi_table = bool(re.search(r"key\s+performance\s+indicators", text, re.I))
+    if not (is_kpi_table or re.search(r"statement\s+of\s+profit\s+and\s+loss", text, re.I)):
+        return None
+    column_fy = _geometry_period_columns(text, words)
+    if column_fy is None or column_fy == "UNRESOLVED":
+        return None
+    annual = [y for y in column_fy if y is not None]
+    parsed = _finish_pnl_page(text, text.split("\n"), column_fy, annual, is_kpi_table, strict=True)
+    if parsed:
+        parsed["columnsFromWords"] = True
+    return parsed
+
+
+def _geometry_worth_trying(text):
+    """Cheap text-layer filter so word boxes are fetched only for a titled page whose revenue /
+    total income row carries figures."""
+    if not re.search(r"statement\s+of\s+profit\s+and\s+loss|key\s+performance\s+indicators", text, re.I):
+        return False
+    for ln in text.split("\n"):
+        if _DATA_ANCHOR_RX.search(_rejoin_split_initial(ln)):
+            return len(money_values(ln)) >= 2
+    return False
+
+
 _SEGMENT_PROFIT = re.compile(r"\b(?:dis)?continu(?:ing|ed)\s+operations", re.I)
 
 
@@ -1191,7 +1342,7 @@ def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
     return checks, kept, rejected
 
 
-def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
+def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", words_for_page=None):
     """Pure core: given [(page_index, text)], return the extracted financials.
 
     Separated from PDF I/O so it can be unit-tested offline on captured page text.
@@ -1220,6 +1371,17 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
     candidates = []
     for idx, text in page_texts:
         parsed = _parse_pnl_page(text)
+        if parsed is None and words_for_page is not None and _geometry_worth_trying(text):
+            # D11 wrapped header: only a page no text-only reading reads, so a page read today is
+            # read exactly as before. No word boxes (scanned page, unreadable file) reads nothing.
+            try:
+                words = words_for_page(idx)
+            except MemoryError:
+                raise  # the memory ceiling keeps its own exit contract (W-137)
+            except Exception:  # noqa: BLE001 - fail closed: the page is simply not read
+                words = None
+            if words:
+                parsed = _parse_pnl_page_by_geometry(text, words)
         if parsed:
             parsed["page"] = idx
             candidates.append(parsed)
@@ -1248,7 +1410,14 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
     align = best["align"]
 
     # 2. EBITDA + Net Worth searched doc-wide, aligned to the chosen page's columns.
+    # D11: a column map read from one page's word boxes is proven for that page's header only. A row
+    # elsewhere with the same cell count can sit under another header (Jindal DRHP p111: a peer
+    # comparison table whose second to fourth cells are OTHER companies' EBITDA), so with that map
+    # only the chosen page's own rows are read.
+    words_map = bool(best.get("columnsFromWords"))
     for _i, t in page_texts:
+        if words_map and _i != best["page"]:
+            continue
         for ln in t.split("\n"):
             for rx, key in OTHER_METRICS:
                 if key in result["metrics"]:
@@ -1266,6 +1435,8 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
     # matters: the cash-flow statement carries a row with the same label and
     # the same shape, and whichever came first in the page order would win.
     bs_page = find_balance_sheet_page(page_texts)
+    if words_map and bs_page != best["page"]:
+        bs_page = None
     if bs_page is not None:
         bs_text = next((t for i, t in page_texts if i == bs_page), "") or ""
         for ln in bs_text.split("\n"):
