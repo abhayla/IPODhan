@@ -3086,27 +3086,104 @@ export async function persistFilingExtraction(
       return true;
     });
 
+  // OD-173 section 2 (rows 110-112, 152-153; OD-175 for the one-year cost): `promoter_rows` is one
+  // row per promoter the document declares, read from its capital-structure tables. Each row's
+  // figures attach to the declared promoter whose row key equals the row's own key. Fail closed: two
+  // rows that normalise to one key attach nothing for that key, a row naming a promoter the document
+  // does not declare attaches nothing, a cost that is not a positive number is null (row 111: a nil
+  // cost is null, never 0) and a share count that is not a whole non-negative number is null.
+  type PromoterTableRow = { name?: unknown; is_promoter_group?: unknown; shares_held?: unknown; waca?: unknown; waca_last_year?: unknown };
+  const tableRowsByKey = new Map<string, PromoterTableRow>();
+  const ambiguousTableKeys = new Set<string>();
+  for (const r of list<PromoterTableRow>(extraction, 'promoter_rows')) {
+    const k = r && typeof r.name === 'string' ? rowKeyForName(r.name) : null;
+    if (k === null) continue;
+    if (tableRowsByKey.has(k) || ambiguousTableKeys.has(k)) {
+      tableRowsByKey.delete(k);
+      ambiguousTableKeys.add(k);
+      continue;
+    }
+    tableRowsByKey.set(k, r);
+  }
+  for (const k of ambiguousTableKeys) {
+    skippedFailedCheck.push(`promoters ${k} (promoter_rows: two rows normalise to this promoter; no figure attached)`);
+  }
+  const positiveCost = (v: unknown): string | null =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v.toString() : null;
+  const wholeShares = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null;
+
   if (namesWithKeys.length > 0) {
-    const rows: PromoterInsert[] = namesWithKeys.map(({ name, key }) => ({
-      ipoId,
-      name,
-      // Item 1 slice s1 (row-key prep, F-74): the future row key
-      // (docs/design/build-cards/item-01-child-table-consolidated-writer.md).
-      normalizedName: key as string,
-      // promoter_shares_held is the AGGREGATE promoter holding; assigning it to
-      // one named promoter would invent a per-person figure the ad never
-      // printed. Left null; the aggregate goes to ipo_details.promoter_shares_held
-      // (W-88, migration 0049).
-      sharesHeld: null,
-      waca:
-        (wacaByName.get(name) ?? (names.length === 1 ? soloWaca : null))?.toString() ?? null,
-      wacaLastYear: null,
-      isPromoterGroup: false,
-    }));
-    // isPromoterGroup is this module's default and sharesHeld is never per-person: not printed.
-    rows.forEach((row, i) =>
-      childReceipts('promoters', namesWithKeys[i].key, row as unknown as Record<string, unknown>, ['name', 'waca'])
-    );
+    const fromTable: Array<PromoterTableRow | undefined> = [];
+    const legacyWaca: Array<string | null> = [];
+    const rows: PromoterInsert[] = namesWithKeys.map(({ name, key }, i) => {
+      const t = tableRowsByKey.get(key as string);
+      fromTable[i] = t;
+      legacyWaca[i] = (wacaByName.get(name) ?? (names.length === 1 ? soloWaca : null))?.toString() ?? null;
+      const tableWaca = t ? positiveCost(t.waca) : null;
+      return {
+        ipoId,
+        name,
+        // Item 1 slice s1 (row-key prep, F-74): the future row key
+        // (docs/design/build-cards/item-01-child-table-consolidated-writer.md).
+        normalizedName: key as string,
+        // Per promoter, only from the promoter's own row of the holding table (promoter_rows).
+        // The AGGREGATE promoter_shares_held still goes to ipo_details.promoter_shares_held (W-88).
+        sharesHeld: t ? wholeShares(t.shares_held) : null,
+        waca: tableWaca ?? legacyWaca[i],
+        wacaLastYear: t ? positiveCost(t.waca_last_year) : null,
+        isPromoterGroup: t && typeof t.is_promoter_group === 'boolean' ? t.is_promoter_group : false,
+      };
+    });
+    // Receipts before any kept value is filled in, so a stored value is never credited to this
+    // document. A column from promoter_rows names promoter_rows as its source text.
+    rows.forEach((row, i) => {
+      const key = namesWithKeys[i].key;
+      const r = row as unknown as Record<string, unknown>;
+      const t = fromTable[i];
+      const tableWacaUsed = t !== undefined && positiveCost(t.waca) !== null;
+      childReceipts('promoters', key, r, tableWacaUsed ? ['name'] : ['name', 'waca']);
+      if (t) {
+        const cols = ['sharesHeld', 'wacaLastYear', ...(tableWacaUsed ? ['waca'] : [])];
+        if (typeof t.is_promoter_group === 'boolean') cols.push('isPromoterGroup');
+        childReceipts('promoters', key, r, cols, ['promoter_rows']);
+      }
+    });
+    // The replace deletes every promoter row before inserting, so a per-promoter column this run has
+    // no value for would be rewritten to null and an earlier document's value for the SAME promoter
+    // (row key) would be lost. Such a column keeps the stored value (same rule as ipo_intermediaries).
+    // A promoter the stored rows do not hold gets nothing; a stored read that fails refuses the
+    // replace (fail closed). A stored promoter this document no longer declares is not carried over:
+    // the later document's list replaces the earlier one (OD-30, OD-154), unless an admin owns the
+    // list (OD-107, enforced inside replacePromoters).
+    const PROMOTER_ROW_COLUMNS = ['sharesHeld', 'waca', 'wacaLastYear'] as const;
+    const keepStoredPromoterColumns = async (target: PromoterInsert[]): Promise<boolean> => {
+      if (typeof deps.promoters.listPromotersByIpo !== 'function') return true;
+      const storedByKey = new Map<string, PromoterInsert>();
+      try {
+        for (const stored of await deps.promoters.listPromotersByIpo(ipoId)) {
+          const k = rowKeyForName(stored.name);
+          if (k !== null) storedByKey.set(k, stored as unknown as PromoterInsert);
+        }
+      } catch (error) {
+        logger.error({ ipoId, error: (error as Error)?.message }, '[FilingPersister] stored promoters rows unreadable');
+        skippedNoColumn.push(
+          `promoters (stored rows unreadable: ${(error as Error)?.message ?? 'unknown'}; replace refused so stored per-promoter columns are not wiped)`
+        );
+        return false;
+      }
+      for (const row of target) {
+        const stored = storedByKey.get(row.normalizedName as string);
+        if (!stored) continue;
+        for (const col of PROMOTER_ROW_COLUMNS) {
+          if ((row[col] === null || row[col] === undefined) && stored[col] != null) {
+            (row as Record<string, unknown>)[col] = stored[col];
+          }
+        }
+      }
+      return true;
+    };
+    let promotersRefused = false;
     if (await replaceAllowed('promoters', { name: null, sharesHeld: null, waca: null })) {
       if (apply) {
         // Item 1 slice s7a. Row key = `rowKeyForName(name)`, matching
@@ -3121,11 +3198,19 @@ export async function persistFilingExtraction(
           ['name', 'sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup'],
           ['sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup']
         );
-        await deps.promoters.replacePromoters(ipoId, rows);
-        await trackField('promoters', 'rows');
-        await resolveEmptySection('promoters');
+        if (await keepStoredPromoterColumns(rows)) {
+          await deps.promoters.replacePromoters(ipoId, rows);
+          await trackField('promoters', 'rows');
+          await resolveEmptySection('promoters');
+        } else {
+          promotersRefused = true;
+          for (const { key } of namesWithKeys) {
+            unresolvedChildRows.push(`promoters ${key as string} (stored-rows-unreadable; replace refused)`);
+          }
+          await markChildRowsUnresolved('promoters', 'stored-rows-unreadable');
+        }
       }
-      bump(written, 'promoters', rows.length);
+      if (!promotersRefused) bump(written, 'promoters', rows.length);
     }
   } else {
     await recordEmptySection('promoters', ['promoter_names', 'promoter_name']);
