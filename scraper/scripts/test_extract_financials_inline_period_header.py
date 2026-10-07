@@ -195,3 +195,16 @@ def test_a_balance_sheet_with_split_digits_in_its_identity_row_is_recognised_for
             "Total equity and liabilities 2 ,997.50 2 ,176.74 1 ,746.36 1 ,528.06\n")
     assert _is_balance_sheet(page)
     assert not _is_balance_sheet("Restated Statement of Assets and Liabilities\nTotal assets 2,997.50\n")
+
+
+def test_a_peer_table_titled_below_the_issuers_header_on_the_same_page_is_not_read():
+    # Review round 1: the issuer's header, the issuer's rows, then a peer table with its own title
+    # and no header of its own. The nearest header above the peer row is the issuer's; the title
+    # in between starts another table, so the row has no column map and is not read.
+    page = (2, "Key figures\n(in million)\nParticulars " + HEADER + "\n"
+               "Total assets 1.00 2.00 3.00 4.00 5.00\n"
+               "Comparison with listed industry peers\n"
+               "Net worth 9,111.11 8,222.22 7,333.33 6,444.44 5,555.55\n"
+               "EBITDA 9,111.11 8,222.22 7,333.33 6,444.44 5,555.55\n")
+    out = extract_from_texts([page] + pages())
+    assert "netWorth" not in out["metrics"] and "ebitda" not in out["metrics"]

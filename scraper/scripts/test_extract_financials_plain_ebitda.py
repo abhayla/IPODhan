@@ -102,3 +102,64 @@ def test_nse_ebitda_is_unchanged():
     got = {os.path.basename(p): extract_from_texts(_pages(p))["metrics"].get("ebitda") for p in NSE_FIXTURES}
     assert got == {"nse-rhp-restated-summary-stacked-header.txt": None,
                    "nse-drhp-restated-pnl-eps-continuation.txt": None}
+
+
+# Fix A3 review round 1: a percent, margin, ratio, quotient, per-share or growth line naming EBITDA is
+# never an EBITDA amount, plain or qualified.
+import re  # noqa: E402
+
+import pytest  # noqa: E402
+
+from extract_financials_pdf import OTHER_METRICS, _QUALIFIED_EBITDA  # noqa: E402
+
+_PLAIN_RX = next(rx for rx, key in OTHER_METRICS if key == "ebitda")
+
+
+@pytest.mark.parametrize("line", [
+    "EBITDA (%) 12.1 13.2 14.3",
+    "EBITDA margin (%) 12.1 13.2 14.3",
+    "EBITDA Margin 12.1 13.2 14.3",
+    "Debt to Adjusted EBITDA 1.2 1.3 1.4",
+    "Net debt to EBITDA 1.2 1.3 1.4",
+    "EBITDA/Total income 0.12 0.13 0.14",
+    "EBITDA as % of revenue 12.1 13.2 14.3",
+    "EBITDA as a percentage of revenue 12.1 13.2 14.3",
+    "EBITDA growth 12.1 13.2 14.3",
+    "Adjusted EBITDA margin (%) 12.1 13.2 14.3",
+])
+def test_a_ratio_or_percent_line_is_neither_plain_nor_qualified(line):
+    assert not _PLAIN_RX.search(line)
+    assert not _QUALIFIED_EBITDA.search(line)
+
+
+@pytest.mark.parametrize("line", [
+    "EBITDA(3) 6,383.23 19,869.53 23,826.22 18,421.62",
+    "EBITDA (C) 6,383.23 19,869.53 23,826.21 18,421.62",
+    PLAIN_LINE,
+    "EBITDA 320.74 498.09 409.85 225.05",
+])
+def test_a_plain_amount_line_is_plain(line):
+    assert _PLAIN_RX.search(line)
+
+
+@pytest.mark.parametrize("line", [
+    "Operating EBITDA 320.74 498.09 409.85 225.05",
+    "Adjusted EBITDA 320.74 498.09 409.85 225.05",
+    OPERATING_LINE,
+])
+def test_a_qualified_amount_line_is_qualified_not_plain(line):
+    assert _QUALIFIED_EBITDA.search(line)
+    assert not _PLAIN_RX.search(line)
+
+
+def test_a_percent_row_on_the_chosen_page_does_not_make_the_real_row_ambiguous():
+    got, out = _ebitda(_with_kpi(lambda t: t.replace(
+        OPERATING_LINE, "EBITDA (%) 12.10 13.20 14.30 15.40")))
+    assert got == PLAIN and not out.get("ebitdaAmbiguous")
+
+
+def test_a_debt_to_adjusted_ebitda_ratio_is_never_the_ebitda():
+    got, out = _ebitda(_with_kpi(lambda t: t.replace(PLAIN_LINE + "\n", "").replace(
+        OPERATING_LINE, "Debt to Adjusted EBITDA 1.20 1.30 1.40 1.50")))
+    assert got is None
+    assert "ebitda" not in out["rejected"]  # never read at all, not read and then rejected

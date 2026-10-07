@@ -167,8 +167,14 @@ PNL_METRICS = [
     # positives: a prose "basic" line lacks the trailing money columns.
     (re.compile(r"basic\s+(eps|earnings\s+per|loss\s+per)|^\s*\(?\s*1?\s*\)?\s*basic\b", re.I), "eps"),
 ]
+# Fix A3 review round 1: an EBITDA line whose label (the text before its first digit) names a percent,
+# margin, ratio, times, a "/" or " to " (a quotient), per share, growth or "as a percentage" is never
+# the EBITDA amount ("EBITDA (%) 12.1 13.2 14.3", "Debt to Adjusted EBITDA 1.2 1.3 1.4").
+_NOT_AN_EBITDA_AMOUNT = (r"(?![^\d\n]*(?:%|\bmargin\b|\bratio\b|\btimes\b|/|\bto\b|\bper\s+share\b|"
+                         r"\bgrowth\b|\bas\s+a\s+percentage\b|\breturn\b))")
+
 OTHER_METRICS = [
-    (re.compile(r"^\s*EBITDA\b(?!\s*Margin)", re.I), "ebitda"),
+    (re.compile(r"^\s*" + _NOT_AN_EBITDA_AMOUNT + r"EBITDA\b", re.I), "ebitda"),
     # W-128 round 3: NOT anchored to line-start — issue #67's real row reads
     # "Total equity / Net worth 4,083.20 8,932.55 6,544.10" (label mid-line).
     # The line-start anchor tried in round 2 excluded that legitimate row along
@@ -189,8 +195,7 @@ OTHER_METRICS = [
 # OD-172: a qualified EBITDA row ("Operating EBITDA", "Adjusted EBITDA"), read only when the document
 # prints no plain "EBITDA" row. A ratio, margin, growth or per-share line naming EBITDA is never one.
 _QUALIFIED_EBITDA = re.compile(
-    r"^\s*(?!.*(?:\bto\s+EBITDA|/\s*EBITDA|\bratio\b|\btimes\b|\bmargin\b|%|\bper\b|\bgrowth\b|"
-    r"\breturn\b))(?:[A-Za-z][\w\-]*\s+){1,3}EBITDA\b", re.I)
+    r"^\s*" + _NOT_AN_EBITDA_AMOUNT + r"(?:[A-Za-z][\w\-]*\s+){1,3}EBITDA\b", re.I)
 
 # ---------------------------------------------------------------- item 8b ---
 # The three balance-sheet lines the ratios are built from. These are NOT in
@@ -1292,11 +1297,21 @@ def _fill_missing_from_pnl_page(kpi_metrics, best, candidates):
 WORD_FILL_KEYS = ("revenue", "totalIncome", "profit", "eps")
 
 
+# A table title: a statement / table heading (_STATEMENT_END_RX) or a peer-comparison title
+# ("Comparison with listed industry peers", "Peer comparison").
+_TABLE_TITLE_RX = re.compile(_STATEMENT_END_RX.pattern + r"|^\s*(?:\(?[a-z\d]{1,4}[.)]\s*)?comparison\b"
+                             r"|\bpeers?\b", re.I)
+
+
 def _columns_above(lines, row):
     """The column map named by the period header nearest above `row` on its own page: a one-line
     header naming each period end with its year, or a stacked period line over a year line. None
     when no such header is above the row ("UNRESOLVED" when one is but cannot be paired)."""
     for k in range(row - 1, -1, -1):
+        if _TABLE_TITLE_RX.search(lines[k]) and not re.search(r"\d", lines[k]):
+            # Fix A3 review round 1: a table title between the header and the row starts another
+            # table (a peer comparison under the issuer's header on the same page): no column map.
+            return None
         if k >= 1 and _YEARS_ONLY_LINE.match(lines[k]):
             stacked = _stacked_header_columns([lines[k - 1], lines[k]])
             if stacked is not None:
