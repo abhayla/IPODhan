@@ -3980,19 +3980,28 @@ export async function persistFilingExtraction(
   };
   const brlmContactsAnswer = giFieldAnswer('brlm_contacts');
   const registrarGrievanceAnswer = giFieldAnswer('registrar_grievance_email');
-  // The reader's own refusal codes for one value of a block (general_information.py block_values /
-  // compare_copies); any other per-column reason (label_not_found, ...) is a miss and keeps.
-  const GI_REFUSAL_REASONS: readonly RegExp[] = [
-    /^refused\b/,
-    /\bcopies_disagree\b/,
-    /^(?:not_one_email|phone_format|sebi_format|person_format|url_format|two_values_in_block|column_overrun)\b/,
-  ];
+  // The reader's own refusal codes for one value of a block, matched EXACTLY (general_information.py
+  // block_values, contact_join, field_reasons, the duplicate-firm rule, compare_copies; e234236ca).
+  // Its misses (label_not_found, label_without_value) and any code not listed here keep (fail closed).
+  const GI_REFUSAL_REASONS: ReadonlySet<string> = new Set([
+    'phone_format',
+    'sebi_format',
+    'not_one_email',
+    'person_format',
+    'url_format',
+    'contact_split_unsure',
+    'two_values_in_block',
+    'column_overrun',
+    'page_break_unattributed',
+    'duplicate_firm_blocks',
+    'copies_disagree',
+  ]);
   const contactColumnAnswer = (key: string, col: string): GiAnswer => {
     if (brlmContactsAnswer !== null) return brlmContactsAnswer;
     const why = contactsByKey.get(key)?.reasons[col as keyof BrlmContact['reasons']];
     if (why === undefined) return null;
     if (isStatedAbsenceReason(why)) return { state: 'STATED_NOT_PRINTED', reason: NOT_PRINTED_REASON, extractorReason: why, field: 'brlm_contacts' };
-    if (GI_REFUSAL_REASONS.some((re) => re.test(why))) {
+    if (GI_REFUSAL_REASONS.has(why)) {
       return { state: 'REFUSED', reason: `current reader refused: ${why}`, extractorReason: why, field: 'brlm_contacts' };
     }
     return null;

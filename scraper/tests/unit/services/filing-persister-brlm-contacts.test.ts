@@ -411,12 +411,12 @@ describe('filing-persister - review round 1: every producer must clear; per-colu
     const summary = await run(h, {
       lead_managers: value(HELD, 1),
       brlm_contacts: value([
-        { ...KOTAK_ROW, phone: null, email: null, contact_person: null, reasons: { phone: 'phone_format (+91 0124473980)', email: 'label_not_found' } },
+        { ...KOTAK_ROW, phone: null, email: null, contact_person: null, reasons: { phone: 'phone_format', email: 'label_not_found' } },
         JM_ROW,
       ], 98),
     });
     expect(firm(h, 'BRLM', KOTAK)).toMatchObject({ phone: null, email: 'old@kotak.com', contactPerson: 'Old Person' });
-    expect(summary.skipped_failed_check).toContain(`ipo_intermediaries ${K}.phone cleared (current reader refused: phone_format (+91 0124473980))`);
+    expect(summary.skipped_failed_check).toContain(`ipo_intermediaries ${K}.phone cleared (current reader refused: phone_format)`);
   });
 
   it('per-column stated absence on the list clears from a lower-ranked document', async () => {
@@ -455,5 +455,56 @@ describe('filing-persister - review round 1: every producer must clear; per-colu
     expect(firm(h, 'BRLM', JM)?.grievanceEmail).toBe('grievance.ibd@jmfl.com');
     expect(summary.skipped_failed_check.some((x) => x.startsWith(`ipo_intermediaries ${K}.grievanceEmail (copies_disagree`))).toBe(true);
     expect(intermediaryReceipts(summary).filter((x) => x.startsWith(`${K}|grievanceEmail`))).toEqual([]);
+  });
+});
+
+describe('filing-persister - the revised reader\'s per-field codes (e234236ca)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+  const sameDoc = (rk: string, field: string) => origin(rk, field, { documentId: DOC_ID, docType: 'RHP' });
+  const CODES = [
+    ['phone', 'phone', 'phone_format'],
+    ['sebiRegNo', 'sebi_reg_no', 'sebi_format'],
+    ['email', 'email', 'not_one_email'],
+    ['contactPerson', 'contact_person', 'person_format'],
+    ['contactPerson', 'contact_person', 'contact_split_unsure'],
+    ['phone', 'phone', 'two_values_in_block'],
+    ['email', 'email', 'column_overrun'],
+    ['contactPerson', 'contact_person', 'page_break_unattributed'],
+    ['phone', 'phone', 'duplicate_firm_blocks'],
+  ] as const;
+
+  for (const [col, field, code] of CODES) {
+    it(`${code} on ${field} clears a value this same document stored`, async () => {
+      const h = makeDeps([STORED_KOTAK], sameDoc(K, col));
+      const summary = await run(h, {
+        lead_managers: value(HELD, 1),
+        brlm_contacts: value([{ ...KOTAK_ROW, [field]: null, reasons: { [field]: code } }, JM_ROW], 98),
+      });
+      expect(firm(h, 'BRLM', KOTAK)?.[col]).toBeNull();
+      expect(summary.skipped_failed_check).toContain(`ipo_intermediaries ${K}.${col} cleared (current reader refused: ${code})`);
+    });
+  }
+
+  for (const miss of ['label_without_value', 'label_not_found', 'some_future_code']) {
+    it(`${miss} keeps the stored value`, async () => {
+      const h = makeDeps([STORED_KOTAK], sameDoc(K, 'phone'));
+      await run(h, { lead_managers: value(HELD, 1), brlm_contacts: value([{ ...KOTAK_ROW, phone: null, reasons: { phone: miss } }, JM_ROW], 98) });
+      expect(firm(h, 'BRLM', KOTAK)?.phone).toBe('+91 22 1111 1111');
+    });
+  }
+
+  it('registrar_grievance_email REFUSED (emit.refuse, copies_disagree in check.detail) clears; MISSED (label_not_found / registrar_block_not_found) keeps', async () => {
+    const REG_STORED: Stored = { role: 'REGISTRAR', name: REG, grievanceEmail: 'old.ris@kfintech.com' };
+    const prov = origin(RK, 'grievanceEmail', { documentId: DOC_ID, docType: 'RHP' });
+    const refusedField = ({ value: null, page: null, check: { name: 'email_form', passed: false, detail: 'copies_disagree' }, state: 'REFUSED' }) as unknown as Field;
+    const refused = makeDeps([REG_STORED], prov);
+    const summary = await run(refused, { registrar_name: value(REG, 2), registrar_grievance_email: refusedField });
+    expect(firm(refused, 'REGISTRAR', REG)?.grievanceEmail).toBeNull();
+    expect(summary.skipped_failed_check).toContain(`ipo_intermediaries ${RK}.grievanceEmail cleared (current reader refused: copies_disagree)`);
+    for (const why of ['label_not_found', 'registrar_block_not_found']) {
+      const missed = makeDeps([REG_STORED], prov);
+      await run(missed, { registrar_name: value(REG, 2), registrar_grievance_email: nullField('MISSED', why) });
+      expect(firm(missed, 'REGISTRAR', REG)?.grievanceEmail).toBe('old.ris@kfintech.com');
+    }
   });
 });
