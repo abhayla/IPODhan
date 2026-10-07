@@ -9,6 +9,8 @@
  * "M-BRLM" (RHP p106). Staging run 2026-10-03 (rhp-saved-1.json): the RHP's list differed from the
  * held DRHP list only in that order, so the persister kept the DRHP list, the BRLM rows were built
  * from it with `docBrlmsHeld` false, and none of the 17 grievance e-mails the RHP read was saved.
+ * Since 2026-10-07 the held list and the document's are compared as SETS of firms, so a kept list of
+ * the same firms in another order still files each firm's e-mail on that firm.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -146,14 +148,21 @@ describe('filing-persister - a later offer document supersedes an earlier one on
     ['an unreadable provenance', 'throw', []],
   ];
   for (const [name, prov, docs] of KEPT) {
-    it(`${name} is kept: no list write, rows keep the held list, no grievance e-mail pinned`, async () => {
+    it(`${name} is kept: no list write, rows keep the held list, each e-mail on its own firm`, async () => {
       const h = makeDeps(prov, docs);
       await runRhp(h);
       expect(scraped()).not.toHaveProperty('leadManagers');
       expect('leadManagers' in details(h)).toBe(false);
       const rows = brlmRows(h);
       expect(rows.map((r) => r.name)).toEqual(DRHP_LIST);
-      expect(rows.every((r) => r.grievanceEmail === null)).toBe(true);
+      // The held list and the RHP's name the SAME 20 firms (only SBI Caps moved), so the RHP
+      // produced every firm's grievance e-mail and each files on its own firm (2026-10-07 fix:
+      // the set is compared, not the order). A different set pins nothing:
+      // filing-persister-brlm-order-keeps-firm-fields.test.ts (b).
+      expect(rows.filter((r) => r.grievanceEmail !== null).map((r) => [r.name, r.grievanceEmail])).toEqual([
+        ['Kotak Mahindra Capital Company Limited', 'kmccredressal@kotak.com'],
+        ['JM Financial Limited', 'grievance.ibd@jmfl.com'],
+      ]);
     });
   }
 

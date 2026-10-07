@@ -3403,13 +3403,41 @@ export async function persistFilingExtraction(
   const docBrlms = coverLeadManagers(extraction);
   const heldBrlms = (iposWritable.leadManagers as string[] | undefined) ?? existing.leadManagers ?? [];
   const brlmNames = heldBrlms.filter((n): n is string => !!n);
+  // The held list IS the document's when both name the same SET of firms, compared by the row key
+  // (`rowKeyForName`). Order is not a property of the list: the NSE DRHP and RHP print the same 20
+  // BRLMs with SBI Capital Markets moved from 7th to last, and an order-sensitive comparison filed
+  // none of the RHP's grievance e-mails (measured 2026-10-07). Fail closed: an empty name, or two
+  // names on one side that normalise to the same firm, is ambiguous and makes the lists unequal.
+  const brlmKeySet = (names: readonly string[]): Set<string> | null => {
+    const keys = new Set<string>();
+    for (const n of names) {
+      const k = rowKeyForName(n);
+      if (k === null || keys.has(k)) return null;
+      keys.add(k);
+    }
+    return keys;
+  };
+  const docBrlmKeys = docBrlms !== null ? brlmKeySet(docBrlms) : null;
+  const heldBrlmKeys = brlmKeySet(brlmNames);
   const docBrlmsHeld =
-    docBrlms !== null && normalizeReceiptValue(docBrlms) === normalizeReceiptValue(brlmNames);
+    docBrlmKeys !== null &&
+    heldBrlmKeys !== null &&
+    docBrlmKeys.size > 0 &&
+    docBrlmKeys.size === heldBrlmKeys.size &&
+    [...docBrlmKeys].every((k) => heldBrlmKeys.has(k));
   const soleBrlmReg = docBrlmsHeld && brlmNames.length === 1 ? str(extraction, 'lead_manager_sebi_reg') : null;
   // Row 158: each BRLM's investor grievance e-mail, read by word position under that firm's own
   // heading (extractor `brlm_grievance_emails`, keyed by the document's BRLM name). Filed only
-  // when the held BRLM list IS the document's, so a name maps to the firm the document printed.
-  const grievanceByName = docBrlmsHeld ? brlmGrievanceEmails(extraction) : {};
+  // when the held BRLM list IS the document's (same set of firms), matched by row key so a held
+  // name maps to the firm the document printed. Two document names for one firm file neither.
+  const grievanceByKey = new Map<string, string | null>();
+  if (docBrlmsHeld) {
+    for (const [docName, email] of Object.entries(brlmGrievanceEmails(extraction))) {
+      const k = rowKeyForName(docName);
+      if (k === null) continue;
+      grievanceByKey.set(k, grievanceByKey.has(k) && grievanceByKey.get(k) !== email ? null : email);
+    }
+  }
   // Item 1 slice s1 (row-key prep, F-74): built without `normalizedName`
   // here — every entry (the initial map, and each subsequent push below)
   // carries only a bare `name`; `normalizedName` is derived once, uniformly,
@@ -3428,7 +3456,7 @@ export async function persistFilingExtraction(
     contactPerson: null,
     phone: null,
     email: null,
-    grievanceEmail: grievanceByName[name] ?? null,
+    grievanceEmail: grievanceByKey.get(rowKeyForName(name) ?? '') ?? null,
   }));
   const registrarReg = str(extraction, 'registrar_sebi_reg');
   const docRegistrarName = coverRegistrar(extraction);
@@ -3523,6 +3551,34 @@ export async function persistFilingExtraction(
       'grievanceEmail',
     ], INTERMEDIARY_ROLE_FIELDS[row.role as string] ?? []);
   }
+  const INTERMEDIARY_FIRM_COLUMNS = ['sebiRegNo', 'contactPerson', 'phone', 'email', 'grievanceEmail'] as const;
+  const keepStoredIntermediaryColumns = async (rows: IpoIntermediaryInsert[]): Promise<boolean> => {
+    // A repository without the read (a test double) keeps the pre-existing write.
+    if (typeof deps.intermediaries.listByIpoAndRole !== 'function') return true;
+    const storedByKey = new Map<string, IpoIntermediaryInsert>();
+    try {
+      for (const role of [...new Set(rows.map((r) => r.role))]) {
+        for (const stored of await deps.intermediaries.listByIpoAndRole(ipoId, role)) {
+          const k = rowKeyForName(stored.name);
+          if (k !== null) storedByKey.set(`${stored.role}:${k}`, stored);
+        }
+      }
+    } catch (error) {
+      logger.error({ ipoId, error: (error as Error)?.message }, '[FilingPersister] stored ipo_intermediaries rows unreadable');
+      skippedNoColumn.push(
+        `ipo_intermediaries (stored rows unreadable: ${(error as Error)?.message ?? 'unknown'}; replace refused so stored per-firm columns are not wiped)`
+      );
+      return false;
+    }
+    for (const row of rows) {
+      const stored = storedByKey.get(`${row.role}:${row.normalizedName}`);
+      if (!stored) continue;
+      for (const col of INTERMEDIARY_FIRM_COLUMNS) {
+        if ((row[col] === null || row[col] === undefined) && stored[col] != null) row[col] = stored[col];
+      }
+    }
+    return true;
+  };
   if (intermediariesWithKeys.length > 0) {
     if (
       await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
@@ -3548,8 +3604,17 @@ export async function persistFilingExtraction(
           ['name', 'role', 'sebiRegNo', 'contactPerson', 'phone', 'email', 'grievanceEmail'],
           ['sebiRegNo', 'contactPerson', 'phone', 'email', 'grievanceEmail']
         );
-        await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
-        await trackField('ipo_intermediaries', 'rows');
+        // The replace deletes every row before inserting, so a per-firm column this run has no
+        // value for would be rewritten to null and a value an earlier document filed for the SAME
+        // firm (role + row key) would be lost (measured 2026-10-07: 17 BRLM grievance e-mails gone
+        // after the NSE RHP). Such a column keeps the stored value. This runs after provenance and
+        // receipts, so the kept value is never attributed to this document. A firm the stored rows
+        // do not hold gets nothing; a stored read that fails refuses the replace (fail closed).
+        const kept = await keepStoredIntermediaryColumns(intermediariesWithKey);
+        if (kept) {
+          await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
+          await trackField('ipo_intermediaries', 'rows');
+        }
       }
       bump(written, 'ipo_intermediaries', intermediariesWithKeys.length);
     }
