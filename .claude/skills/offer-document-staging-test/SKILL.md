@@ -11,8 +11,8 @@ description: >
 type: workflow
 allowed-tools: "Bash Read Write Edit Grep Glob Agent Skill Artifact AskUserQuestion"
 argument-hint: "[ipo-slug] [--doc <document-id>] (default: resume the round in references/progress.md)"
-version: "1.0.0"
-lessons_folded: 2026-10-04
+version: "1.1.0"
+lessons_folded: 2026-10-07
 private: false
 ---
 
@@ -35,6 +35,10 @@ written into "The owner's contract" below in the same turn, with the date.
 | C7 | The fix loop runs ON THE LAPTOP: the real read-and-save code of the branch under test, saved into the existing test DB `ipodhan_test` (never a new DB), report read from `ipodhan_test`. Staging is used once per finished batch of fixes to confirm (deploy, re-read, re-measure). Never write unmerged code's results into `ipodhan_staging`. Never production. | "Laptop -> ipodhan_test" (2026-10-04, replaced "Staging only" of 2026-10-03); "don't stage for each and every fix" (2026-10-03) |
 | C8 | Each fix is proven on the subject document plus at least two other real documents of the same type (one other mainboard, one SME). | assistant recommendation, owner accepted the process |
 | C9 | Report: short summary in chat (counts plus top causes) and the full field table on one Artifact page, updated in place after each document. | assistant default, reversible |
+| C11 | The reader is ONE generic pipeline (OD-173): locate each section from the printed contents page, clean page furniture, read tables as grids and text blocks through one shared line classifier, one label dictionary, save only when printed copies agree (F-248, OD-177). No rule for one company's layout. | "Rebuild, prove core first" (2026-10-07, OD-173), after three per-layout fixes in one day each failed review |
+| C12 | Proof is scored against answer keys built from the PDFs: wrong must be 0, found must not drop; extraction changes are proven on a NEW blind set scored cold, never tuned on; `scraper/scripts/offer_doc_gate.py` is the gate. | owner, 2026-10-07: "All three layers" (test gate, path-scoped rule, this skill) |
+| C13 | Same failure class red twice -> independent review; a third red -> park it (today's reader stays) and report. | owner rule 2026-09-17; run-discipline A1 |
+| C14 | A field family moves to the new reader only with 0 wrong on every key set AND found >= today's reader; decisions follow the plan without asking the owner unless the plan/spec does not decide. | owner, 2026-10-07: "based on that plan, you take a call" |
 | C10 | The fix loop is LOCAL ONLY, on this PC: fix on one local branch, test with the laptop loop (STEP 3), move to the next fix. No `git push`, no pull request, no `gh pr merge`, no deploy, no GitHub CI until the owner says the document works and asks for it. A builder brief repeats this ban. | "when we are fixing the code, it should be completely local and on the PC itself. Fix it, test it, and then proceed" (2026-10-04, after 2 merges and 40 min of CI were spent mid-loop) |
 
 Standing rules that also apply (read, not repeated here): `.claude/rules/defect-fix-contract.md` (six items per
@@ -131,7 +135,23 @@ On the Artifact page: render it from the round's data files, never by hand (ever
 `python .claude/skills/offer-document-staging-test/scripts/render_report.py <out.html> "<IPO>: <n>. <TYPE> (<filing>)=<truth.json>,<causes.json>,<compare.json>" ...`
 (one argument per document tested so far, in test order). Publish to the SAME URL every round (`references/progress.md`).
 
-## STEP 6: Fix each cause generically
+## STEP 6: Fix each cause generically - through the OD-173 pipeline, never a per-layout rule
+
+Read first: `.claude/rules/offer-document-reader-method.md` (auto-loads on the reader files) and the plan
+`docs/contracts/plans/2026-10-07-offer-document-reader-rebuild.md`. A miss is fixed in the pipeline step that misread
+it (locate from the contents page / clean page furniture / grid or line classifier / label dictionary / copies
+validation), for every document - never a rule for one company's layout (C11).
+
+Proof for every fix, in this order:
+1. `python scraper/scripts/offer_doc_gate.py` before and after: wrong must stay 0 on every answer-key set
+   (`scraper/tests/fixtures/offer-doc-truth/`), found must not drop below `baseline.json`. "NOT RUN" is reported as
+   not run, never as a pass.
+2. A NEW blind set for any change to extraction logic: answer keys built from the PDFs by a worker that never sees
+   reader output, scored cold, never tuned on; a scored set is "used" forever (C12). Fetch fresh documents from
+   staging (read-only) when the unused ones run out.
+3. Same failure class red twice -> independent review before a third round; a third red -> park the family, today's
+   reader stays (C13). A family ships to the new reader only with 0 wrong on every set and found >= today (C14).
+4. The test-DB proof (STEP 3) with NSE DRHP 89/90 and NSE RHP 88/90 unchanged.
 
 For each cause, apply the defect-fix contract: RCA, Class, failing test first on the real function with the real
 PDF text as fixture, a class-level fix, proof on 3 documents of the type (C8), and a detection line. Spec first:
@@ -165,7 +185,11 @@ before/after counts in `references/progress.md`, then go to the next document (C
 - Prove every fix on 3 real documents of the type. — Why: C2/C8; a rule drawn from two samples has broken repeatedly in this repo.
 - Recount the C3 field list from the manifest each round. — Why: the manifest changes; a hard-coded 163 goes stale.
 
+- Run the offer-document gate before and after every reader change, and prove extraction changes on a never-scored blind set. — Why: C12; on 2026-10-07 three fixes that looked perfect on the tuning keys each failed a blind set (General Information needed four blind rounds).
+
 ## MUST NOT DO
+
+- MUST NOT add a rule for one company's layout or tune on a scored blind set. — Why: C11/C12; per-layout rules each fixed a few documents and added wrong values elsewhere (F-247: 30 wrong financial values in the old reader).
 
 - MUST NOT push, open a pull request, merge, or deploy while the fix loop runs (C10); work on one local branch and test locally. — Why: on 2026-10-04 merging each fix cost ~20 min of CI per PR and sent code toward staging the owner had not asked for.
 - MUST NOT read or write production, MUST NOT run anything on the VPS host, and MUST NOT write unmerged code's results into `ipodhan_staging` (the laptop loop writes `ipodhan_test` only). — Why: owner rules (OD-146, "VPS is production").
