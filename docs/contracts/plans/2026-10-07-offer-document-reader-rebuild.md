@@ -98,7 +98,18 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
    basic EPS 49.27 per D8 vs a share-adjusted 7.91) - the pipeline saved the statement's values; unscored.
 4. Validation (copies + identities) wired; bar: the 3 wrong-value classes from 2026-10-07 are rejected by
    construction (tests), wrong = 0, found >= baseline.
-5. Swap the new financial reader in behind the existing output shape; NSE DRHP 89/90 and RHP 88/90 in the test DB
+5. -- DONE 2026-10-07 (commits 629c08085..c76b0a6da, merged into test/drhp-step0-combined): modules section_locator.py,
+   statement_grid.py, financial_labels.py, financial_copies.py, offer_doc_financials.py; extract_filing.py takes the
+   financial fields from them (same output shapes, persister unchanged). Tier A review round fixed: quarter/half-year/
+   9M headers never fiscal years; unit from the table's own header; PAT and total-borrowing identities for single
+   copies; series years must be a SUBSET of the statement years; locator-failure reasons. Real reader scores: tuning
+   303 correct / 0 wrong (today's reader 164 / 30); blind hold-out 2 134 / 0 (today 69 / 0). Test DB (reset, ipodhan_test):
+   NSE DRHP 89/90, NSE RHP 88/90 (unchanged), AceVector DRHP 52 -> 58, Jindal DRHP 50 -> 61. 194 related tests pass.
+   Not stored by design: part-year (stub) rows (financial_statements holds one row per fiscal year; D11); German
+   Green net worth (no row labelled "Net worth"); values the document prints twice differently (F-248).
+   Open: no single-copy identity for EBITDA, net worth, RoNW, rent, EPS, op cash flow; scanned statement pages
+   (Sonaselection, Swastika) read no fiscal years so their section copies are dropped.
+   Original step-5 text follows. Swap the new financial reader in behind the existing output shape; NSE DRHP 89/90 and RHP 88/90 in the test DB
    unchanged; then extend the same pipeline to other sections (capital structure / promoter tables, general
    information / lead managers, cover) in that order.
 6. Only when the owner says the documents work: one GitHub PR, CI, staging run (owner rule).
