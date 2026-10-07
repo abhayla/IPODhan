@@ -204,3 +204,21 @@ if the value is printed on that page and passes step 4.
   fields, and company phone / e-mail / website (today finds more there; today's wrong company phone / website recorded
   as F-249). PARKED: company address, registrar phone / e-mail.
 - Next: product build of the NEW-READER families (same pattern as sections 1-2), Tier A review, test-DB proof.
+
+## STATE AT SESSION END (2026-10-07 ~18:30 IST) - read this first
+- test/drhp-step0-combined tip 4a8bd65be (+ this plan commit): PROVEN state. Financial rebuild (303/0 tuning, 134/0 blind),
+  promoter rebuild (105/0, saved), enforcement layers: path-scoped rule .claude/rules/offer-document-reader-method.md,
+  skill offer-document-staging-test 1.1.0, test gate scraper/scripts/offer_doc_gate.py (answer keys in
+  scraper/tests/fixtures/offer-doc-truth/, page cache D:/Abhay/Ventures/IPODhan-doc-cache/reader-cache/). Gate PASSED
+  (0 wrong), 230 related tests pass. Test DB proof for this state (earlier today): NSE DRHP 89/90, RHP 88/90,
+  AceVector 64, Jindal 66.
+- test/gi-integration-pending tip 164b7cdb4: General Information reader + BRLM-contacts persister (both Tier A review
+  rounds) + gate wiring (WIP). NOT MERGED because the merged test-DB proof showed NSE RHP lead_managers CORRECT -> MISSED
+  (88 -> 86): the round-2 rule "any refusal inside a BRLM block leaves lead_managers unresolved" throws away a correct
+  firm list (no blind set had NSE RHP). AceVector / Jindal in that proof failed only because the DB tunnel dropped
+  (ECONNREFUSED), not the code. Gate-wiring mutation proof incomplete (5 of 8 rule switches changed no cell).
+- NEXT (first task of the next session, per the rule): make a refusal inside one firm's block refuse that firm's VALUES,
+  not the firm-name LIST (keep lead_managers when names are clean); re-score all GI key sets + NSE RHP; finish the gate
+  mutation proof; Tier A review of that change; test-DB proof with NSE 89/88; then merge test/gi-integration-pending.
+- Still parked: company address, registrar phone/e-mail; F-249 (today's company-contact readers save some wrong values).
+- Everything is LOCAL (owner rule): nothing pushed, no PR, no deploy.
