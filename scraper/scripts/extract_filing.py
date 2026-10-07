@@ -3192,15 +3192,17 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
         emit.put("company_name", cover_name, None, "cover_name_above_cin", (True, cover_name))
 
     # OD-173 section 2: the declared promoters are the cover statement's, every printed copy agreeing
-    # (promoter_tables.declared_promoters). A cover with no such statement keeps the older fullest-copy
-    # reading; copies that disagree give no names (never the longest guess).
+    # (promoter_tables.declared_promoters): two agreeing printed copies, or one copy whose every name is
+    # in the "Our Promoters and Promoter Group" section. Copies that disagree, or a single unconfirmed
+    # copy, give no names (never the longest guess; never a phrase read as a name).
     cover_names, cover_src, cover_page = promoter_tables.declared_promoters(page_texts)
-    if cover_names is None and cover_src == "no_cover_declaration":
-        cover_names, cover_page = read_cover_promoters(page_texts)
     stated_none_page = cover_states_no_identifiable_promoter(page_texts)
-    if cover_src == "cover_copies_disagree":
-        emit.null("promoter_name", "cover_promoter_copies_disagree", cover_page)
-        emit.null("promoter_names", "cover_promoter_copies_disagree", cover_page)
+    refused_cover = cover_src in ("cover_copies_disagree", "single_cover_copy_unconfirmed")
+    if refused_cover:
+        why = ("cover_promoter_copies_disagree" if cover_src == "cover_copies_disagree"
+               else "cover_promoter_single_copy_unconfirmed")
+        emit.null("promoter_name", why, cover_page)
+        emit.null("promoter_names", why, cover_page)
         cover_names = None
     elif not cover_names and stated_none_page is not None:
         # Item 46 (OD-165, OD-158): the cover STATES there is no promoter (NSE RHP
@@ -3215,7 +3217,7 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     else:
         emit.null("promoter_name", "our_promoters_statement_not_on_cover")
         emit.null("promoter_names", "our_promoters_statement_not_on_cover")
-    if not cover_names and stated_none_page is not None and cover_src != "cover_copies_disagree":
+    if not cover_names and stated_none_page is not None and not refused_cover:
         # Item 46 (OD-165): the stated absence covers the promoters' holdings too (NSE DRHP / RHP).
         for n in _PROMOTER_TABLE_FIELDS:
             emit.null(n, NO_IDENTIFIABLE_PROMOTER, stated_none_page)

@@ -56,37 +56,76 @@ NO_PROMOTER = re.compile(r'no\s+identifiable\s+promoters?|does\s+not\s+have\s+(?
                          re.I)
 WACA_COL = re.compile(r'cost|price', re.I)
 NOT_WACA_COL = re.compile(r'number|(?:^|\s)no\.|%|percentage', re.I)
-COVER = re.compile(r'(?:THE\s+)?PROMOTERS?\s+OF\s+(?:OUR|THE)\s+COMPANY\s*(?:ARE|IS|:)?\s*:?\s*(?P<n>.+)$|'
-                   r'^OUR\s+PROMOTERS?\s*:\s*(?P<m>.+)$')
+# The cover statement's lead-in, anchored at the line start: ':' always, a free-standing dash or ARE/IS
+# only on an upper-case line (body prose "Our Promoters are also interested ..." is mixed case; #545).
+OUR_PROMOTERS_RX = re.compile(
+    r"^\s*(?:THE\s+)?(?:OUR\s+PROMOTERS?|PROMOTERS?\s+OF\s+(?:OUR|THE)\s+(?:COMPANY|ISSUER))"
+    r"\s*(?:(?P<sep>:)|(?P<dash>[\-–—])(?=\s)|\s(?P<verb>ARE|IS)\b)\s*", re.I)
+# A cover name is letters, spaces, dots, apostrophes, hyphens and '/'; never a phrase about groups or the offer.
+COVER_NAME = re.compile(r"^[A-Za-z][A-Za-z .'/\-]{2,59}$")
+COVER_STOP = re.compile(r"^(?:and|the|our|of)\b|\bpromoters?\b|\bgroup\b|\boffer\b|\bcompany\b|\bshareholders?\b|"
+                        r"\bselling\b|\bdetails\b|\binitial\b|\bpublic\b", re.I)
+PROMOTER_SECTION = re.compile(r'^\s*' + sl.SEC_PREFIX + r'our\s+promoters?\s*(?:and|&)\s*(?:the\s+)?promoter\s+group\s*$',
+                              re.I)
+PROMOTER_SECTION_SPAN = 4
 COVER_PAGES = 4
 NO_PROMOTER_SCAN = 40
 
 
 # ---------- names ----------
+# A bracket that only gives another name for the same holder ("(also the Promoter Selling Shareholder)",
+# "(formerly known as ...)") is dropped; any other bracket ("(HUF)", "(as trustee of ...)", "(jointly with
+# ...)", "(on behalf of ...)") says the row is a DIFFERENT holder, so the row matches no promoter.
+ALIAS_BRACKET = re.compile(r'\(\s*(?:also|being|formerly|earlier|previously|erstwhile)\b[^)]*\)?', re.I)
+FOOTNOTE_REF = re.compile(r'\(\s*(?:\d{1,2}|[ivx]{1,4})\s*\)', re.I)
+# Whose row it is, as the table states it: the heading line the row sits under.
+GROUP_HEADING = re.compile(r'^\s*(?:[a-z]\)|\(?[a-z]\)|[a-z]\.|\d{1,2}\.)?\s*(?:members\s+of\s+(?:the\s+)?)?'
+                           r'promoter\s+group\b', re.I)
+PROMOTER_HEADING = re.compile(r'^\s*(?:[a-z]\)|\(?[a-z]\)|[a-z]\.|\d{1,2}\.)?\s*(?:our\s+)?promoters?\b'
+                              r'(?!\s+group)(?!.*\bpromoter\s+group\b)', re.I)
+SERIAL = re.compile(r'^\s*(?:\d{1,2}[.)]|[a-z]\)|[ivx]+[.)])\s*', re.I)
+JOINT_TAIL = re.compile(r'(?:&|\band\b|\bjointly\b(?:\s+with)?|\bwith\b)\s*[*#^$+@]*\s*$', re.I)
+# Entity type is part of a holder's identity: Ltd == Limited == Private Limited == Pte. Ltd. (one company
+# family), but an LLP, a HUF or a trust is never a company or a person of the same name.
+ENTITY_WORDS = {
+    'company': {'private', 'pvt', 'limited', 'ltd', 'pte', 'inc', 'plc', 'corp', 'corporation'},
+    'llp': {'llp'}, 'huf': {'huf'}, 'trust': {'trust'},
+}
+
+
 def compact(name):
-    s = re.sub(r'\([^)]*\)?', ' ', name)        # parentheticals, also an unclosed one ("(also the Promoter Selling")
-    s = re.sub(r'^\s*(?:\d{1,2}[.)]|[a-z]\)|[ivx]+[.)])\s*', '', s, flags=re.I)
-    s = MARK.sub('', s.strip())
-    return re.sub(r'[^a-z]', '', s.lower())
+    """letters only, lower case: the cover-copy comparison key (never used to match a table row)."""
+    return re.sub(r'[^a-z]', '', (name or '').lower())
 
 
-def compact_core(name):
-    return compact(CORP.sub(' ', name))
+def identity(name):
+    """(core letters, entity types) of a holder's name, or None when the name says it is not a plain holder
+    (a non-alias bracket, a joint-holder tail)."""
+    s = SERIAL.sub('', name or '')
+    s = FOOTNOTE_REF.sub(' ', s)                 # "Trust(1)": a footnote reference, not a qualifier
+    s = ALIAS_BRACKET.sub(' ', s)
+    if '(' in s or ')' in s:
+        return None
+    s = re.sub(r'[*#^$+@]+', ' ', s).strip()
+    if not s or JOINT_TAIL.search(s):
+        return None
+    words = [w for w in re.split(r'[^a-z]+', s.lower()) if w]
+    if words and words[0] == 'the':
+        words = words[1:]
+    kinds = frozenset(k for k, ws in ENTITY_WORDS.items() if any(w in ws for w in words))
+    core = ''.join(w for w in words if not any(w in ws for ws in ENTITY_WORDS.values()))
+    return core, kinds
 
 
 def match_promoter(label, declared):
-    """-> the declared promoter this row label names, or None (fail closed: one near-complete name only)."""
-    lab, lab_core = compact(label), compact_core(label)
-    if len(lab_core) < 5:
+    """-> the declared promoter this (full, joined) row label names, or None.
+
+    Fail closed: the normalised name AND its entity type must equal exactly one declared promoter's; no
+    prefix or partial match (a cut label is refused, never completed)."""
+    lab = identity(label)
+    if lab is None or len(lab[0]) < 5:
         return None
-    hits = []
-    for d in declared:
-        dc, dcore = compact(d), compact_core(d)
-        if lab == dc or lab_core == dcore:
-            hits.append(d)
-        elif dcore.startswith(lab_core) and len(lab_core) >= 0.8 * len(dcore):
-            hits.append(d)     # a wrapped / cut row label: "Starfish (also the ..." -> Starfish I Pte. Ltd.
-    hits = list(dict.fromkeys(hits))
+    hits = list(dict.fromkeys(d for d in declared if identity(d) == lab))
     return hits[0] if len(hits) == 1 else None
 
 
@@ -94,13 +133,25 @@ def _title(n):
     return ' '.join(w if len(w) <= 1 else w[0] + w[1:].lower() for w in n.split())
 
 
+def cover_statement_tail(line):
+    """The text after the cover's "OUR PROMOTERS:" lead-in on `line`, or None (anchored, #545 rules)."""
+    m = OUR_PROMOTERS_RX.match(line or '')
+    if not m:
+        return None
+    if (m.group('verb') or m.group('dash')) and line != line.upper():
+        return None
+    return line[m.end():]
+
+
 def _cover_names(text):
+    """the names of the first cover statement on a page, or None. Every name must look like a name; one
+    that does not (a phrase such as "AND THE PROMOTER GROUP") voids the whole copy."""
     lines = [ln.strip() for ln in (text or '').split('\n')]
     for i, ln in enumerate(lines):
-        m = COVER.search(ln)
-        if not m:
+        tail = cover_statement_tail(ln)
+        if tail is None:
             continue
-        s = (m.group('n') or m.group('m') or '').strip()
+        s = tail.strip()
         nxt = lines[i + 1] if i + 1 < len(lines) else ''
         continues = bool(re.search(r'(?:,|\bAND)\s*$', s))    # the list itself says it goes on
         if s and not s.endswith(('.', ')')) and nxt and nxt == nxt.upper() and ':' not in nxt \
@@ -113,9 +164,34 @@ def _cover_names(text):
             if not p:
                 continue
             mm = re.search(re.escape(p) + r'\.?', s)   # keep a "PTE. LTD." final dot
-            out.append(_title((mm.group(0) if mm else p).strip()))
-        return out
+            name = (mm.group(0) if mm else p).strip()
+            if not COVER_NAME.match(name) or COVER_STOP.search(name):
+                return None
+            out.append(_title(name))
+        return out or None
     return None
+
+
+def _section_text(page_texts, rx, span):
+    """the text of the first `span` pages of the section whose contents entry matches rx, or None."""
+    by = dict(page_texts)
+    loc = sl.locate(page_texts)
+    if loc['offset'] is None:
+        return None
+    for n in loc['toc_pages']:
+        for title_, printed in sl.toc_entries(by.get(n, '')):
+            if rx.match(title_):
+                idx = printed + loc['offset']
+                return ' '.join(by.get(i, '') or '' for i in range(idx, idx + span))
+    return None
+
+
+def _confirmed_by_promoter_section(page_texts, names):
+    text = _section_text(page_texts, PROMOTER_SECTION, PROMOTER_SECTION_SPAN)
+    if not text:
+        return False
+    flat = compact(text)
+    return all(compact(n) in flat for n in names)
 
 
 def declared_promoters(page_texts):
@@ -130,7 +206,11 @@ def declared_promoters(page_texts):
         return None, ('no_identifiable_promoter' if NO_PROMOTER.search(head) else 'no_cover_declaration'), None
     keys = [tuple(compact(n) for n in c) for _i, c in copies]
     if len(set(keys)) == 1:
-        return copies[0][1], 'cover', copies[0][0]
+        if len(copies) >= 2:
+            return copies[0][1], 'cover', copies[0][0]
+        if _confirmed_by_promoter_section(page_texts, copies[0][1]):
+            return copies[0][1], 'cover_and_promoter_section', copies[0][0]
+        return None, 'single_cover_copy_unconfirmed', copies[0][0]
     page, best = max(copies, key=lambda ic: sum(len(x) for x in ic[1]))
     bk = tuple(compact(n) for n in best)
     if all(len(k) == len(bk) and all(b.startswith(x) for b, x in zip(bk, k)) for k in keys):
@@ -272,18 +352,28 @@ def segments(lines_by_page):
 
 
 def column_header(seg, idx):
-    """the header words standing over value column `idx` (negative index into the row cells)."""
+    """the header words standing over value column `idx` (negative: from the right end of the row cells;
+    0 or positive: from the left, the first value column being 0)."""
     los, his = [], []
     for r in seg['rows']:
         cx = r.get('cx1')
-        if not r['cells'] or not cx or len(cx) < -idx:
+        if not r['cells'] or not cx:
             continue
-        k = len(cx) + idx
+        if idx < 0:
+            if len(cx) < -idx:
+                continue
+            k = len(cx) + idx
+            last = idx == -1
+        else:
+            if len(cx) <= idx:
+                continue
+            k = idx
+            last = k == len(cx) - 1
         los.append(cx[k - 1] if k >= 1 else r['lab_x1'])
-        his.append(cx[k] if idx != -1 else 1e9)
+        his.append(1e9 if last else cx[k])
     if not los:
         return ''
-    lo, hi = max(los), (min(his) + 25 if idx != -1 else 1e9)
+    lo, hi = max(los), (min(his) + 25 if min(his) < 1e9 else 1e9)
     lines = seg.get('hdr', [])
     width = max((w['x1'] for l in lines for w in l), default=1.0)
     out = []
@@ -308,7 +398,9 @@ def matched_rows(seg, declared):
     for i, r in enumerate(seg['rows']):
         if r.get('head') or not r['cells']:
             continue
-        who = match_promoter(r['ext'], declared) or match_promoter(r['label'], declared)
+        # The FULL row name only (its wrapped lines joined): a first line alone ("Rajesh Kumar Sharma &")
+        # is never matched, so a joint holding is never filed under one of its holders.
+        who = match_promoter(r['ext'], declared)
         if who:
             out.append((i, who, r))
     return out
@@ -323,6 +415,25 @@ def cost_table_refusal(seg):
         return 'shares_column_unresolved'
     if not RUPEE.search(seg['ctx']):
         return 'unit_unresolved'
+    return None
+
+
+SHARE_UNIT_SCALED = re.compile(r'\blakhs?\b|\bcrores?\b|\bmillions?\b|\bthousands?\b|\'000', re.I)
+POST_OFFER = re.compile(r'\bpost\b|post[\s-]*(?:offer|issue)', re.I)
+PRE_OFFER = re.compile(r'\bpre\b|pre[\s-]*(?:offer|issue)', re.I)
+
+
+def holding_refusal(seg):
+    """None when a holding table's first two value columns read as (number of shares, % of the PRE-offer
+    capital), else the reason: shares counted in lakh / crore / million, or a % column that is post-offer
+    or not shown to be pre-offer."""
+    h0, h1 = column_header(seg, 0), column_header(seg, 1)
+    if SHARE_UNIT_SCALED.search(h0):
+        return 'shares_column_scaled_unit: %s' % h0[:60]
+    if POST_OFFER.search(h1) and not PRE_OFFER.search(h1):
+        return 'pct_column_post_offer: %s' % h1[:60]
+    if not (PRE_OFFER.search(h0 + ' ' + h1) or PRE_OFFER.search(seg['ctx'])):
+        return 'pct_column_not_shown_pre_offer'
     return None
 
 
@@ -364,8 +475,27 @@ def holding_identity(rows, matched, log, page):
     return None
 
 
+def stated_group(seg, i):
+    """What the table states row i is: False under a "Promoters" heading, True under a "Promoter Group"
+    heading, None when the heading above it says neither (or both)."""
+    heading = None
+    for r in reversed(seg['rows'][:i]):
+        if r.get('head'):
+            heading = r['label']
+            break
+    if heading is None and seg.get('hdr'):
+        heading = ' '.join(w['text'] for w in seg['hdr'][-1])
+    if not heading:
+        return None
+    if GROUP_HEADING.match(heading):
+        return True
+    if PROMOTER_HEADING.match(heading):
+        return False
+    return None
+
+
 def collect(segs, declared):
-    copies = {'shares': {}, 'waca': {}, 'waca_1y': {}}
+    copies = {'shares': {}, 'waca': {}, 'waca_1y': {}, 'group': {}}
     holding, log = [], []
     for s in segs:
         k = s['kind']
@@ -374,6 +504,10 @@ def collect(segs, declared):
         matched = matched_rows(s, declared)
         if not matched:
             continue
+        for i, who, _r in matched:
+            g = stated_group(s, i)
+            if g is not None:
+                copies['group'].setdefault(who, []).append(g)
         if k in ('waca_held', 'waca_1y'):
             why = cost_table_refusal(s)
             if why:
@@ -396,8 +530,13 @@ def collect(segs, declared):
                     copies['waca'].setdefault(who, []).append(dict(v=wa, page=r['page'], shares=sh))
                 else:
                     copies['waca_1y'].setdefault(who, []).append(
-                        dict(v=wa, page=r['page'], acquired=sh, ctx=s['ctx'], hdr=column_header(s, -1)))
+                        dict(v=wa, page=r['page'], acquired=sh, hdr=column_header(s, -1),
+                             hdr_acquired=column_header(s, -2)))
         elif k == 'hold':
+            why = holding_refusal(s)
+            if why:
+                log.append('p%s hold: refused %s' % (s['page'], why))
+                continue
             hp = holding_identity(s['rows'], matched, log, s['page'])
             if hp is not None:
                 holding.append(hp)
@@ -442,9 +581,12 @@ def one_year_checks(copy, who, held):
     """OD-175: a single printed one-year cost is saved only when (1) its heading states a one-year
     period, (2) the unit is rupees per share, (3) the row names a declared promoter (the caller matched
     it), (4) the shares acquired in that year do not exceed the shares held now. -> (ok, reason)."""
-    if not ONE_YEAR.search(copy.get('ctx') or ''):
+    # (1) and (2) are read from the table's COLUMN HEADINGS (the cost column, and for the period also the
+    # shares-acquired column beside it), never from the caption or prose above the table.
+    hdr = copy.get('hdr') or ''
+    if not ONE_YEAR.search(hdr + ' ' + (copy.get('hdr_acquired') or '')):
         return False, 'one_year_heading_not_printed'
-    if not (RUPEE.search(copy.get('ctx') or '') and PER_SHARE.search(copy.get('ctx') or '')):
+    if not (RUPEE.search(hdr) and PER_SHARE.search(hdr)):
         return False, 'unit_not_rupees_per_share'
     if not who:
         return False, 'row_not_a_declared_promoter'
@@ -459,7 +601,8 @@ def one_year_checks(copy, who, held):
 
 
 def _nil_to_null(value, why):
-    if value == 'NIL':
+    # Spec row 111: a nil cost - printed Nil or 0.00 - is null with reason bonus_nil, never 0.
+    if value == 'NIL' or (isinstance(value, float) and value == 0.0):
         return None, 'bonus_nil'
     return value, why
 
@@ -478,8 +621,8 @@ def read_promoter_tables(page_texts, grid_words_for_page, declared):
     if not want:
         out['holding_why'] = 'capital_structure_section_not_located'
         for n in declared:
-            out['rows'].append(dict(name=n, is_promoter_group=False, shares_held=None, waca=None, waca_last_year=None,
-                                    reasons=dict.fromkeys(('shares_held', 'waca', 'waca_last_year'),
+            out['rows'].append(dict(name=n, is_promoter_group=None, shares_held=None, waca=None, waca_last_year=None,
+                                    reasons=dict.fromkeys(('shares_held', 'waca', 'waca_last_year', 'is_promoter_group'),
                                                           'capital_structure_section_not_located')))
         return out
     words = {}
@@ -521,8 +664,13 @@ def read_promoter_tables(page_texts, grid_words_for_page, declared):
                 return False, 'single_copy_expected'
             return one_year_checks(c[0], who, sh)
         yv, ywhy = _nil_to_null(*decide(copies['waca_1y'].get(who, []), conf_1))
-        out['rows'].append(dict(name=who, is_promoter_group=False, shares_held=sh, waca=wv, waca_last_year=yv,
-                                reasons=dict(shares_held=held[who][1], waca=wwhy, waca_last_year=ywhy)))
+        stated = set(copies['group'].get(who, []))
+        grp = stated.pop() if len(stated) == 1 else None
+        gwhy = ('table_heading' if grp is not None
+                else 'heading_states_both' if stated else 'not_stated_by_a_table_heading')
+        out['rows'].append(dict(name=who, is_promoter_group=grp, shares_held=sh, waca=wv, waca_last_year=yv,
+                                reasons=dict(shares_held=held[who][1], waca=wwhy, waca_last_year=ywhy,
+                                             is_promoter_group=gwhy)))
     pcts = {h['pct'] for h in holding}
     if len(pcts) == 1:
         out['holding'] = holding[0]
