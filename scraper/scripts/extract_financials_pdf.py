@@ -186,6 +186,12 @@ OTHER_METRICS = [
                 r"\bdebt\b|\bto\s+net\s*worth\b)).*?net\s*worth", re.I), "netWorth"),
 ]
 
+# OD-172: a qualified EBITDA row ("Operating EBITDA", "Adjusted EBITDA"), read only when the document
+# prints no plain "EBITDA" row. A ratio, margin, growth or per-share line naming EBITDA is never one.
+_QUALIFIED_EBITDA = re.compile(
+    r"^\s*(?!.*(?:\bto\s+EBITDA|/\s*EBITDA|\bratio\b|\btimes\b|\bmargin\b|%|\bper\b|\bgrowth\b|"
+    r"\breturn\b))(?:[A-Za-z][\w\-]*\s+){1,3}EBITDA\b", re.I)
+
 # ---------------------------------------------------------------- item 8b ---
 # The three balance-sheet lines the ratios are built from. These are NOT in
 # OTHER_METRICS, and that is the whole point.
@@ -1496,21 +1502,44 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", 
     # page is read on such a map only when that page's own header nearest above the row resolves to
     # the same column map, stubs included and in the same places.
     pinned = bool(best.get("columnsPinned"))
+    # OD-172: every readable EBITDA row in the document is collected, plain ("EBITDA") apart from
+    # qualified ("Operating EBITDA", "Adjusted EBITDA"), so plain beats qualified whatever the page
+    # or row order; qualified rows count only when no plain row is readable. Among rows of the
+    # chosen kind, those VERIFIED under the chosen column map (on the chosen page, or on a pinned map
+    # under the same header) must agree or there is no EBITDA (fail closed). With no verified row,
+    # the first row in page order is taken, as before (a row on an unpinned map has no header proof
+    # either way; peer and ascending-order tables print plain rows that disagree, A-One Steels p152).
+    ebitda_rows = {"plain": [], "qualified": []}
     for _i, t in page_texts:
         page_lines = t.split("\n")
         for j, ln in enumerate(page_lines):
+            readable = (lambda: not pinned or _i == best["page"]
+                        or _columns_above(page_lines, j) == best["columns"])
             for rx, key in OTHER_METRICS:
                 if key in result["metrics"]:
                     continue
                 m = rx.search(ln)
-                if m and _is_clean_data_row(ln, m.end()) and (
-                        not pinned or _i == best["page"]
-                        or _columns_above(page_lines, j) == best["columns"]):
+                if m and _is_clean_data_row(ln, m.end()) and readable():
                     mapped = align(ln)
                     if mapped:
-                        result["metrics"][key] = mapped
-        if all(k2 in result["metrics"] for _, k2 in OTHER_METRICS):
-            break
+                        if key == "ebitda":
+                            ebitda_rows["plain"].append((mapped, pinned or _i == best["page"]))
+                        else:
+                            result["metrics"][key] = mapped
+                    break
+            else:
+                m = _QUALIFIED_EBITDA.search(ln)
+                if m and _is_clean_data_row(ln, m.end()) and readable():
+                    mapped = align(ln)
+                    if mapped:
+                        ebitda_rows["qualified"].append((mapped, pinned or _i == best["page"]))
+    chosen = ebitda_rows["plain"] or ebitda_rows["qualified"]
+    verified = {tuple(sorted(r.items())) for r, ok in chosen if ok}
+    result["ebitdaAmbiguous"] = len(verified) > 1
+    if len(verified) == 1:
+        result["metrics"]["ebitda"] = dict(next(iter(verified)))
+    elif chosen and not verified:
+        result["metrics"]["ebitda"] = chosen[0][0]
 
     # 2.4 (item 8b). The balance-sheet lines, read from the LOCATED statement
     # rather than doc-wide. See BALANCE_SHEET_METRICS for why the difference
