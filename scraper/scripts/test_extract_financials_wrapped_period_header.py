@@ -241,3 +241,18 @@ def test_nse_pages_read_identically_with_word_boxes_available(path):
     assert _comparable(after) == _comparable(before)
     read_pages = {before.get("pnlPage")}
     assert not read_pages & set(asked)
+
+
+def test_a_word_box_page_sharing_no_row_with_the_chosen_page_fills_nothing():
+    # Fix A3 reviewer note: agreement is checked on at least one row both pages carry. A word-box
+    # page with no row in common with the chosen page is unconfirmed and fills nothing.
+    from extract_financials_pdf import _fill_from_word_pages
+    years = [2025, 2024, 2023]
+    best = {"years": years, "unit": "millions", "unitStated": True}
+    word_page = {"years": years, "unit": "millions", "unitStated": True, "score": 2,
+                 "metrics": {"revenue": {2025: 13970.10, 2024: 10245.68, 2023: 9212.55},
+                             "profit": {2025: 300.0, 2024: 200.0, 2023: 100.0}}}
+    eps_only = {"eps": {2025: 1.0, 2024: 0.8, 2023: 0.5}}
+    assert _fill_from_word_pages(eps_only, best, [word_page]) == eps_only
+    agreeing = {"profit": {2025: 300.0, 2024: 200.0, 2023: 100.0}}
+    assert _fill_from_word_pages(agreeing, best, [word_page])["revenue"] == word_page["metrics"]["revenue"]

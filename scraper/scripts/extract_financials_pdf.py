@@ -242,6 +242,23 @@ _BALANCE_SHEET_IDENTITY = re.compile(
 )
 
 
+def _is_balance_sheet(text):
+    # Split digits ("2 ,997.50", Deepa DRHP p265) are repaired before the identity row is matched.
+    t = "\n".join(_normalize_numbers(ln) for ln in (text or "").split("\n"))
+    return bool(_BALANCE_SHEET_HEADING.search(t) and _BALANCE_SHEET_IDENTITY.search(t))
+
+
+def _bs_rows_under(text, columns):
+    """True when a balance-sheet row on this page sits under a header naming `columns`."""
+    lines = (text or "").split("\n")
+    for j, ln in enumerate(lines):
+        for rx, _key in BALANCE_SHEET_METRICS:
+            m = rx.search(ln)
+            if m and _is_clean_data_row(ln, m.end()) and _columns_above(lines, j) == columns:
+                return True
+    return False
+
+
 def find_balance_sheet_page(page_texts):
     """Return the index of the restated balance sheet, or None.
 
@@ -505,6 +522,8 @@ def _parse_pnl_page(text):
         if inline is not None and inline != "UNRESOLVED":
             annual = [y for y in inline if y is not None]
             parsed = _finish_pnl_page(text, lines, inline, annual, is_kpi_table, strict=True)
+            if parsed:
+                parsed["columnsPinned"] = True
     return parsed
 
 
@@ -731,6 +750,7 @@ def _parse_pnl_page_by_geometry(text, words):
     parsed = _finish_pnl_page(text, text.split("\n"), column_fy, annual, is_kpi_table, strict=True)
     if parsed:
         parsed["columnsFromWords"] = True
+        parsed["columnsPinned"] = True
     return parsed
 
 
@@ -1266,6 +1286,21 @@ def _fill_missing_from_pnl_page(kpi_metrics, best, candidates):
 WORD_FILL_KEYS = ("revenue", "totalIncome", "profit", "eps")
 
 
+def _columns_above(lines, row):
+    """The column map named by the period header nearest above `row` on its own page: a one-line
+    header naming each period end with its year, or a stacked period line over a year line. None
+    when no such header is above the row ("UNRESOLVED" when one is but cannot be paired)."""
+    for k in range(row - 1, -1, -1):
+        if k >= 1 and _YEARS_ONLY_LINE.match(lines[k]):
+            stacked = _stacked_header_columns([lines[k - 1], lines[k]])
+            if stacked is not None:
+                return stacked
+        inline = _inline_period_columns([lines[k]])
+        if inline is not None:
+            return inline
+    return None
+
+
 def _fill_from_word_pages(metrics, best, word_candidates):
     """Fill the chosen page's missing P&L rows from a page read on its word boxes (D11 wrapped
     header), only when that page names the same fiscal years in the same stated unit and agrees
@@ -1279,6 +1314,8 @@ def _fill_from_word_pages(metrics, best, word_candidates):
     if not same:
         return metrics
     other = max(same, key=lambda c: c["score"])
+    if not any(key in metrics and key in other["metrics"] for key in WORD_FILL_KEYS):
+        return metrics  # fix A3: agreement is checked on at least one shared row, never vacuously
     for key in WORD_FILL_KEYS:
         if key in metrics and key in other["metrics"]:
             a, b = metrics[key], other["metrics"][key]
@@ -1455,16 +1492,20 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", 
     # elsewhere with the same cell count can sit under another header (Jindal DRHP p111: a peer
     # comparison table whose second to fourth cells are OTHER companies' EBITDA), so with that map
     # only the chosen page's own rows are read.
-    words_map = bool(best.get("columnsFromWords"))
+    # Fix A3: the same holds for fix A's one-line period header (AceVector p315). A row on another
+    # page is read on such a map only when that page's own header nearest above the row resolves to
+    # the same column map, stubs included and in the same places.
+    pinned = bool(best.get("columnsPinned"))
     for _i, t in page_texts:
-        if words_map and _i != best["page"]:
-            continue
-        for ln in t.split("\n"):
+        page_lines = t.split("\n")
+        for j, ln in enumerate(page_lines):
             for rx, key in OTHER_METRICS:
                 if key in result["metrics"]:
                     continue
                 m = rx.search(ln)
-                if m and _is_clean_data_row(ln, m.end()):
+                if m and _is_clean_data_row(ln, m.end()) and (
+                        not pinned or _i == best["page"]
+                        or _columns_above(page_lines, j) == best["columns"]):
                     mapped = align(ln)
                     if mapped:
                         result["metrics"][key] = mapped
@@ -1476,16 +1517,24 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", 
     # matters: the cash-flow statement carries a row with the same label and
     # the same shape, and whichever came first in the page order would win.
     bs_page = find_balance_sheet_page(page_texts)
-    if words_map and bs_page != best["page"]:
-        bs_page = None
+    if pinned and bs_page is not None and bs_page != best["page"]:
+        # Fix A3: on a pinned column map the statement read is the first one whose own header,
+        # above its rows, names the same column map (Deepa DRHP: the summary p79 wraps its header,
+        # the restated statement p265 prints the same one-line header as the P&L page p266).
+        bs_page = next((i for i, t in page_texts
+                        if _is_balance_sheet(t) and (i == best["page"] or _bs_rows_under(t, best["columns"]))),
+                       None)
     if bs_page is not None:
         bs_text = next((t for i, t in page_texts if i == bs_page), "") or ""
-        for ln in bs_text.split("\n"):
+        bs_lines = bs_text.split("\n")
+        for j, ln in enumerate(bs_lines):
             for rx, key in BALANCE_SHEET_METRICS:
                 if key in result["metrics"]:
                     continue
                 m = rx.search(ln)
-                if m and _is_clean_data_row(ln, m.end()):
+                if m and _is_clean_data_row(ln, m.end()) and (
+                        not pinned or bs_page == best["page"]
+                        or _columns_above(bs_lines, j) == best["columns"]):
                     mapped = align(ln)
                     if mapped:
                         result["metrics"][key] = mapped

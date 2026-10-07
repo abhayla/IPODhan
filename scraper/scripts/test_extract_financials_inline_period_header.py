@@ -150,3 +150,48 @@ def test_balance_sheet_keeps_a_series_the_plain_reading_already_read():
     got = issuer_balance_rows.read_balance_totals([(10, page)], None)
     assert got["total_assets_by_fy"] == ({"2025": 200.0, "2024": 150.0}, 10, None)
     assert got["reserves_by_fy"] == ({"2025": 20.0, "2024": 10.0}, 10, None)
+
+
+# Fix A3 (reviewer reproduction): the one-line period header's column map is proven for the
+# statement's own page. A row on another page is read on it only when that page's own header,
+# nearest above the row, resolves to the same column map. A peer table placed before the statement
+# ("EBITDA 9,111.11 8,222.22 7,333.33 6,444.44 5,555.55") is another company's figures.
+PEER = (1, "Comparison with Peers\n(in million)\nParticulars AceVector Peer A Peer B Peer C Peer D\n"
+           "EBITDA 9,111.11 8,222.22 7,333.33 6,444.44 5,555.55\n"
+           "Net worth 9,111.11 8,222.22 7,333.33 6,444.44 5,555.55\n")
+PEER_FIGURES = {9111.11, 8222.22, 7333.33, 6444.44, 5555.55}
+
+
+def test_a_peer_row_before_the_statement_is_never_read_on_its_column_map():
+    out = extract_from_texts([PEER] + pages())
+    assert out["pnlPage"] == 315
+    assert "ebitda" not in out["metrics"] and "netWorth" not in out["metrics"]
+    for key, series in out["metrics"].items():
+        assert not PEER_FIGURES & set(series.values()), key
+
+
+def test_a_row_under_the_same_header_on_another_page_is_still_read():
+    # The same net worth row printed on a page whose own header names the same five period ends
+    # (stubs first) is read, with the stub columns dropped.
+    other = (2, "Summary of key figures\n(in million)\nParticulars " + HEADER + "\n"
+                "Net worth 1,500.00 1,400.00 1,385.57 (1,291.60) 228.25\n")
+    out = extract_from_texts([other] + pages())
+    assert out["metrics"]["netWorth"] == {2025: 1385.57, 2024: -1291.60, 2023: 228.25}
+
+
+def test_the_statements_own_balance_sheet_rows_are_unchanged():
+    out = extract_from_texts([PEER] + pages())
+    assert out["balanceSheetPage"] == 314
+    assert out["metrics"]["currentAssets"] == {2025: 2578.12, 2024: 2165.80, 2023: 1858.67}
+    assert out["metrics"]["currentLiabilities"] == {2025: 3337.69, 2024: 1965.85, 2023: 2091.36}
+    assert out["metrics"]["inventories"] == {2025: 12.68, 2024: 74.56, 2023: 39.26}
+
+
+def test_a_balance_sheet_with_split_digits_in_its_identity_row_is_recognised_for_a_pinned_map():
+    # Deepa DRHP p265 prints "Total equity and liabilities 2 ,997.50 2 ,176.74 ..."; the pinned-map
+    # statement search repairs the split before matching the closing identity.
+    from extract_financials_pdf import _is_balance_sheet
+    page = ("Restated Statement of Assets and Liabilities\n"
+            "Total equity and liabilities 2 ,997.50 2 ,176.74 1 ,746.36 1 ,528.06\n")
+    assert _is_balance_sheet(page)
+    assert not _is_balance_sheet("Restated Statement of Assets and Liabilities\nTotal assets 2,997.50\n")
