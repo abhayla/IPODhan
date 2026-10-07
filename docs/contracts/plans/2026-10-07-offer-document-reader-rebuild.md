@@ -143,3 +143,22 @@ if the value is printed on that page and passes step 4.
   Open: OD-174 refusals do not clear an older reader's stored mixed-caption value (needs an answer-state rule);
   'shares_not_validated' codes cannot tell refusal from miss (treated as keep); Priority Jewels promoter tables unread.
 - Next section per plan: General Information (lead managers, registrar, compliance officer), then the cover.
+
+## Section 3: General Information (started 2026-10-07)
+- Spike `session-2026-10-07/rebuild-gi/`: tuning (7 DRHPs) 243 / 0 / 19 vs today's reader 102 / 3 / 157. OD-177 (owner):
+  a printed copy failing its own format check is not a copy (AceVector phone +91 124 473 9850).
+- Blind GI set 1 (GGSP, SRIT, Rentomojo, Symbiotec): 89 / 2 wrong / 16 -> class "block opening taken as name/address"
+  (SRIT 'Name: Kfin ...', Symbiotec intro sentence in the address). Fix round 1 added exclusions.
+- Blind GI set 2 (Elevate, Tempsens, Varmora, Karamtara): 91 / 1 wrong / 20 - SAME class (Elevate address begins with
+  the "(formerly known as ...)" company line). Second occurrence -> independent review (owner rule).
+- Independent review (accepted): root cause = block structure inferred from line ORDER with per-round exclusions; two
+  different "is this a company name" tests (name reader vs address reader) disagree on 19 of 113 blocks; 9 further real
+  line shapes break the same way (digits in names e.g. "360 ONE WAM Limited", wrapped / column-split aliases, "(India)"
+  mid-name, footnote marks, person + company in one block, PIN forms "400-051" / "1220 03" / PIN after state, wrapped
+  "/index.html" link tails that refuse whole BRLM sections, missing registered-office heading); cover copies matched
+  by proximity are unsafe (Tempsens cover line holds ICICI's phone beside KFin's).
+- Round 3 (in progress): one shared line classifier used by every reader, a block grammar (name -> address -> contacts,
+  else refuse), widened PIN forms, link continuations, cover copies only from the same column cell under the same
+  entity heading; proofs: table test of every line shape, corpus check name/address paths disagree 0 of 113, mutation
+  per normalisation step, then blind GI set 3 (Deepa, Jio, Runwal, A-One). A third failure of this class -> stop and
+  escalate to the owner with the review and both briefs (owner rule).
