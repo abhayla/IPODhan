@@ -511,6 +511,24 @@ def check_fy_series(series, fiscal_years):
     return True, "%s years %s" % (len(series), years)
 
 
+def check_fy_subset(series, fiscal_years):
+    """OD-173 reader: every year of the series must be a fiscal year the restated statements read (a STRAY year is
+    refused); a series printed for fewer years is fine. No year token may sit in a value slot."""
+    if not series:
+        return missed("no values")
+    if not fiscal_years:
+        return missed("fiscal years not read from a header row")
+    years = sorted(int(y) for y in fiscal_years)
+    stray = sorted(int(k) for k in series if int(k) not in years)
+    if stray:
+        return refused("series years %s not among the statement years %s" % (stray, years))
+    leaked = [k for k, v in series.items() if float(v) in {float(y) for y in years}]
+    if leaked:
+        return refused("year token leaked into the value of %s (%s)" % (
+            sorted(leaked), [series[k] for k in sorted(leaked)]))
+    return True, "%s of the statement years %s" % (len(series), years)
+
+
 def check_sign_consistency(eps_series, pat_series):
     """EPS sign must agree with PAT sign for every shared year."""
     if not eps_series or not pat_series:
@@ -2973,9 +2991,9 @@ def _emit_rebuilt_financials(fin, emit, unit):
             len(series), sorted(series), {k[2:]: n for k, n in sorted(copies.items()) if k.startswith("FY")},
             (rec.get("source") or {}).get("FY%s" % max(series)))
         put = emit.put_c_money if kind == "money" else (lambda u, *a: emit.put(*a))
-        # The series must cover exactly the fiscal years the restated statements read (a year the statements did
-        # not read, or a missing one, is not trusted), and no year token may sit in a value slot.
-        chk = check_fy_series(series, fin["fiscal_years"])
+        # Every year of the series must be one the restated statements read (a stray year is not trusted; fewer
+        # years is fine), and no year token may sit in a value slot.
+        chk = check_fy_subset(series, fin["fiscal_years"])
         put(unit, name, series, offer_doc_financials.source_page(rec), "%s_printed_copies_agree" % name,
             (True, "%s; %s" % (detail, chk[1])) if chk[0] else chk)
     if fin is None:

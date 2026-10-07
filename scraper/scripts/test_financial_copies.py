@@ -148,19 +148,37 @@ def test_a_section_year_the_statements_did_not_read_is_dropped():
     assert any("['FY2024'] dropped" in n for n in ebitda["refusals_seen"])
 
 
-def test_series_short_of_the_statement_years_is_refused(monkeypatch):
-    """Guard 3: extract_filing checks every series against the statement years (check_fy_series)."""
+def run_with_ronw(monkeypatch, edit):
+    """The real NSE read, with the RoNW periods edited, through extract_filing's series year check."""
     fx, gw = load("national-stock-exchange-of-india-ltd-DRHP")
     real = F.read_financials
 
-    def short_ronw(*a, **k):
+    def edited(*a, **k):
         out = real(*a, **k)
-        out["fields"]["ronw"]["values"].pop("FY2024")
+        edit(out["fields"]["ronw"]["values"])
         return out
-    monkeypatch.setattr(F, "read_financials", short_ronw)
-    f = EF.run([tuple(p) for p in fx["page_texts"]], "DRHP", fx["source_doc"], grid_words_for_page=gw.get)["fields"]
-    assert f["ronw_by_fy"]["value"] is None and f["ronw_by_fy"]["state"] == "REFUSED"
+    monkeypatch.setattr(F, "read_financials", edited)
+    return EF.run([tuple(p) for p in fx["page_texts"]], "DRHP", fx["source_doc"], grid_words_for_page=gw.get)["fields"]
+
+
+def test_series_with_fewer_statement_years_is_kept(monkeypatch):
+    """AceVector shape: RoNW printed for 2026 and 2024 while the statements read 2026/2025/2024 -> kept."""
+    f = run_with_ronw(monkeypatch, lambda v: v.pop("FY2025"))
+    assert f["ronw_by_fy"]["value"] == {"2024": 37.6, "2026": 33.21}
+    assert f["ronw_by_fy"]["state"] == "VALUE"
+
+
+def test_series_with_a_year_the_statements_did_not_read_is_refused(monkeypatch):
+    f = run_with_ronw(monkeypatch, lambda v: v.update(FY2023=29.1))
+    rec = f["ronw_by_fy"]
+    assert rec["value"] is None and rec["state"] == "REFUSED"
+    assert "[2023] not among the statement years [2024, 2025, 2026]" in rec["check"]["detail"]
     assert f["revenue_by_fy"]["value"] is not None
+
+
+def test_subset_check_leaves_the_exact_check_unchanged():
+    assert EF.check_fy_subset({"2025": 1.0}, [2025, 2024])[0] is True
+    assert EF.check_fy_series({"2025": 1.0}, [2025, 2024])[0] is False
 
 
 def test_locator_failure_names_the_missing_contents_page():
