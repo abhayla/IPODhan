@@ -3215,7 +3215,12 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     else:
         emit.null("promoter_name", "our_promoters_statement_not_on_cover")
         emit.null("promoter_names", "our_promoters_statement_not_on_cover")
-    _read_promoter_tables(page_texts, emit, grid_words_for_page, cover_names or None)
+    if not cover_names and stated_none_page is not None and cover_src != "cover_copies_disagree":
+        # Item 46 (OD-165): the stated absence covers the promoters' holdings too (NSE DRHP / RHP).
+        for n in _PROMOTER_TABLE_FIELDS:
+            emit.null(n, NO_IDENTIFIABLE_PROMOTER, stated_none_page)
+    else:
+        _read_promoter_tables(page_texts, emit, grid_words_for_page, cover_names or None)
 
     # OD-173: revenue, total income, PAT, EBITDA, net worth, EPS (basic, diluted), total assets, reserves,
     # operating cash flow, rent, RoNW and total borrowing - all from the rebuilt reader.
