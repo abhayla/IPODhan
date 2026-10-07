@@ -79,6 +79,13 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
 3c. BLIND HOLD-OUT (next): answer keys for 4 mainboard DRHPs the pipeline was never tuned on, built from the PDF by a
    worker that never sees pipeline output; bar: wrong = 0 on the hold-out. A wrong value there means the method is
    overfit -> fix the class, then a NEW hold-out (never re-score the same hold-out after tuning on it).
+   -- HOLD-OUT 1 RESULT 2026-10-07 (Elevate, Tempsens, Varmora, Karamtara; 190 keyed values; keys built blind from PDFs):
+   new 162 correct / 1 WRONG / 27 missed vs today's reader 111 / 0 / 79. Generalises, but NOT at 0 wrong:
+   (a) Karamtara reserves: restated balance sheet p74/p283 prints Other equity FY2024 5,479.05 million, the Offer
+   Document Summary p21 prints 5,473.87; the pipeline read only the statements and so missed the conflict (F-248 class)
+   -> step 4 must compare ALL printed copies of every field before saving; (b) the "unread table" guard refused Elevate
+   EBITDA over an "EBITDA %" row (a % row is never EBITDA, OD-172) -> the guard must apply the same label dictionary and
+   refusals. Hold-out 1 is now USED; the next score is on hold-out 2 (four other unkeyed mainboard DRHPs).
 4. Validation (copies + identities) wired; bar: the 3 wrong-value classes from 2026-10-07 are rejected by
    construction (tests), wrong = 0, found >= baseline.
 5. Swap the new financial reader in behind the existing output shape; NSE DRHP 89/90 and RHP 88/90 in the test DB
