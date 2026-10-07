@@ -204,5 +204,19 @@ describe('filing-persister - the same BRLM set in another order keeps each firm 
     const summary = await run(h, { lead_managers: value(HELD, 1) });
     expect(h.replaceForIpo).not.toHaveBeenCalled();
     expect(summary.skipped_no_column.some((s) => s.startsWith('ipo_intermediaries'))).toBe(true);
+    // Nothing reached the table, so nothing is counted as written ...
+    expect(summary.written.ipo_intermediaries).toBeUndefined();
+    // ... each row is named unresolved with the cause ...
+    expect((summary.unresolved_child_rows ?? []).filter((s) => s.startsWith('ipo_intermediaries')).sort()).toEqual(
+      [KOTAK, JM, SBI].map((n) => `ipo_intermediaries BRLM:${rowKeyForName(n)} (stored-rows-unreadable; replace refused)`).sort()
+    );
+    // ... and the unresolved provenance marker is filed for the table.
+    const track = h.deps.fieldSources.trackFieldUpdate as unknown as ReturnType<typeof vi.fn>;
+    const markers = track.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .filter((a) => a.tableName === 'ipo_intermediaries' && a.fieldName === 'rows');
+    expect(markers.map((a) => [a.rowKey, (a.dataLineage as Record<string, unknown>)?.unresolvedReason])).toEqual([
+      ['unresolved:stored-rows-unreadable', 'stored-rows-unreadable'],
+    ]);
   });
 });

@@ -3579,6 +3579,7 @@ export async function persistFilingExtraction(
     }
     return true;
   };
+  let intermediariesRefused = false;
   if (intermediariesWithKeys.length > 0) {
     if (
       await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
@@ -3614,9 +3615,18 @@ export async function persistFilingExtraction(
         if (kept) {
           await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
           await trackField('ipo_intermediaries', 'rows');
+        } else {
+          // The rows never reached the table: the provenance filed by consolidateChildRows above is
+          // marked unresolved with the cause, and each row is named. This document's receipts for
+          // these rows were already pushed; there is no mechanism to withdraw a receipt.
+          intermediariesRefused = true;
+          for (const { row, key } of intermediariesWithKeys) {
+            unresolvedChildRows.push(`ipo_intermediaries ${row.role}:${key as string} (stored-rows-unreadable; replace refused)`);
+          }
+          await markChildRowsUnresolved('ipo_intermediaries', 'stored-rows-unreadable');
         }
       }
-      bump(written, 'ipo_intermediaries', intermediariesWithKeys.length);
+      if (!intermediariesRefused) bump(written, 'ipo_intermediaries', intermediariesWithKeys.length);
     }
   }
 
