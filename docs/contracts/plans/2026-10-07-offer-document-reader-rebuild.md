@@ -86,6 +86,16 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
    -> step 4 must compare ALL printed copies of every field before saving; (b) the "unread table" guard refused Elevate
    EBITDA over an "EBITDA %" row (a % row is never EBITDA, OD-172) -> the guard must apply the same label dictionary and
    refusals. Hold-out 1 is now USED; the next score is on hold-out 2 (four other unkeyed mainboard DRHPs).
+4. Validation (copies + identities) -- BUILT 2026-10-07 in the spike: every printed copy of a field/period across all
+   located sections is collected; agree -> value, one copy -> value only if its table's identities hold, disagree ->
+   refused with copies listed; the unread-table guard reuses the label dictionary. Mutation tests bite (no copies check ->
+   Karamtara reserves wrong; no dictionary in guard -> Elevate EBITDA refused). Also found: four spike regexes had a
+   literal backspace byte where  was meant (written through a bash heredoc), so the peer skip and the OD-172 guard
+   never ran; fixed. Tuning set now 346/0/36; hold-out 1 (used, info) 175/0/15.
+   -- HOLD-OUT 2 (German Green, SRIT, Rentomojo, Symbiotec; blind keys with the strict all-sections conflict rule; scored
+   with NO tuning): new 134 correct / 0 WRONG / 22 missed vs today's reader 69 / 0 / 87. Grey area: 14 German Green
+   values the key left null as "conflict" (statement PAT vs a note labelling total comprehensive income "PAT"; statement
+   basic EPS 49.27 per D8 vs a share-adjusted 7.91) - the pipeline saved the statement's values; unscored.
 4. Validation (copies + identities) wired; bar: the 3 wrong-value classes from 2026-10-07 are rejected by
    construction (tests), wrong = 0, found >= baseline.
 5. Swap the new financial reader in behind the existing output shape; NSE DRHP 89/90 and RHP 88/90 in the test DB
