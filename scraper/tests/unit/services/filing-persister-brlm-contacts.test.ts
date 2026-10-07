@@ -228,7 +228,8 @@ describe('filing-persister - brlm_contacts answer states (OD-153, OD-158) and do
   it('same document, the reader refused brlm_contacts: the stored columns this document wrote are cleared', async () => {
     const h = makeDeps([STORED_KOTAK], { ...sameDoc('contactPerson'), ...sameDoc('grievanceEmail') });
     const summary = await run(h, { lead_managers: value(HELD, 1), brlm_contacts: nullField('REFUSED', 'brlm_block_values_format_checked') });
-    expect(firm(h, 'BRLM', KOTAK)).toMatchObject({ contactPerson: null, grievanceEmail: null, phone: '+91 22 1111 1111', email: 'old@kotak.com' });
+    // grievanceEmail is also produced by row 158 (brlm_grievance_emails), absent here = a miss: kept.
+    expect(firm(h, 'BRLM', KOTAK)).toMatchObject({ contactPerson: null, grievanceEmail: 'old-redressal@kotak.com', phone: '+91 22 1111 1111', email: 'old@kotak.com' });
     expect(summary.skipped_failed_check).toContain(`ipo_intermediaries ${K}.contactPerson cleared (current reader refused: brlm_block_values_format_checked)`);
     expect(h.recordFailure).toHaveBeenCalledWith(
       expect.objectContaining({ tableName: 'ipo_intermediaries', fieldName: 'contactPerson', rowKey: K, ruleId: 'FAILED_VALIDATION', documentId: DOC_ID })
@@ -357,5 +358,102 @@ describe('filing-persister - registrar_grievance_email reaches the REGISTRAR row
     const h = makeDeps([STORED_REG]);
     await run(h, { registrar_name: value(REG, 2), registrar_grievance_email: value(REG_MAIL, 101) });
     expect(firm(h, 'REGISTRAR', REG)?.email).toBe('nse.ipo@kfintech.com');
+  });
+});
+
+describe('filing-persister - review round 1: every producer must clear; per-column reasons; formats; F-248', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+  const sameDoc = (rk: string, field: string) => origin(rk, field, { documentId: DOC_ID, docType: 'RHP' });
+
+  it('row 158 misses + brlm_contacts refused: the stored grievance e-mail is kept', async () => {
+    const h = makeDeps([STORED_KOTAK], sameDoc(K, 'grievanceEmail'));
+    await run(h, {
+      lead_managers: value(HELD, 1),
+      brlm_contacts: nullField('REFUSED', 'x'),
+      brlm_grievance_emails: nullField('MISSED', 'brlm_grievance_emails_unread: no_grievance_label'),
+    });
+    expect(firm(h, 'BRLM', KOTAK)?.grievanceEmail).toBe('old-redressal@kotak.com');
+  });
+
+  it('row 158 produced a value for another firm only + brlm_contacts refused: kept (a VALUE with no entry is a miss)', async () => {
+    const h = makeDeps([STORED_KOTAK], sameDoc(K, 'grievanceEmail'));
+    await run(h, {
+      lead_managers: value(HELD, 1),
+      brlm_contacts: nullField('REFUSED', 'x'),
+      brlm_grievance_emails: value({ [JM]: 'grievance.ibd@jmfl.com' }, 98),
+    });
+    expect(firm(h, 'BRLM', KOTAK)?.grievanceEmail).toBe('old-redressal@kotak.com');
+  });
+
+  it('both producers refuse: the grievance e-mail is cleared and the reason names both', async () => {
+    const h = makeDeps([STORED_KOTAK], sameDoc(K, 'grievanceEmail'));
+    const summary = await run(h, {
+      lead_managers: value(HELD, 1),
+      brlm_contacts: nullField('REFUSED', 'a'),
+      brlm_grievance_emails: nullField('REFUSED', 'b'),
+    });
+    expect(firm(h, 'BRLM', KOTAK)?.grievanceEmail).toBeNull();
+    expect(summary.skipped_failed_check.some((x) => x.startsWith(`ipo_intermediaries ${K}.grievanceEmail cleared`) && x.includes('brlm_contacts: a') && x.includes('brlm_grievance_emails: b'))).toBe(true);
+  });
+
+  it('sole BRLM: brlm_contacts refused but lead_manager_sebi_reg produced a value: the SEBI no. is the value, never cleared', async () => {
+    const h = makeDeps([{ role: 'BRLM', name: KOTAK, sebiRegNo: 'INM000000001' }], sameDoc(K, 'sebiRegNo'));
+    (h.deps.ipoRepository.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: IPO_ID, companyName: 'X Limited', slug: 'x-ltd', segment: 'MAINBOARD', offeringType: 'IPO', status: 'UPCOMING',
+      listingExchanges: [], leadManagers: [KOTAK], registrar: REG,
+    });
+    await run(h, { lead_managers: value([KOTAK], 1), brlm_contacts: nullField('REFUSED', 'x'), lead_manager_sebi_reg: value('INM000008704', 98) });
+    expect(firm(h, 'BRLM', KOTAK)?.sebiRegNo).toBe('INM000008704');
+  });
+
+  it('per-column reasons: a refusal reason clears that column (same document); label_not_found or no reason keeps', async () => {
+    const h = makeDeps([STORED_KOTAK], { ...sameDoc(K, 'phone'), ...sameDoc(K, 'email'), ...sameDoc(K, 'contactPerson') });
+    const summary = await run(h, {
+      lead_managers: value(HELD, 1),
+      brlm_contacts: value([
+        { ...KOTAK_ROW, phone: null, email: null, contact_person: null, reasons: { phone: 'phone_format (+91 0124473980)', email: 'label_not_found' } },
+        JM_ROW,
+      ], 98),
+    });
+    expect(firm(h, 'BRLM', KOTAK)).toMatchObject({ phone: null, email: 'old@kotak.com', contactPerson: 'Old Person' });
+    expect(summary.skipped_failed_check).toContain(`ipo_intermediaries ${K}.phone cleared (current reader refused: phone_format (+91 0124473980))`);
+  });
+
+  it('per-column stated absence on the list clears from a lower-ranked document', async () => {
+    const h = makeDeps([STORED_KOTAK], origin(K, 'phone', { documentId: OTHER_DOC, docType: 'DRHP' }, 'DRHP'));
+    await run(h, { lead_managers: value(HELD, 1), brlm_contacts: value([{ ...KOTAK_ROW, phone: null, reasons: { phone: TEST_ABSENCE } }, JM_ROW], 98) });
+    expect(firm(h, 'BRLM', KOTAK)?.phone).toBeNull();
+  });
+
+  it('formats: a malformed phone and a firm name as contact person are not written (stored kept); " / " names are', async () => {
+    const h = makeDeps([STORED_KOTAK], { ...sameDoc(K, 'phone'), ...sameDoc(K, 'contactPerson') });
+    await run(h, {
+      lead_managers: value(HELD, 1),
+      brlm_contacts: value([
+        { ...KOTAK_ROW, phone: '+91 0124473980', contact_person: 'Kotak Securities Limited' },
+        { ...JM_ROW, contact_person: 'Prachee Dhuri / A. K. Shah', phone: '+91 22 6630 3030 / 1800 102 1234' },
+      ], 98),
+    });
+    expect(firm(h, 'BRLM', KOTAK)).toMatchObject({ phone: '+91 22 1111 1111', contactPerson: 'Old Person' });
+    expect(firm(h, 'BRLM', JM)).toMatchObject({ contactPerson: 'Prachee Dhuri / A. K. Shah', phone: '+91 22 6630 3030 / 1800 102 1234' });
+  });
+
+  it('a SEBI number printed with an "MB/" prefix is dropped (spec row 154 defines no stored form)', async () => {
+    const h = makeDeps([]);
+    await run(h, { lead_managers: value(HELD, 1), brlm_contacts: value([{ ...KOTAK_ROW, sebi_reg_no: 'MB/INM000008704' }, JM_ROW], 98) });
+    expect(firm(h, 'BRLM', KOTAK)?.sebiRegNo).toBeNull();
+  });
+
+  it('F-248: brlm_contacts and row 158 disagree on a grievance e-mail: refused, logged, stored kept, no receipt', async () => {
+    const h = makeDeps([STORED_KOTAK], sameDoc(K, 'grievanceEmail'));
+    const summary = await run(h, {
+      lead_managers: value(HELD, 1),
+      brlm_contacts: value([KOTAK_ROW, JM_ROW], 98),
+      brlm_grievance_emails: value({ [KOTAK]: 'other@kotak.com', [JM]: 'grievance.ibd@jmfl.com' }, 98),
+    });
+    expect(firm(h, 'BRLM', KOTAK)?.grievanceEmail).toBe('old-redressal@kotak.com');
+    expect(firm(h, 'BRLM', JM)?.grievanceEmail).toBe('grievance.ibd@jmfl.com');
+    expect(summary.skipped_failed_check.some((x) => x.startsWith(`ipo_intermediaries ${K}.grievanceEmail (copies_disagree`))).toBe(true);
+    expect(intermediaryReceipts(summary).filter((x) => x.startsWith(`${K}|grievanceEmail`))).toEqual([]);
   });
 });

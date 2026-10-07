@@ -526,6 +526,8 @@ export interface BrlmContact {
   phone: string | null;
   email: string | null;
   grievanceEmail: string | null;
+  /** The reader's own per-column reason (`reasons.<field>`), keyed by the persister column. */
+  reasons: Partial<Record<'sebiRegNo' | 'contactPerson' | 'phone' | 'email' | 'grievanceEmail', string>>;
 }
 
 const EMAIL_FORM = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
@@ -533,28 +535,70 @@ function brlmContactMail(x: unknown): string | null {
   return typeof x === 'string' && EMAIL_FORM.test(x.trim()) ? x.trim() : null;
 }
 /**
+ * Spec row 45's check "Indian phone form" (E4), applied to row 156 by analogy (rows 154-158 state no
+ * check of their own): every number printed in the cell, after an optional +91 / trunk 0, is a
+ * 10-digit number or an 11-digit 1800 toll-free number. The same rule as the reader's `phone_ok`.
+ */
+export function indianPhoneForm(x: unknown): string | null {
+  if (typeof x !== 'string') return null;
+  const v = x.trim().replace(/[.,;]+$/, '');
+  const parts = v.split(/\/|,|;|\bor\b|\band\b/i).map((p) => p.replace(/\D/g, '')).filter((d) => d !== '');
+  if (parts.length === 0) return null;
+  for (let d of parts) {
+    if (d.startsWith('91') && d.length >= 12) d = d.slice(2);
+    d = d.replace(/^0+/, '');
+    if (!(d.length === 10 || (d.length === 11 && d.startsWith('1800')))) return null;
+  }
+  return v;
+}
+/** Row 155: one or more person names (letters, spaces, dots, apostrophes, hyphens, " / " between names). */
+export function personNameForm(x: unknown): string | null {
+  if (typeof x !== 'string') return null;
+  const v = x.trim().replace(/[,;]+$/, '');
+  const name = String.raw`[A-Za-z][A-Za-z.'\- ]*[A-Za-z.]`;
+  if (!new RegExp(String.raw`^${name}(?:\s*/\s*${name})*$`).test(v)) return null;
+  if (/\b(?:limited|ltd|private|pvt|llp|bank|securities|capital|financial)\b/i.test(v)) return null;
+  return v;
+}
+const BRLM_CONTACT_FIELDS = [
+  ['sebiRegNo', 'sebi_reg_no'],
+  ['contactPerson', 'contact_person'],
+  ['phone', 'phone'],
+  ['email', 'email'],
+  ['grievanceEmail', 'grievance_email'],
+] as const;
+/**
  * Rows 154-158: the extractor's `brlm_contacts` (one row per BRLM block read), only from a passing
- * VALUE. Each value is kept only in its own form (an INM number, an e-mail, a non-empty text); any
- * other value of a row is null, which the persister treats as "no answer" for that column (kept).
+ * VALUE. Each value is kept only in its own form (an INM number, an e-mail, an Indian phone, person
+ * names); any other value is null, and a null the persister produced by its own check is never a
+ * clearing answer (the stored value is kept). Spec row 154 defines no stored form for sebi_reg_no;
+ * the reader extracts the bare `IN[MR]` + 9 digit token, so only that form is accepted (a printed
+ * "MB/INM..." never reaches here; anything else is dropped).
  */
 export function brlmContacts(extraction: FilingExtraction): BrlmContact[] {
   const v = trusted(extraction, 'brlm_contacts');
   if (!Array.isArray(v)) return [];
   const text = (x: unknown): string | null => (typeof x === 'string' && x.trim() !== '' ? x.trim() : null);
-  const mail = brlmContactMail;
   const out: BrlmContact[] = [];
   for (const row of v) {
     const r = row as Record<string, unknown> | null;
     const name = r ? text(r.name) : null;
     if (!r || name === null) continue;
     const reg = text(r.sebi_reg_no);
+    const raw = r.reasons && typeof r.reasons === 'object' && !Array.isArray(r.reasons) ? (r.reasons as Record<string, unknown>) : {};
+    const reasons: BrlmContact['reasons'] = {};
+    for (const [col, field] of BRLM_CONTACT_FIELDS) {
+      const why = raw[field];
+      if (typeof why === 'string' && why.trim() !== '') reasons[col] = why.trim();
+    }
     out.push({
       name,
       sebiRegNo: reg !== null && /^INM\d{9}$/.test(reg) ? reg : null,
-      contactPerson: text(r.contact_person),
-      phone: text(r.phone),
-      email: mail(r.email),
-      grievanceEmail: mail(r.grievance_email),
+      contactPerson: personNameForm(r.contact_person),
+      phone: indianPhoneForm(r.phone),
+      email: brlmContactMail(r.email),
+      grievanceEmail: brlmContactMail(r.grievance_email),
+      reasons,
     });
   }
   return out;
@@ -3771,6 +3815,24 @@ export async function persistFilingExtraction(
   // carries only a bare `name`; `normalizedName` is derived once, uniformly,
   // right before the write (see the map() at the replaceForIpo call site
   // below) so a future push site can never forget to set it by hand.
+  // Two fields of this run can produce the same BRLM column: grievanceEmail (brlm_contacts and row
+  // 158's brlm_grievance_emails) and, for a sole BRLM, sebiRegNo (brlm_contacts and
+  // lead_manager_sebi_reg). Copies that agree file the value; copies that differ are refused (F-248):
+  // nothing is filed for that column, the disagreement is logged, and the stored value is kept.
+  const disagreedGiColumns = new Set<string>();
+  const twoProducers = (
+    name: string, column: string, fromContacts: string | null, otherField: string, fromOther: string | null
+  ): string | null => {
+    if (fromContacts === null || fromOther === null || normalizeReceiptValue(fromContacts) === normalizeReceiptValue(fromOther)) {
+      return fromContacts ?? fromOther;
+    }
+    const rowKey = `BRLM:${rowKeyForName(name) ?? ''}`;
+    disagreedGiColumns.add(`${rowKey}|${column}`);
+    skippedFailedCheck.push(
+      `ipo_intermediaries ${rowKey}.${column} (copies_disagree: brlm_contacts=${fromContacts} ${otherField}=${fromOther}; refused, stored value kept, F-248)`
+    );
+    return null;
+  };
   const intermediaries: Omit<IpoIntermediaryInsert, 'normalizedName'>[] = brlmNames.map((name) => {
     const c = contactsByKey.get(rowKeyForName(name) ?? '');
     return {
@@ -3783,11 +3845,13 @@ export async function persistFilingExtraction(
       // wrong firm - left null, and the list is reported as skipped. One BRLM read
       // from the document with its own INM number is unambiguous (item 39), and so
       // is the INM number printed in the firm's own block (brlm_contacts).
-      sebiRegNo: c?.sebiRegNo ?? soleBrlmReg,
+      sebiRegNo: twoProducers(name, 'sebiRegNo', c?.sebiRegNo ?? null, 'lead_manager_sebi_reg', soleBrlmReg),
       contactPerson: c?.contactPerson ?? null,
       phone: c?.phone ?? null,
       email: c?.email ?? null,
-      grievanceEmail: c?.grievanceEmail ?? grievanceByKey.get(rowKeyForName(name) ?? '') ?? null,
+      grievanceEmail: twoProducers(
+        name, 'grievanceEmail', c?.grievanceEmail ?? null, 'brlm_grievance_emails', grievanceByKey.get(rowKeyForName(name) ?? '') ?? null
+      ),
     };
   });
   const registrarReg = str(extraction, 'registrar_sebi_reg');
@@ -3911,14 +3975,49 @@ export async function persistFilingExtraction(
   const giFieldAnswer = (field: string): GiAnswer => {
     const d = decideRereadAnswer(extraction.fields?.[field] as Parameters<typeof decideRereadAnswer>[0]);
     if (d.action !== 'CLEAR') return null;
-    return { state: d.state, reason: d.reason, extractorReason: d.extractorReason ?? d.reason, field };
+    const detail = (extraction.fields?.[field] as ExtractedField | undefined)?.check?.detail;
+    return { state: d.state, reason: d.reason, extractorReason: d.extractorReason ?? (typeof detail === 'string' && detail !== '' ? detail : d.reason), field };
   };
   const brlmContactsAnswer = giFieldAnswer('brlm_contacts');
   const registrarGrievanceAnswer = giFieldAnswer('registrar_grievance_email');
-  const giAnswer = (role: string, col: string): GiAnswer => {
-    if (role === 'BRLM' && docBrlmsHeld) return brlmContactsAnswer;
-    if (role === 'REGISTRAR' && registrarReadIsHeld && col === 'grievanceEmail') return registrarGrievanceAnswer;
+  // The reader's own refusal codes for one value of a block (general_information.py block_values /
+  // compare_copies); any other per-column reason (label_not_found, ...) is a miss and keeps.
+  const GI_REFUSAL_REASONS: readonly RegExp[] = [
+    /^refused\b/,
+    /\bcopies_disagree\b/,
+    /^(?:not_one_email|phone_format|sebi_format|person_format|url_format|two_values_in_block|column_overrun)\b/,
+  ];
+  const contactColumnAnswer = (key: string, col: string): GiAnswer => {
+    if (brlmContactsAnswer !== null) return brlmContactsAnswer;
+    const why = contactsByKey.get(key)?.reasons[col as keyof BrlmContact['reasons']];
+    if (why === undefined) return null;
+    if (isStatedAbsenceReason(why)) return { state: 'STATED_NOT_PRINTED', reason: NOT_PRINTED_REASON, extractorReason: why, field: 'brlm_contacts' };
+    if (GI_REFUSAL_REASONS.some((re) => re.test(why))) {
+      return { state: 'REFUSED', reason: `current reader refused: ${why}`, extractorReason: why, field: 'brlm_contacts' };
+    }
     return null;
+  };
+  // A column is cleared only when EVERY field of this run that produces it gave a clearing answer
+  // (refusal or stated absence); a producer that missed, produced a value, or disagreed keeps it.
+  // Row 158's map and lead_manager_sebi_reg answer per field only (no per-firm reason): their field
+  // VALUE with no entry for this firm is a miss.
+  const giAnswer = (role: string, key: string, col: string): GiAnswer => {
+    if (role === 'REGISTRAR') return registrarReadIsHeld && col === 'grievanceEmail' ? registrarGrievanceAnswer : null;
+    if (role !== 'BRLM' || !docBrlmsHeld) return null;
+    if (disagreedGiColumns.has(`BRLM:${key}|${col}`)) return null;
+    const answers: GiAnswer[] = [contactColumnAnswer(key, col)];
+    if (col === 'grievanceEmail') answers.push(giFieldAnswer('brlm_grievance_emails'));
+    if (col === 'sebiRegNo' && brlmNames.length === 1) answers.push(giFieldAnswer('lead_manager_sebi_reg'));
+    if (answers.some((a) => a === null)) return null;
+    const all = answers as NonNullable<GiAnswer>[];
+    if (all.length === 1) return all[0];
+    const stated = all.every((a) => a.state === 'STATED_NOT_PRINTED');
+    return {
+      state: stated ? 'STATED_NOT_PRINTED' : 'REFUSED',
+      reason: stated ? NOT_PRINTED_REASON : `current reader refused: ${all.map((a) => `${a.field}: ${a.extractorReason}`).join('; ')}`,
+      extractorReason: all.map((a) => a.extractorReason).join('; '),
+      field: all.map((a) => a.field).join(' + '),
+    };
   };
   const clearedIntermediaryColumns: Array<{ rowKey: string; column: string; answer: NonNullable<GiAnswer> }> = [];
   const decideStoredIntermediaryColumn = async (rowKey: string, column: string, answer: GiAnswer): Promise<boolean> => {
@@ -3978,7 +4077,7 @@ export async function persistFilingExtraction(
         const isGi = giColumnsFor(row.role).includes(col);
         if (row[col] === null || row[col] === undefined) {
           if (isGi) {
-            const answer = giAnswer(row.role, col);
+            const answer = giAnswer(row.role, row.normalizedName, col);
             if (await decideStoredIntermediaryColumn(rowKey, col, answer)) {
               clearedIntermediaryColumns.push({ rowKey, column: col, answer: answer as NonNullable<GiAnswer> });
               continue;
