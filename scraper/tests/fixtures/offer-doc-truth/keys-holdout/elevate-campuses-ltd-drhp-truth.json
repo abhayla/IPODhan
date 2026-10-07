@@ -1,0 +1,1166 @@
+[
+ {
+  "key": "financial_data.revenue_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2022 not printed: restated financials cover FY2023-FY2025 only (searched \"March 31, 2022\", 0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2023",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 292.501,
+  "verbatim": "Revenue from operations 3,698.11 3,470.01 2,925.01",
+  "rows": null,
+  "note": "FY2023 revenue 2,925.01 Rs million = 292.50 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2024",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 347.001,
+  "verbatim": "Revenue from operations 3,698.11 3,470.01 2,925.01",
+  "rows": null,
+  "note": "FY2024 revenue 3,470.01 Rs million = 347.00 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2025",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 369.811,
+  "verbatim": "Revenue from operations 3,698.11 3,470.01 2,925.01",
+  "rows": null,
+  "note": "FY2025 revenue 3,698.11 Rs million = 369.81 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2022 not printed: restated financials cover FY2023-FY2025 only (searched \"March 31, 2022\", 0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2023",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 29.003,
+  "verbatim": "Restated profit for the year 526.51 396.89 290.03",
+  "rows": null,
+  "note": "FY2023 restated profit 290.03 Rs million = 29.00 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2024",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 39.689,
+  "verbatim": "Restated profit for the year 526.51 396.89 290.03",
+  "rows": null,
+  "note": "FY2024 restated profit 396.89 Rs million = 39.69 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2025",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 52.651,
+  "verbatim": "Restated profit for the year 526.51 396.89 290.03",
+  "rows": null,
+  "note": "FY2025 restated profit 526.51 Rs million = 52.65 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.net_worth",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 702.709,
+  "verbatim": "Net Worth 7,027.09 6,557.70 5,769.88",
+  "rows": null,
+  "note": "Latest FULL fiscal year FY2025 Rs7,027.09 million = Rs702.71 crore (D11). Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.eps",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 23.81,
+  "verbatim": "- Basic (in ₹) 23.81 17.94 13.11",
+  "rows": null,
+  "note": "FY2025 restated basic EPS Rs23.81 (diluted 23.81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.roe",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed: no \"Return on Equity\" row (searched \"Return on equity\", \"ROE\"); only RoNW printed (see ronw). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.debt_to_equity",
+  "printed": true,
+  "pages": [
+   450
+  ],
+  "value": 1.72,
+  "verbatim": "1.72 1.50 1.78",
+  "rows": null,
+  "note": "FY2025 debt equity ratio 1.72 (capital management note: Debt (A) 12,065.96 / Equity (B) 7,027.09; ratio row has no label on the same line). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.reserves_and_surplus",
+  "printed": true,
+  "pages": [
+   92
+  ],
+  "value": 700.498,
+  "verbatim": "Other equity 7,004.98 6,535.58 5,747.76",
+  "rows": null,
+  "note": "FY2025 \"Other equity\" Rs7,004.98 million = Rs700.50 crore (D9). Restated Consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_assets",
+  "printed": true,
+  "pages": [
+   92
+  ],
+  "value": 2421.177,
+  "verbatim": "Total assets 24,211.77 21,047.37 18,499.96",
+  "rows": null,
+  "note": "FY2025 Rs24,211.77 million = Rs2,421.18 crore (restated consolidated; pro forma 49,703.85 ignored). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_borrowing",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": 1206.596,
+  "verbatim": "Total Borrowings 12,065.96 9,847.11 10,261.15",
+  "rows": null,
+  "note": "FY2025 printed \"Total Borrowings\" Rs12,065.96 million = Rs1,206.60 crore (D10; same p65, p439, p502). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_pre_issue",
+  "printed": true,
+  "pages": [
+   21
+  ],
+  "value": 100.0,
+  "verbatim": "Total 22,104,372 100.00",
+  "rows": null,
+  "note": "Promoters (Genius Bidco + Genius Rajkot) pre-Issue 100.00% of equity share capital (fully diluted basis also 100.00). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_post_issue",
+  "printed": false,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": "Genius Bidco [●] [●] [●] [●] [●] [●]",
+  "rows": null,
+  "note": "placeholder: post-Issue % \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.market_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at issue price not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pre_ipo_eps",
+  "printed": true,
+  "pages": [
+   146
+  ],
+  "value": 23.81,
+  "verbatim": "March 31, 2025 23.81 23.81 [●] [●] 3",
+  "rows": null,
+  "note": "Latest full FY2025 restated basic EPS (D8); doc does not label it pre-IPO EPS. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.post_ipo_eps",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"post-Issue EPS\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ronw",
+  "printed": true,
+  "pages": [
+   146
+  ],
+  "value": 7.49,
+  "verbatim": "March 31, 2025 7.49% 6.74% 3",
+  "rows": null,
+  "note": "FY2025 RoNW 7.49% on restated basis (6.74% is pro forma); weighted average 6.60%. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pe_ratio",
+  "printed": false,
+  "pages": [
+   146
+  ],
+  "value": null,
+  "verbatim": "Based on basic EPS [●] [●]",
+  "rows": null,
+  "note": "Own P/E \"[●]\" (price band not fixed); no listed peers. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2022 not printed: restated financials cover FY2023-FY2025 only (searched \"March 31, 2022\", 0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2023",
+  "printed": true,
+  "pages": [
+   303
+  ],
+  "value": 186.637,
+  "verbatim": "EBITDA(4) (in ₹ million) 2,593.16 2,201.29 1,866.37",
+  "rows": null,
+  "note": "FY2023 EBITDA 1,866.37 Rs million = 186.64 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2024",
+  "printed": true,
+  "pages": [
+   303
+  ],
+  "value": 220.129,
+  "verbatim": "EBITDA(4) (in ₹ million) 2,593.16 2,201.29 1,866.37",
+  "rows": null,
+  "note": "FY2024 EBITDA 2,201.29 Rs million = 220.13 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2025",
+  "printed": true,
+  "pages": [
+   303
+  ],
+  "value": 259.316,
+  "verbatim": "EBITDA(4) (in ₹ million) 2,593.16 2,201.29 1,866.37",
+  "rows": null,
+  "note": "FY2025 EBITDA 2,593.16 Rs million = 259.32 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2022 not printed: restated financials cover FY2023-FY2025 only (searched \"March 31, 2022\", 0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2023",
+  "printed": true,
+  "pages": [
+   94
+  ],
+  "value": 300.917,
+  "verbatim": "Total income 3,941.27 3,626.08 3,009.17",
+  "rows": null,
+  "note": "FY2023 total income 3,009.17 Rs million = 300.92 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2024",
+  "printed": true,
+  "pages": [
+   94
+  ],
+  "value": 362.608,
+  "verbatim": "Total income 3,941.27 3,626.08 3,009.17",
+  "rows": null,
+  "note": "FY2024 total income 3,626.08 Rs million = 362.61 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2025",
+  "printed": true,
+  "pages": [
+   94
+  ],
+  "value": 394.127,
+  "verbatim": "Total income 3,941.27 3,626.08 3,009.17",
+  "rows": null,
+  "note": "FY2025 total income 3,941.27 Rs million = 394.13 crore. Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.current_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"current ratio\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.quick_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"quick ratio\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.inventory_turnover",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"inventory turnover\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.fiscal_year",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": [
+   2025,
+   2024,
+   2023
+  ],
+  "verbatim": "March 31, 2025 March 31, 2024 March 31, 2023",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.revenue",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": "Revenue from operations 3,698.11 3,470.01 2,925.01",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.total_income",
+  "printed": true,
+  "pages": [
+   94
+  ],
+  "value": null,
+  "verbatim": "Total income 3,941.27 3,626.08 3,009.17",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.ebitda",
+  "printed": true,
+  "pages": [
+   303
+  ],
+  "value": null,
+  "verbatim": "EBITDA(4) (in ₹ million) 2,593.16 2,201.29 1,866.37",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "Plain \"EBITDA\" row (OD-172); same values p149/p501. 3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.pat",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": "Restated profit for the year 526.51 396.89 290.03",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.net_worth",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": "Net Worth 7,027.09 6,557.70 5,769.88",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.basis",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": "RESTATED",
+  "verbatim": "derived from the Restated Consolidated Financial",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.unit",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": "MILLION",
+  "verbatim": "(₹ in million, unless otherwise specified)",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_basic",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": "- Basic (in ₹) 23.81 17.94 13.11",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_diluted",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": "- Diluted (in ₹) 23.81 17.86 13.05",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.op_cash_flow",
+  "printed": true,
+  "pages": [
+   95
+  ],
+  "value": null,
+  "verbatim": "Net cash flow from operating activities (A) 2,187.08 2,644.51 2,452.27",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.dscr",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "DSCR not printed (searched \"Debt Service Coverage\", 0 hits). 3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.rent_expense",
+  "printed": true,
+  "pages": [
+   431
+  ],
+  "value": null,
+  "verbatim": "Rent expense 1.94 1.49 0.60",
+  "rows": [
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 3698.11,
+    "total_income": 3941.27,
+    "ebitda": 2593.16,
+    "pat": 526.51,
+    "net_worth": 7027.09,
+    "eps_basic": 23.81,
+    "eps_diluted": 23.81,
+    "op_cash_flow": 2187.08,
+    "rent_expense": 1.94,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3470.01,
+    "total_income": 3626.08,
+    "ebitda": 2201.29,
+    "pat": 396.89,
+    "net_worth": 6557.7,
+    "eps_basic": 17.94,
+    "eps_diluted": 17.86,
+    "op_cash_flow": 2644.51,
+    "rent_expense": 1.49,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 2925.01,
+    "total_income": 3009.17,
+    "ebitda": 1866.37,
+    "pat": 290.03,
+    "net_worth": 5769.88,
+    "eps_basic": 13.11,
+    "eps_diluted": 13.05,
+    "op_cash_flow": 2452.27,
+    "rent_expense": 0.6,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "Other expenses note \"Rent expense\". 3 rows FY2025, FY2024, FY2023; Restated Consolidated (only restated set; Pro Forma figures for the Post-Acquisition Group ignored, they are not restated), Rs million. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ }
+]

@@ -1,0 +1,613 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      5,
+      101
+    ],
+    "value": [
+      "Choice Capital Advisors Private Limited"
+    ],
+    "verbatim": "Book Running Lead Manager Choice Capital Advisors Private Limited",
+    "rows": null,
+    "note": "Sole BRLM (p102: \"the sole Book Running Lead Manager\"). [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.sritindia.com",
+    "verbatim": "Website: www.sritindia.com",
+    "rows": null,
+    "note": "Cover only; GI registered-office block (p100) prints no website. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      100
+    ],
+    "value": "Nidhi Hitesh Vaswani",
+    "verbatim": "Company Secretary and Compliance Officer Nidhi Hitesh Vaswani",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      101
+    ],
+    "value": "+91 80 41951999",
+    "verbatim": "Tel. No.: +91 80 41951999",
+    "rows": null,
+    "note": "GI p101 form; cover p1/p3 print the same number as \"+91-80419 51999\" (formatting only). [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      101
+    ],
+    "value": "cs.nidhi@sritindia.com",
+    "verbatim": "Email: cs.nidhi@sritindia.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      5,
+      103
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      5,
+      101
+    ],
+    "value": [
+      "Choice Capital Advisors Private Limited"
+    ],
+    "verbatim": "Book Running Lead Manager Choice Capital Advisors Private Limited",
+    "rows": null,
+    "note": "Sole BRLM. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      100
+    ],
+    "value": "SRIT House, #113/1B ITPL Main Road, Kundalahalli Bengaluru - 560037 Karnataka, India",
+    "verbatim": "SRIT House, #113/1B ITPL Main Road, Kundalahalli Bengaluru - 560037 Karnataka, India",
+    "rows": null,
+    "note": "Registered and Corporate Office. GI p100 text; cover p3 prints \"SRIT House, #113/1B, ITPL Main Road, Kundalahalli, Bengaluru-560037, Karnataka, India.\" (punctuation only). [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91-80419 51999",
+    "verbatim": "Tel: +91-80419 51999",
+    "rows": null,
+    "note": "Cover telephone (contact block); GI office block prints none. Same digits as the GI compliance-officer number. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "cs.nidhi@sritindia.com",
+    "verbatim": "E-mail: cs.nidhi@sritindia.com",
+    "rows": null,
+    "note": "Cover contact email (same as compliance officer email); GI office block prints none. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": "BRLM; REGISTRAR; LEGAL_COUNSEL_ISSUE; STATUTORY_AUDITOR",
+    "verbatim": "Legal Counsel to the Issue Messrs. Kanga and Company Advocates & Solicitors",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "4 rows: sole BRLM (p101), registrar (p103), legal counsel to the Issue (p102), statutory auditor (p102). Syndicate Members / Bankers to the Issue \"will be appointed\". Bankers to our Company are not offer intermediaries; former auditors (change table) excluded. Registrar phone and email are CONFLICTS (null in row): CONFLICT: GI p103 prints \"E-mail: srit.ipo@kfintech.com\"; cover p2 prints \"E-mail: compliance.corp@kfintech.com\" and cover p5 prints \"E-mail: compliance.corp@kfintech.com\". CONFLICT: GI p103 prints \"Tel. No.: +912249620337\"; cover p2 prints \"Tel.: +912249620337\"; cover p5 prints \"Tel: 040-67162222/18003094001\". [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": [
+      "Choice Capital Advisors Private Limited",
+      "Kfin Technologies Limited",
+      "Messrs. Kanga and Company Advocates & Solicitors",
+      "M/s. Brahmayya & Co., Chartered Accountants"
+    ],
+    "verbatim": "Choice Capital Advisors Private Limited Sunil Patodia Tower",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "4 rows: sole BRLM (p101), registrar (p103), legal counsel to the Issue (p102), statutory auditor (p102). Syndicate Members / Bankers to the Issue \"will be appointed\". Bankers to our Company are not offer intermediaries; former auditors (change table) excluded. Registrar phone and email are CONFLICTS (null in row): CONFLICT: GI p103 prints \"E-mail: srit.ipo@kfintech.com\"; cover p2 prints \"E-mail: compliance.corp@kfintech.com\" and cover p5 prints \"E-mail: compliance.corp@kfintech.com\". CONFLICT: GI p103 prints \"Tel. No.: +912249620337\"; cover p2 prints \"Tel.: +912249620337\"; cover p5 prints \"Tel: 040-67162222/18003094001\". [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No.: INM000011872",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Nimisha Joshi/Anuj Killa",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": null,
+    "verbatim": "Tel. No.: +91 22 6706 9999 (7919)",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "CONFLICT: GI p103 prints \"Tel. No.: +912249620337\"; cover p2 prints \"Tel.: +912249620337\"; cover p5 prints \"Tel: 040-67162222/18003094001\". (registrar row phone null) [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": null,
+    "verbatim": "E-mail: sil.ipo@choiceindia.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "CONFLICT: GI p103 prints \"E-mail: srit.ipo@kfintech.com\"; cover p2 prints \"E-mail: compliance.corp@kfintech.com\" and cover p5 prints \"E-mail: compliance.corp@kfintech.com\". (registrar row email null) [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      101,
+      102,
+      103
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance E-mail: investorgrievances_advisors@choiceindia.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Choice Capital Advisors Private Limited",
+        "sebi_reg_no": "INM000011872",
+        "contact_person": "Nimisha Joshi/Anuj Killa",
+        "phone": "+91 22 6706 9999 (7919)",
+        "email": "sil.ipo@choiceindia.com",
+        "grievance_email": "investorgrievances_advisors@choiceindia.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Kfin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M Murali Krishna",
+        "phone": null,
+        "email": null,
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_ISSUE",
+        "name": "Messrs. Kanga and Company Advocates & Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6623 0000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s. Brahmayya & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "Srinivas Gogineni",
+        "phone": "+91-80-22274551/22274552",
+        "email": "srinivas@brahmayya.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      5,
+      103
+    ],
+    "value": "Kfin Technologies Limited",
+    "verbatim": "Name: Kfin Technologies Limited",
+    "rows": [
+      {
+        "name": "Kfin Technologies Limited",
+        "short_name": null,
+        "email": null,
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": null
+      }
+    ],
+    "note": "GI p103 prints \"Kfin Technologies Limited\"; cover p2/p5 print \"KFin Technologies Limited\" (letter case only, same entity). [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "Kfin Technologies Limited",
+        "short_name": null,
+        "email": null,
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": null
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      5,
+      103
+    ],
+    "value": null,
+    "verbatim": "E-mail: srit.ipo@kfintech.com",
+    "rows": [
+      {
+        "name": "Kfin Technologies Limited",
+        "short_name": null,
+        "email": null,
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": null
+      }
+    ],
+    "note": "CONFLICT: GI p103 prints \"E-mail: srit.ipo@kfintech.com\"; cover p2 prints \"E-mail: compliance.corp@kfintech.com\" and cover p5 prints \"E-mail: compliance.corp@kfintech.com\". Investor grievance e-mail einward.ris@kfintech.com consistent. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      5,
+      103
+    ],
+    "value": null,
+    "verbatim": "Tel. No.: +912249620337",
+    "rows": [
+      {
+        "name": "Kfin Technologies Limited",
+        "short_name": null,
+        "email": null,
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": null
+      }
+    ],
+    "note": "CONFLICT: GI p103 prints \"Tel. No.: +912249620337\"; cover p2 prints \"Tel.: +912249620337\"; cover p5 prints \"Tel: 040-67162222/18003094001\". [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      5,
+      103
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": [
+      {
+        "name": "Kfin Technologies Limited",
+        "short_name": null,
+        "email": null,
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": null
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-7]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      5,
+      103
+    ],
+    "value": null,
+    "verbatim": "301, The Centrium, 3rd Floor, 57 Lal Bahadur Shastri Road",
+    "rows": [
+      {
+        "name": "Kfin Technologies Limited",
+        "short_name": null,
+        "email": null,
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": null
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. CONFLICT: GI p103 prints \"301, The Centrium, 3rd Floor, 57 Lal Bahadur Shastri Road Nav Pada, Kurla (West) Mumbai - 400070 Maharashtra, India.\"; cover p5 prints \"Selenium Tower-B, Plot No. 31 & 32, Gachibowli, Financial District, Nanakramguda, Serilingampally, Hyderabad - 500032, Telangana\". [pages = PDF page index, 1-based; printed page = pdf-7]"
+  }
+]

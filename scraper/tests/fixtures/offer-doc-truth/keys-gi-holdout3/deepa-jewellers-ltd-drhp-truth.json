@@ -1,0 +1,702 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      86
+    ],
+    "value": [
+      "Emkay Global Financial Services Limited",
+      "Valmiki Leela Capital Private Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Emkay Global Financial Services Limited Valmiki Leela Capital Private Limited",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      84
+    ],
+    "value": "www.deepajewel.com",
+    "verbatim": "Website: www.deepajewel.com",
+    "rows": null,
+    "note": "Cover p1/p3 and GI Registered Office block p84 identical. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      85
+    ],
+    "value": "Vandana Modani",
+    "verbatim": "Vandana Modani is the Company Secretary and Compliance Officer of our Company",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      85
+    ],
+    "value": "+91 76809 62117",
+    "verbatim": "Telephone: +91 76809 62117",
+    "rows": null,
+    "note": "GI p85 form; cover p1/p3 print \"+ 91 76809 62117\" (formatting only; p1 wraps it across lines). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      85
+    ],
+    "value": "cs@deepajewel.com",
+    "verbatim": "E-mail: cs@deepajewel.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      85
+    ],
+    "value": "https://www.bigshareonline.com",
+    "verbatim": "Website: https://www.bigshareonline.com",
+    "rows": null,
+    "note": "Registrar website; GI p85 form; cover p3 prints \"www.bigshareonline.com\" (same URL, formatting only). No allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      86
+    ],
+    "value": [
+      "Emkay Global Financial Services Limited",
+      "Valmiki Leela Capital Private Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Emkay Global Financial Services Limited Valmiki Leela Capital Private Limited",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      84
+    ],
+    "value": "Ground floor and first floor, door no. 3-6-343 & 344, Basheerbagh, Himayathnagar, Hyderabad-500029, Telangana, India",
+    "verbatim": "Ground floor and first floor, door no. 3-6-343 & 344, Basheerbagh, Himayathnagar, Hyderabad-500029, Telangana, India",
+    "rows": null,
+    "note": "Registered Office (GI p84; cover p1/p3 identical). GI p84: \"Our Company does not have a corporate office.\" [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      84
+    ],
+    "value": "+ 91 76809 62117",
+    "verbatim": "Telephone: + 91 76809 62117",
+    "rows": null,
+    "note": "GI Registered Office block p84 and cover p3 (same number as compliance officer phone). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "cs@deepajewel.com",
+    "verbatim": "E-mail: cs@deepajewel.com",
+    "rows": null,
+    "note": "Cover contact e-mail (same as compliance officer e-mail); GI Registered Office block p84 prints none. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": "BRLM x2; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal Counsel to our Company as to Indian law Chandhiok & Mahajan, Advocates and Solicitors",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p86, cover p2/p3), registrar (GI p85, cover p2/p3), Indian legal counsel to the Company (p87-88), statutory auditor (p88). Syndicate Members, Escrow/Public Offer/Refund/Sponsor banks \"[●]\"; Monitoring Agency to be appointed (p90). Banker to our Company (YES Bank) is not an offer intermediary; former auditor (Prahalad Khandelwal & Co, change table p88) excluded. Formatting-only differences: Emkay phone GI p86 \"+91 22 66121212\" vs cover \"+91 22 6612 1212\"; registrar contact cover p3 \"Babu Raphael C.\" vs GI p85 \"Babu Raphael C\". No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": [
+      "Emkay Global Financial Services Limited",
+      "Valmiki Leela Capital Private Limited",
+      "Bigshare Services Private Limited",
+      "Chandhiok & Mahajan, Advocates and Solicitors",
+      "NSVR & Associates LLP"
+    ],
+    "verbatim": "Emkay Global Financial Services Limited Valmiki Leela Capital Private Limited",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p86, cover p2/p3), registrar (GI p85, cover p2/p3), Indian legal counsel to the Company (p87-88), statutory auditor (p88). Syndicate Members, Escrow/Public Offer/Refund/Sponsor banks \"[●]\"; Monitoring Agency to be appointed (p90). Banker to our Company (YES Bank) is not an offer intermediary; former auditor (Prahalad Khandelwal & Co, change table p88) excluded. Formatting-only differences: Emkay phone GI p86 \"+91 22 66121212\" vs cover \"+91 22 6612 1212\"; registrar contact cover p3 \"Babu Raphael C.\" vs GI p85 \"Babu Raphael C\". No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": null,
+    "verbatim": "SEBI registration number: INM000011229",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": null,
+    "verbatim": "Contact person: Babu Raphael C",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "Legal counsel prints no contact person. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": null,
+    "verbatim": "Telephone: +91 22 6263 8200",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "Emkay GI p86 \"+91 22 66121212\"; cover p2/p3 \"+91 22 6612 1212\" (formatting only). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": null,
+    "verbatim": "E-mail: djl.ipo@emkayglobal.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85,
+      86,
+      87,
+      88
+    ],
+    "value": null,
+    "verbatim": "Investor grievance e-mail: investor@bigshareonline.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Vimal Maniyar/ Pooja Sarvankar",
+        "phone": "+91 22 66121212",
+        "email": "djl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Valmiki Leela Capital Private Limited",
+        "sebi_reg_no": "INM000013341",
+        "contact_person": "Khush Joshipura / Shravan Suthar",
+        "phone": "+91 79650 90099",
+        "email": "deepa.ipo@valmikileela.com",
+        "grievance_email": "ig@valmikileela.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Raphael C",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Chandhiok & Mahajan, Advocates and Solicitors",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4163 0033",
+        "email": "ipocm@chandhiok.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "NSVR & Associates LLP",
+        "sebi_reg_no": null,
+        "contact_person": "V Gangadhar Rao N",
+        "phone": "+91 40 2339 1164",
+        "email": "info@nsvr.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85
+    ],
+    "value": "Bigshare Services Private Limited",
+    "verbatim": "Registrar to the Offer Bigshare Services Private Limited",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "https://www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "https://www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85
+    ],
+    "value": "ipo@bigshareonline.com",
+    "verbatim": "E-mail: ipo@bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "https://www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      85
+    ],
+    "value": "+91 22 6263 8200",
+    "verbatim": "Telephone: +91 22 6263 8200",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "https://www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      85
+    ],
+    "value": "https://www.bigshareonline.com",
+    "verbatim": "Website: https://www.bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "https://www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. Cover p3 prints \"www.bigshareonline.com\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      3,
+      85
+    ],
+    "value": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India",
+    "verbatim": "Office No S6-2, 6th Floor, Pinnacle Business Park",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "https://www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai – 400093 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  }
+]

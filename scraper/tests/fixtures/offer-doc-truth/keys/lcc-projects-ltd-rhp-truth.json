@@ -1,0 +1,3766 @@
+[
+ {
+  "key": "ipos.symbol",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No trading symbol / scrip code printed. Searched \"symbol\",\"scrip code\",\"trading symbol\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.company_name",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": "LCC Projects Limited",
+  "verbatim": "LCC PROJECTS LIMITED",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.issue_size",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: total Offer \"Up to [●] Equity Shares ... aggregating up to ₹ [●] million\". Fresh Issue Rs2,580.00 million and OFS 11,585,000 shares ARE printed but the total is a placeholder. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.lot_size",
+  "printed": false,
+  "pages": [
+   409
+  ],
+  "value": null,
+  "verbatim": "Bid Lot [●] Equity Shares of face value of ₹5 each",
+  "rows": null,
+  "note": "placeholder: \"Bid Lot [●] Equity Shares of face value of ₹5 each\"; to be advertised with the Price Band (p3). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.registrar",
+  "printed": true,
+  "pages": [
+   2,
+   81
+  ],
+  "value": "KFin Technologies Limited",
+  "verbatim": "KFin Technologies Limited",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.sector",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No sector/industry classification label printed. Searched \"sector\",\"industry\". Business is EPC for irrigation / water supply; ICRA industry report only. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.price_range_min",
+  "printed": false,
+  "pages": [
+   3
+  ],
+  "value": null,
+  "verbatim": "THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY",
+  "rows": null,
+  "note": "placeholder: Price Band \"[●]\"; \"THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY ... AND WILL BE ADVERTISED\" (p3). Searched \"Price Band of ₹\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.price_range_max",
+  "printed": false,
+  "pages": [
+   3
+  ],
+  "value": null,
+  "verbatim": "THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY",
+  "rows": null,
+  "note": "placeholder: Price Band \"[●]\"; \"THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY ... AND WILL BE ADVERTISED\" (p3). Searched \"Price Band of ₹\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.listing_exchanges",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": [
+   "BSE",
+   "NSE"
+  ],
+  "verbatim": "Stock Exchanges being BSE Limited (“BSE”)",
+  "rows": null,
+  "note": "The RHP decides it (DRHP key yielded to the later document, OD-129/OD-30). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.face_value",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": 5,
+  "verbatim": "face value of the Equity Shares is ₹5 each",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.company_description",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "OUT OF DETERMINISTIC SCOPE BY SPEC: §5.6 F1 \"genuine model case\"; OD-164(b) \"the company description stays out\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.lead_managers",
+  "printed": true,
+  "pages": [
+   2,
+   80
+  ],
+  "value": [
+   "Motilal Oswal Investment Advisors Limited"
+  ],
+  "verbatim": "Motilal Oswal Investment Advisors Limited",
+  "rows": null,
+  "note": "Sole BRLM. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.isin",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No ISIN of the company printed. Searched \"INE[0-9A-Z]{9}\", \"ISIN\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.segment",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Regulation 6(1)",
+  "rows": null,
+  "note": "Segment label (Mainboard/SME) not printed; implied only by \"Regulation 6(1) of the SEBI ICDR Regulations\". Searched \"Main Board\",\"SME\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.offering_type",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D3 (delegated 2026-10-04) - identity context copied from the stored row (OD-91(4)); changing it rebuilds the field plan (§2.8). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.objectives",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "aggregating up to ₹ 2,580.00 million",
+  "rows": null,
+  "note": "placeholder: Objects of the Offer purposes are listed for the Fresh Issue (Rs2,580.00 million gross) but amounts are \"[●]\" pending Offer Price; Fresh Issue + OFS (not a pure OFS). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.company_website",
+  "printed": true,
+  "pages": [
+   79
+  ],
+  "value": "www.lccprojects.com",
+  "verbatim": "Website: www.lccprojects.com",
+  "rows": null,
+  "note": "Cover p1 breaks the URL as \"www.lccprojects.co m\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.cin",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "U45500GJ2017PLC100301",
+  "verbatim": "U45500GJ2017PLC100301",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_description",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "OUT OF DETERMINISTIC SCOPE BY SPEC: §5.6 F1 \"genuine model case\"; OD-164(b) \"the company description stays out\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.issue_type",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": "Book Built (100%)",
+  "verbatim": "100% Book Built Offer",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.fresh_issue",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": 2580000000,
+  "verbatim": "aggregating up to ₹ 2,580.00 million",
+  "rows": null,
+  "note": "Fresh Issue rupee size Rs2,580.00 million (share count \"[●]\"); DRHP Rs3,200.00 million. Unit rupee. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.ofs_issue",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to 11,585,000",
+  "rows": null,
+  "note": "placeholder: OFS rupee amount \"aggregating up to ₹ [●] million\". OFS share count printed: up to 11,585,000 Equity Shares (DRHP 22,940,000). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.face_value",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": 5,
+  "verbatim": "face value of ₹5",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.exchanges",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": [
+   "BSE",
+   "NSE"
+  ],
+  "verbatim": "Stock Exchanges being BSE Limited (“BSE”)",
+  "rows": null,
+  "note": "Equals ipos.listing_exchanges; the RHP decides it (OD-129, OD-30). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.compliance_officer",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "Gayatri Desai",
+  "verbatim": "Gayatri Desai",
+  "rows": null,
+  "note": "Company Secretary and Compliance Officer. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.compliance_officer_phone",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "+91 79 4848 4453",
+  "verbatim": "Telephone: +91 79 4848 4453",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.compliance_officer_email",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "cs@lccprojects.com",
+  "verbatim": "Email: cs@lccprojects.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.upi_cutoff_time",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": "5:00 PM on Bid/Offer Closing Date",
+  "verbatim": "UPI mandate end time and date shall be at 5:00 p.m. on Bid/Offer Closing Date",
+  "rows": null,
+  "note": "Closing date now printed: Friday, September 11, 2026 (p2). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.designated_exchange",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": "BSE",
+  "verbatim": "Designated Stock Exchange is BSE",
+  "rows": null,
+  "note": "DRHP had \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.lot_multiple",
+  "printed": false,
+  "pages": [
+   409
+  ],
+  "value": null,
+  "verbatim": "in multiples of [●] Equity Shares",
+  "rows": null,
+  "note": "placeholder: \"in multiples of [●] Equity Shares\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.allocation_pct",
+  "printed": true,
+  "pages": [
+   408
+  ],
+  "value": {
+   "QIB": "not more than 50% of the Offer (Net Offer)",
+   "NIB": "not less than 15% of the Net Offer (1/3 for >Rs0.20m-1m, 2/3 for >Rs1m)",
+   "RIB": "not less than 35% of the Net Offer",
+   "ANCHOR": "up to 60% of QIB Portion (one-third to Mutual Funds)",
+   "MF_of_Net_QIB": "5%"
+  },
+  "verbatim": "Not more than 50% of the Offer size shall be allocated to QIB Bidders",
+  "rows": null,
+  "note": "Regulation 6(1); no employee reservation in the RHP offer structure. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.pre_ipo_placement",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No statement about a Pre-IPO Placement in the RHP (the DRHP optional placement of up to Rs640 million is no longer mentioned). Searched \"Pre-IPO\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.bid_windows",
+  "printed": true,
+  "pages": [
+   404
+  ],
+  "value": [
+   {
+    "activity": "Bid/Offer Period submission & revision",
+    "window": "10.00 a.m. to 5.00 p.m. IST"
+   }
+  ],
+  "verbatim": "Only between 10.00 a.m. and 5.00 p.m. (Indian Standard Time",
+  "rows": null,
+  "note": "Bid/Offer Period dates now printed (p2): Anchor Tuesday, September 8, 2026; opens Wednesday, September 9, 2026; closes Friday, September 11, 2026. Only the widest window read here (p404 has the schedule). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.promoter_shares_held",
+  "printed": true,
+  "pages": [
+   89,
+   95
+  ],
+  "value": {
+   "Arjan Suja Rabari": 111520000,
+   "Laljibhai Arjanbhai Ahir": 111520000,
+   "Maya Arjan Rabari": 8
+  },
+  "verbatim": "Arjan Suja Rabari^ 111,520,000 0.67",
+  "rows": null,
+  "note": "Promoters; Total (A) 223,040,008 = 82.00% (p89). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.sebi_regulation_cited",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Regulation 6(1)",
+  "verbatim": "Regulation 6(1) of the Securities and Exchange Board",
+  "rows": null,
+  "note": "Reg 6(1). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.promoter_group_transactions_since_drhp",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No statement of promoter/promoter-group transactions since the DRHP. Searched \"since the filing of the Draft Red Herring Prospectus\", \"since the DRHP\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.cut_off_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "placeholder: Cut-off price within the Price Band [●]; only the concept is defined. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.min_investment",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "placeholder: Bid Lot and price are [●]; no rupee minimum investment printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.isin",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No ISIN printed (see ipos.isin). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.registrar_link",
+  "printed": true,
+  "pages": [
+   81
+  ],
+  "value": "www.kfintech.com",
+  "verbatim": "Website: www.kfintech.com",
+  "rows": null,
+  "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.lead_managers",
+  "printed": true,
+  "pages": [
+   2,
+   80
+  ],
+  "value": [
+   "Motilal Oswal Investment Advisors Limited"
+  ],
+  "verbatim": "Motilal Oswal Investment Advisors Limited",
+  "rows": null,
+  "note": "Sole BRLM. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_address",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "LCC Corporate House, B/S GTPL House, Sindhu Bhavan Road, Bodakdev, Ahmedabad - 380 054, Gujarat, India",
+  "verbatim": "Sindhu Bhavan Road, Bodakdev, Ahmedabad",
+  "rows": null,
+  "note": "Registered and corporate office; CHANGED from DRHP (Privilon Building, Ambli-Bopal Road). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_phone",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "+91 79 4848 4453",
+  "verbatim": "Telephone: +91 79 4848 4453",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_email",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "cs@lccprojects.com",
+  "verbatim": "Email: cs@lccprojects.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_city",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "Ahmedabad",
+  "verbatim": "Bodakdev, Ahmedabad",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_state",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "Gujarat",
+  "verbatim": "Gujarat, India",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_pincode",
+  "printed": true,
+  "pages": [
+   1,
+   79
+  ],
+  "value": "380054",
+  "verbatim": "Ahmedabad – 380 054",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.qib_shares_offered",
+  "printed": false,
+  "pages": [
+   408
+  ],
+  "value": null,
+  "verbatim": "Not more than 50% of the Offer size shall be allocated to QIB Bidders",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.nii_shares_offered",
+  "printed": false,
+  "pages": [
+   408
+  ],
+  "value": null,
+  "verbatim": "Not more than 50% of the Offer size shall be allocated to QIB Bidders",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.retail_shares_offered",
+  "printed": false,
+  "pages": [
+   408
+  ],
+  "value": null,
+  "verbatim": "Not more than 50% of the Offer size shall be allocated to QIB Bidders",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.retail_max_allottees",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Depends on Bid Lot [●]; not printed. Searched \"maximum number of RIIs\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.employee_shares_offered",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee reservation printed in the RHP. Searched \"Eligible Employee\", \"Employee Reservation\" (0 hits in cover/offer pages; DRHP had one). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.anchor_shares_offered",
+  "printed": false,
+  "pages": [
+   408
+  ],
+  "value": null,
+  "verbatim": "Not more than 50% of the Offer size shall be allocated to QIB Bidders",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.max_retail_subscription",
+  "printed": true,
+  "pages": [
+   409
+  ],
+  "value": 200000,
+  "verbatim": "Bid Amount does not exceed ₹0.2 million",
+  "rows": null,
+  "note": "RII max Bid Amount Rs0.2 million = Rs200,000. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.max_employee_subscription",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee reservation printed in the RHP. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.employee_discount",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee discount printed (no employee reservation in the RHP). Searched \"Employee Discount\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.sponsor_banks",
+  "printed": true,
+  "pages": [
+   81
+  ],
+  "value": [
+   "HDFC Bank Limited",
+   "Kotak Mahindra Bank Limited"
+  ],
+  "verbatim": "Escrow Collection Bank, Refund Bank and Sponsor Bank HDFC Bank Limited",
+  "rows": null,
+  "note": "HDFC (Escrow, Refund, Sponsor) and Kotak (Public Offer Account Bank and Sponsor Bank). DRHP had \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.tick_size",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No tick size printed. Searched \"tick size\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.ipo_market_timings",
+  "printed": true,
+  "pages": [
+   404
+  ],
+  "value": "10:00 AM - 5:00 PM IST",
+  "verbatim": "Only between 10.00 a.m. and 5.00 p.m.",
+  "rows": null,
+  "note": "Bid submission hours (widest window). Not exchange trading hours. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.category_details",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No exchange category codes printed. Searched \"category code\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.sub_categories_upi",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No UPI sub-category code list printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2024",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 2438.912,
+  "verbatim": "Revenue from Operations 36,002.52 29,182.94 24,389.12",
+  "rows": null,
+  "note": "Rs24,389.12 million = Rs2,438.91 crore. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2024",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 121.997,
+  "verbatim": "Profit for the year/Profit After Tax 2,864.41 2,236.25 1,219.97",
+  "rows": null,
+  "note": "Restated PAT FY2024 Rs1,219.97 million. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.net_worth",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": 888.411,
+  "verbatim": "Net Worth (12) ₹ million 8,884.11 6,049.89 3,828.25",
+  "rows": null,
+  "note": "Latest FULL fiscal year FY2026 Net Worth Rs8,884.11 million = Rs888.41 crore (excl. NCI; decision D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.eps",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 10.42,
+  "verbatim": "Basic 10.42 8.18 4.48",
+  "rows": null,
+  "note": "FY2026 basic = diluted EPS Rs10.42. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.roe",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": 32.24,
+  "verbatim": "Return on Equity (10) % 32.24% 36.96% 31.87%",
+  "rows": null,
+  "note": "FY2026 ROE 32.24%. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.debt_to_equity",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": 0.97,
+  "verbatim": "Total Debt to Equity (9) Times 0.97 1.23 1.10",
+  "rows": null,
+  "note": "FY2026 0.97 times. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.reserves_and_surplus",
+  "printed": true,
+  "pages": [
+   71
+  ],
+  "value": 752.411,
+  "verbatim": "Other equity 7,524.11 4,689.89 3,488.25",
+  "rows": null,
+  "note": "FY2026 \"Other equity\" Rs7,524.11 million = Rs752.41 crore (Ind AS). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_assets",
+  "printed": true,
+  "pages": [
+   71
+  ],
+  "value": 2447.54,
+  "verbatim": "Total assets 24,475.40 17,274.62 11,299.87",
+  "rows": null,
+  "note": "FY2026 Rs24,475.40 million = Rs2,447.54 crore. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_borrowing",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": 860.654,
+  "verbatim": "Total Debt (8) ₹ million 8,606.54 7,467.66 4,216.43",
+  "rows": null,
+  "note": "FY2026 Total Debt (long-term 662.86 + short-term 7,943.68 borrowings) Rs8,606.54 million = Rs860.65 crore. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_pre_issue",
+  "printed": true,
+  "pages": [
+   89,
+   96
+  ],
+  "value": 82.0,
+  "verbatim": "Total (A) 223,040,008 82.00",
+  "rows": null,
+  "note": "Promoters pre-Offer 82.00% (223,040,008 shares). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_post_issue",
+  "printed": false,
+  "pages": [
+   89
+  ],
+  "value": null,
+  "verbatim": "Total (A) 223,040,008 82.00 [●] [●]",
+  "rows": null,
+  "note": "placeholder: post-Offer % \"[●]\" (Total (A) 223,040,008 82.00 [●] [●]). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.market_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at offer price not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pre_ipo_eps",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 10.42,
+  "verbatim": "Basic 10.42 8.18 4.48",
+  "rows": null,
+  "note": "Latest-FY EPS; not labelled pre-IPO EPS. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.post_ipo_eps",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"post-Offer EPS\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ronw",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": 32.24,
+  "verbatim": "March 31, 2026 32.24% 3",
+  "rows": null,
+  "note": "FY2026 RoNW 32.24%; weighted average 33.75%. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pe_ratio",
+  "printed": false,
+  "pages": [
+   117
+  ],
+  "value": null,
+  "verbatim": "P/E ratio based on basic EPS for Financial Year 2026 [●] [●]",
+  "rows": null,
+  "note": "placeholder: P/E at Floor/Cap Price \"[●] [●]\" (company P/E \"-\" in the peer table). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2024",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": 241.365,
+  "verbatim": "EBITDA (4) ₹ million 5,198.97 4,010.35 2,413.65",
+  "rows": null,
+  "note": "EBITDA per KPI table (PBT + finance cost + D&A + exceptional items). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p72). FY2022/FY2023 not printed. Searched \"March 31, 2023\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2024",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 2449.791,
+  "verbatim": "Total income (I) 36,394.54 29,410.13 24,497.91",
+  "rows": null,
+  "note": "FY2024 Rs24,497.91 million. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.current_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"current ratio\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.quick_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"quick ratio\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.inventory_turnover",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"inventory turnover\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.fiscal_year",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": [
+   2026,
+   2025,
+   2024
+  ],
+  "verbatim": "Fiscal 2026 Fiscal 2025 Fiscal 2024",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.revenue",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": null,
+  "verbatim": "Revenue from Operations 36,002.52 29,182.94 24,389.12",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.total_income",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": null,
+  "verbatim": "Total income (I) 36,394.54 29,410.13 24,497.91",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.ebitda",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": null,
+  "verbatim": "EBITDA (4) ₹ million 5,198.97 4,010.35 2,413.65",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.pat",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": null,
+  "verbatim": "Profit for the year/Profit After Tax 2,864.41 2,236.25 1,219.97",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.net_worth",
+  "printed": true,
+  "pages": [
+   119
+  ],
+  "value": null,
+  "verbatim": "Net Worth (12) ₹ million 8,884.11 6,049.89 3,828.25",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.basis",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": "RESTATED",
+  "verbatim": "Restated Consolidated Statement of Profit and Loss",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.unit",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": "MILLION",
+  "verbatim": "(₹ in million, unless otherwise stated)",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_basic",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": null,
+  "verbatim": "Basic 10.42 8.18 4.48",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_diluted",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": null,
+  "verbatim": "Diluted 10.42 8.18 4.48",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.op_cash_flow",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": null,
+  "verbatim": "Net Cash flow generated from/(used in) operating activities (i) 1,584.41 236.27 293.50",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.dscr",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "Not printed. Searched \"debt service coverage\",\"DSCR\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.rent_expense",
+  "printed": true,
+  "pages": [
+   301
+  ],
+  "value": null,
+  "verbatim": "Rent 61.70 36.73 25.36",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 36002.52,
+    "total_income": 36394.54,
+    "ebitda": 5198.97,
+    "pat": 2864.41,
+    "net_worth": 8884.11,
+    "eps_basic": 10.42,
+    "eps_diluted": 10.42,
+    "op_cash_flow": 1584.41,
+    "rent_expense": 61.7,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 29182.94,
+    "total_income": 29410.13,
+    "ebitda": 4010.35,
+    "pat": 2236.25,
+    "net_worth": 6049.89,
+    "eps_basic": 8.18,
+    "eps_diluted": 8.18,
+    "op_cash_flow": 236.27,
+    "rent_expense": 36.73,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 24389.12,
+    "total_income": 24497.91,
+    "ebitda": 2413.65,
+    "pat": 1219.97,
+    "net_worth": 3828.25,
+    "eps_basic": 4.48,
+    "eps_diluted": 4.48,
+    "op_cash_flow": 293.5,
+    "rent_expense": 25.36,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": null
+   }
+  ],
+  "note": "Other expenses note \"Rent\". 3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million (P&L p72, balance sheet p71, cash flow p73, KPI p119, rent p301). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.price_floor",
+  "printed": false,
+  "pages": [
+   3
+  ],
+  "value": null,
+  "verbatim": "THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY",
+  "rows": null,
+  "note": "placeholder: Floor/Cap Price \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.price_cap",
+  "printed": false,
+  "pages": [
+   3
+  ],
+  "value": null,
+  "verbatim": "THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY",
+  "rows": null,
+  "note": "placeholder: Floor/Cap Price \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.mcap_at_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.pe_at_cap",
+  "printed": false,
+  "pages": [
+   117
+  ],
+  "value": null,
+  "verbatim": "P/E ratio based on basic EPS for Financial Year 2026 [●] [●]",
+  "rows": null,
+  "note": "placeholder: P/E at Floor/Cap \"[●] [●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.mcap_at_floor",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.pe_at_floor",
+  "printed": false,
+  "pages": [
+   117
+  ],
+  "value": null,
+  "verbatim": "P/E ratio based on basic EPS for Financial Year 2026 [●] [●]",
+  "rows": null,
+  "note": "placeholder: P/E at Floor/Cap \"[●] [●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.ronw_weighted_3y",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": 33.75,
+  "verbatim": "Weighted Average 33.75%",
+  "rows": null,
+  "note": "Weighted RoNW (FY2026 32.24% x3, FY2025 36.96% x2, FY2024 31.87% x1). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.shares_at_floor",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.shares_at_cap",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.fresh_shares_at_floor",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.fresh_shares_at_cap",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.ofs_shares",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": 11585000,
+  "verbatim": "Up to 11,585,000 Equity Shares of face value of ₹5 each",
+  "rows": null,
+  "note": "CHANGED from DRHP 22,940,000. 5,792,500 each by two promoter selling shareholders. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.total_shares_at_floor",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.total_shares_at_cap",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Up to [●] Equity Shares of face value of ₹5",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.pe_not_ascertainable_reason",
+  "printed": false,
+  "pages": [
+   118
+  ],
+  "value": null,
+  "verbatim": "Vishnu Prakash R Punglia Limited 10.00 8,511.95 (12.04) (12.04) NA NA 50.54",
+  "rows": null,
+  "note": "No \"not ascertainable\" statement for the company (P/E \"[●]\", EPS 10.42; peer Vishnu Prakash shows \"NA\" because EPS is negative). Searched \"not ascertainable\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.name",
+  "printed": true,
+  "pages": [
+   89,
+   95
+  ],
+  "value": [
+   "Arjan Suja Rabari",
+   "Laljibhai Arjanbhai Ahir",
+   "Maya Arjan Rabari"
+  ],
+  "verbatim": "Arjan Suja Rabari^ 111,520,000 0.67",
+  "rows": null,
+  "note": "3 Promoters (cover p1). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.waca",
+  "printed": true,
+  "pages": [
+   95
+  ],
+  "value": {
+   "Arjan Suja Rabari": 0.67,
+   "Laljibhai Arjanbhai Ahir": 0.7,
+   "Maya Arjan Rabari": 0
+  },
+  "verbatim": "Arjan Suja Rabari^ 111,520,000 0.67 Laljibhai Arjanbhai Ahir^ 111,520,000 0.70 Maya Arjan Rabari 8 Nil",
+  "rows": null,
+  "note": "Average cost per Equity Share (Rs); Maya \"Nil\" = 0. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.is_promoter_group",
+  "printed": true,
+  "pages": [
+   1,
+   96
+  ],
+  "value": {
+   "Arjan Suja Rabari": false,
+   "Laljibhai Arjanbhai Ahir": false,
+   "Maya Arjan Rabari": false
+  },
+  "verbatim": "Promoters 1. Arjan Suja Rabari^ 111,520,000 41.00",
+  "rows": null,
+  "note": "All three are Promoters; promoter group (Sejuben Arjanbhai Rabari, Geeta Lalji Ahir, ...) listed separately (p96). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.role",
+  "printed": true,
+  "pages": [
+   80,
+   81,
+   83
+  ],
+  "value": "BRLM x1; REGISTRAR x1; STATUTORY_AUDITOR x1; LEGAL_COUNSEL_COMPANY_INDIAN x1; SYNDICATE x1; ESCROW_BANK x1; REFUND_BANK x1; PUBLIC_ISSUE_BANK x1; SPONSOR_BANK x2",
+  "verbatim": "Bankers to the Offer",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.name",
+  "printed": true,
+  "pages": [
+   80,
+   81,
+   83
+  ],
+  "value": [
+   "Motilal Oswal Investment Advisors Limited",
+   "KFin Technologies Limited",
+   "M/s Surana Maloo & Co, Chartered Accountants",
+   "Trilegal",
+   "Motilal Oswal Financial Services Limited",
+   "HDFC Bank Limited",
+   "HDFC Bank Limited",
+   "HDFC Bank Limited",
+   "Kotak Mahindra Bank Limited",
+   "Kotak Mahindra Bank Limited"
+  ],
+  "verbatim": "Syndicate Member Motilal Oswal Financial Services Limited",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.seq",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49,
+   50,
+   51,
+   52,
+   53,
+   54,
+   55,
+   56,
+   57,
+   58,
+   59,
+   60,
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73,
+   74,
+   75,
+   76,
+   77,
+   78,
+   79,
+   80,
+   81,
+   82,
+   83,
+   84,
+   85,
+   86,
+   87,
+   88,
+   89,
+   90
+  ],
+  "verbatim": " Our inability to collect receivables outstan",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Our inability to collect receivables outstanding and due to be paid by our customers, in a timely manner, or at all, may adversely affect our business, financial condition, results of operations and cash flows."
+   },
+   {
+    "seq": 2,
+    "heading": " We have certain contingent liabilities which have been disclosed in our Restated Consolidated Financial Information, which if they materialize, may adversely affect our results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " Taxation matter- Direct and Indirect 108.16"
+   }
+  ],
+  "note": "90 numbered risk factors, pdf p22-67; rows = first 3 only. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.heading",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": " Our inability to collect receivables outstan",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Our inability to collect receivables outstanding and due to be paid by our customers, in a timely manner, or at all, may adversely affect our business, financial condition, results of operations and cash flows."
+   },
+   {
+    "seq": 2,
+    "heading": " We have certain contingent liabilities which have been disclosed in our Restated Consolidated Financial Information, which if they materialize, may adversely affect our results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " Taxation matter- Direct and Indirect 108.16"
+   }
+  ],
+  "note": "See seq; rows = first 3. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.brlm_name",
+  "printed": true,
+  "pages": [
+   396,
+   397
+  ],
+  "value": [
+   "Motilal Oswal"
+  ],
+  "verbatim": "Summary statement of price information of past issues handled by Motilal Oswal Investment Advisors Limited",
+  "rows": [
+   {
+    "brlm_name": "Motilal Oswal",
+    "as_of_date": "2026-09-03",
+    "issues_3y": 37,
+    "closed_below_issue_price": 10,
+    "fy_issue_counts": {
+     "2026-27": "9",
+     "2025-26": "21",
+     "2024-25": "7"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "Motilal Oswal \"Summary statement of price information\", pdf p397; FYs 2026-27, 2025-26, 2024-25. closed_below_issue_price = IPOs trading at discount on 30th calendar day (2 + 6 + 2). As-of = RHP date (no explicit statement). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.as_of_date",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "2026-09-03",
+  "verbatim": "RED HERRING PROSPECTUS Dated September 3, 2026",
+  "rows": [
+   {
+    "brlm_name": "Motilal Oswal",
+    "as_of_date": "2026-09-03",
+    "issues_3y": 37,
+    "closed_below_issue_price": 10,
+    "fy_issue_counts": {
+     "2026-27": "9",
+     "2025-26": "21",
+     "2024-25": "7"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "Motilal Oswal \"Summary statement of price information\", pdf p397; FYs 2026-27, 2025-26, 2024-25. closed_below_issue_price = IPOs trading at discount on 30th calendar day (2 + 6 + 2). As-of = RHP date (no explicit statement). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.issues_3y",
+  "printed": true,
+  "pages": [
+   397
+  ],
+  "value": null,
+  "verbatim": "2026-2027 9 1,66,211.30",
+  "rows": [
+   {
+    "brlm_name": "Motilal Oswal",
+    "as_of_date": "2026-09-03",
+    "issues_3y": 37,
+    "closed_below_issue_price": 10,
+    "fy_issue_counts": {
+     "2026-27": "9",
+     "2025-26": "21",
+     "2024-25": "7"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "Motilal Oswal \"Summary statement of price information\", pdf p397; FYs 2026-27, 2025-26, 2024-25. closed_below_issue_price = IPOs trading at discount on 30th calendar day (2 + 6 + 2). As-of = RHP date (no explicit statement). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.closed_below_issue_price",
+  "printed": false,
+  "pages": [
+   397
+  ],
+  "value": null,
+  "verbatim": "Nos. of IPOs trading at discount on as on 30th calendar days from listing date",
+  "rows": [
+   {
+    "brlm_name": "Motilal Oswal",
+    "as_of_date": "2026-09-03",
+    "issues_3y": 37,
+    "closed_below_issue_price": 10,
+    "fy_issue_counts": {
+     "2026-27": "9",
+     "2025-26": "21",
+     "2024-25": "7"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "Motilal Oswal \"Summary statement of price information\", pdf p397; FYs 2026-27, 2025-26, 2024-25. closed_below_issue_price = IPOs trading at discount on 30th calendar day (2 + 6 + 2). As-of = RHP date (no explicit statement). [pages = PDF page index, 1-based; printed page = pdf-4] NOT THIS DOCUMENT'S FIELD: D14."
+ },
+ {
+  "key": "promoters.shares_held",
+  "printed": true,
+  "pages": [
+   96
+  ],
+  "value": {
+   "Arjan Suja Rabari": 111520000,
+   "Laljibhai Arjanbhai Ahir": 111520000,
+   "Maya Arjan Rabari": 8
+  },
+  "verbatim": "Arjan Suja Rabari^ 111,520,000 41.00",
+  "rows": null,
+  "note": "Pre-Offer shares. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.waca_last_year",
+  "printed": false,
+  "pages": [
+   95
+  ],
+  "value": null,
+  "verbatim": "Last one year preceding the date of this Red Herring Prospectus Nil",
+  "rows": null,
+  "note": "No per-promoter one-year acquisition price table in the RHP; only the aggregate \"Last one year ... Nil\" row (p95). Searched \"acquired by our Promoters ... last one year\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.sebi_reg_no",
+  "printed": true,
+  "pages": [
+   80,
+   81
+  ],
+  "value": null,
+  "verbatim": "SEBI registration no.: INM000011005",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.contact_person",
+  "printed": true,
+  "pages": [
+   80,
+   81
+  ],
+  "value": null,
+  "verbatim": "Contact person: Kunal Thakkar/ Sankita Ajinkya",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.phone",
+  "printed": true,
+  "pages": [
+   80,
+   81
+  ],
+  "value": null,
+  "verbatim": "Telephone: +91 22 7193 4380",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.email",
+  "printed": true,
+  "pages": [
+   80,
+   81
+  ],
+  "value": null,
+  "verbatim": "Email: lccprojects.ipo@motilaloswal.com",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.grievance_email",
+  "printed": true,
+  "pages": [
+   80,
+   81
+  ],
+  "value": null,
+  "verbatim": "Investor grievance E-mail: moiaplredressal@motilaloswal.com",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Motilal Oswal Investment Advisors Limited",
+    "sebi_reg_no": "INM000011005",
+    "contact_person": "Kunal Thakkar/ Sankita Ajinkya",
+    "phone": "+91 22 7193 4380",
+    "email": "lccprojects.ipo@motilaloswal.com",
+    "grievance_email": "moiaplredressal@motilaloswal.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "email": "lccpl.ipo@kfintech.com",
+    "grievance_email": "einward.risk@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "M/s Surana Maloo & Co, Chartered Accountants",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "079- 26651777/78",
+    "email": "audit@suranamaloo.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Trilegal",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "SYNDICATE",
+    "name": "Motilal Oswal Financial Services Limited",
+    "sebi_reg_no": "INZ000158836",
+    "contact_person": "Santosh Patil",
+    "phone": "+91 22 7193 4200 / +91 22 7193 4263",
+    "email": "ipo@motilaloswal.com; santosh.patil@motilaloswal.com",
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "HDFC Bank Limited",
+    "sebi_reg_no": "INB100000063",
+    "contact_person": "Siddharth Jadhav, Sachin Gawande, Eric Bacha, Tushar Gavankar and Pravin Teli",
+    "phone": "+91 22 30752929, +91 22 30752928, +91 22 30152914",
+    "email": "siddharth.jadhav@hdfcbank.in",
+    "grievance_email": "shareholder.grievances@hdfcbank.in"
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Kotak Mahindra Bank Limited",
+    "sebi_reg_no": "INBI00000927",
+    "contact_person": "Sumit Panchal",
+    "phone": "022-69410754",
+    "email": "cmsipo@kotak.com",
+    "grievance_email": null
+   }
+  ],
+  "note": "9 rows: BRLM, registrar, statutory auditor (p83), Indian legal counsel, syndicate member MOFSL, HDFC (escrow/refund/sponsor), Kotak (public offer account/sponsor) (p80-81). Printed for BRLM, registrar and HDFC. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.body",
+  "printed": true,
+  "pages": [
+   22
+  ],
+  "value": null,
+  "verbatim": " Our inability to collect receivables outstan",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Our inability to collect receivables outstanding and due to be paid by our customers, in a timely manner, or at all, may adversely affect our business, financial condition, results of operations and cash flows."
+   },
+   {
+    "seq": 2,
+    "heading": " We have certain contingent liabilities which have been disclosed in our Restated Consolidated Financial Information, which if they materialize, may adversely affect our results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " Taxation matter- Direct and Indirect 108.16"
+   }
+  ],
+  "note": "Every risk factor has body text. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.kpis",
+  "printed": false,
+  "pages": [
+   23
+  ],
+  "value": null,
+  "verbatim": "Trade receivables as % of revenue from operations 4,558.21 12.66% 2,501.66 8.57% 1,566.15 6.42%",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Our inability to collect receivables outstanding and due to be paid by our customers, in a timely manner, or at all, may adversely affect our business, financial condition, results of operations and cash flows."
+   },
+   {
+    "seq": 2,
+    "heading": " We have certain contingent liabilities which have been disclosed in our Restated Consolidated Financial Information, which if they materialize, may adversely affect our results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " Taxation matter- Direct and Indirect 108.16"
+   }
+  ],
+  "note": "RF1 embeds a receivables table. Judgment call on what \"kpis\" captures. [pages = PDF page index, 1-based; printed page = pdf-4] NOT BUILDABLE YET: D16."
+ },
+ {
+  "key": "promoter_acquisition_ranges.period",
+  "printed": true,
+  "pages": [
+   95
+  ],
+  "value": [
+   "1Y",
+   "18M",
+   "3Y"
+  ],
+  "verbatim": "Last one year preceding the date of this Red Herring Prospectus Nil [●] N.A.",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Rows: last one year, 18 months, three years (p95). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.waca",
+  "printed": true,
+  "pages": [
+   95
+  ],
+  "value": null,
+  "verbatim": "Last one year preceding the date of this Red Herring Prospectus Nil [●] N.A.",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "WACA printed as \"Nil\" = 0. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.cap_multiple",
+  "printed": false,
+  "pages": [
+   95
+  ],
+  "value": null,
+  "verbatim": "Last one year preceding the date of this Red Herring Prospectus Nil [●] N.A.",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "placeholder: \"Cap Price is x times the WACA\" column is \"[●]\" (\"To be included once the price band information is available\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.price_low",
+  "printed": false,
+  "pages": [
+   95
+  ],
+  "value": null,
+  "verbatim": "Last one year preceding the date of this Red Herring Prospectus Nil [●] N.A.",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Range of acquisition price printed as \"N.A.\" in all three rows. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.price_high",
+  "printed": false,
+  "pages": [
+   95
+  ],
+  "value": null,
+  "verbatim": "Last one year preceding the date of this Red Herring Prospectus Nil [●] N.A.",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": 0,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Range of acquisition price printed as \"N.A.\" in all three rows. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.company_name",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": [
+   "Vishnu Prakash R Punglia Limited",
+   "Enviro Infra Engineers Limited"
+  ],
+  "verbatim": "Listed peers Vishnu Prakash R Punglia Limited",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.is_listed",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": true,
+  "verbatim": "Listed peers Vishnu Prakash R Punglia Limited",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.pe_ratio",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": [
+   null,
+   19.14
+  ],
+  "verbatim": "Vishnu Prakash R Punglia Limited 10.00 8,511.95 (12.04) (12.04) NA NA 50.54 Enviro Infra Engineers Limited 10.00 11,456.00 10.42 10.41 19.14 15.28% 70.23",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "Vishnu Prakash NA (negative EPS); Enviro 19.14. 2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.eps",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": [
+   -12.04,
+   10.42
+  ],
+  "verbatim": "Vishnu Prakash R Punglia Limited 10.00 8,511.95 (12.04) (12.04) NA NA 50.54 Enviro Infra Engineers Limited 10.00 11,456.00 10.42 10.41 19.14 15.28% 70.23",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.diluted_eps",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": [
+   -12.04,
+   10.41
+  ],
+  "verbatim": "Vishnu Prakash R Punglia Limited 10.00 8,511.95 (12.04) (12.04) NA NA 50.54 Enviro Infra Engineers Limited 10.00 11,456.00 10.42 10.41 19.14 15.28% 70.23",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.ronw",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": [
+   null,
+   15.28
+  ],
+  "verbatim": "Vishnu Prakash R Punglia Limited 10.00 8,511.95 (12.04) (12.04) NA NA 50.54 Enviro Infra Engineers Limited 10.00 11,456.00 10.42 10.41 19.14 15.28% 70.23",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "Vishnu Prakash RoNW NA. 2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.nav",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": [
+   50.54,
+   70.23
+  ],
+  "verbatim": "Vishnu Prakash R Punglia Limited 10.00 8,511.95 (12.04) (12.04) NA NA 50.54 Enviro Infra Engineers Limited 10.00 11,456.00 10.42 10.41 19.14 15.28% 70.23",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.pbv_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "P/BV not printed in the peer table (columns: face value, revenue, EPS, P/E, RoNW, NAV). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.financial_statement_type",
+  "printed": true,
+  "pages": [
+   118
+  ],
+  "value": "CONSOLIDATED",
+  "verbatim": "All the financial information for listed industry peers mentioned above in on a consolidated basis",
+  "rows": [
+   {
+    "company_name": "Vishnu Prakash R Punglia Limited",
+    "is_listed": true,
+    "pe_ratio": null,
+    "eps": -12.04,
+    "diluted_eps": -12.04,
+    "ronw": null,
+    "nav": 50.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 8511.95,
+    "face_value": 10
+   },
+   {
+    "company_name": "Enviro Infra Engineers Limited",
+    "is_listed": true,
+    "pe_ratio": 19.14,
+    "eps": 10.42,
+    "diluted_eps": 10.41,
+    "ronw": 15.28,
+    "nav": 70.23,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "revenue_from_ops_mn": 11456.0,
+    "face_value": 10
+   }
+  ],
+  "note": "2 listed peers, P/E on closing price Aug 28, 2026 (p118); FY2026; consolidated. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.total_shares_offered",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bidding Date is Tuesday, September 8, 2026 (p2), after the RHP date (Sep 3, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.total_amount_raised",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bidding Date is Tuesday, September 8, 2026 (p2), after the RHP date (Sep 3, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.anchor_investors_count",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bidding Date is Tuesday, September 8, 2026 (p2), after the RHP date (Sep 3, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.investor_list",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bidding Date is Tuesday, September 8, 2026 (p2), after the RHP date (Sep 3, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "documents.filing_date",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "2026-09-03",
+  "verbatim": "RED HERRING PROSPECTUS Dated September 3, 2026",
+  "rows": null,
+  "note": "Date of the RHP; RoC filing date not separately printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "listing_performance.listing_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not listed; not applicable in an RHP. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.name",
+  "printed": true,
+  "pages": [
+   2,
+   81
+  ],
+  "value": "KFin Technologies Limited",
+  "verbatim": "KFin Technologies Limited",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "lccpl.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "website": "www.kfintech.com",
+    "address": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.short_name",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "lccpl.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "website": "www.kfintech.com",
+    "address": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India"
+   }
+  ],
+  "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.email",
+  "printed": true,
+  "pages": [
+   2,
+   81
+  ],
+  "value": "lccpl.ipo@kfintech.com",
+  "verbatim": "E-mail: lccpl.ipo@kfintech.com",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "lccpl.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "website": "www.kfintech.com",
+    "address": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.phone",
+  "printed": true,
+  "pages": [
+   2,
+   81
+  ],
+  "value": "+91 40 6716 2222/1800 309 4001",
+  "verbatim": "Telephone: +91 40 6716 2222/1800 309 4001",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "lccpl.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "website": "www.kfintech.com",
+    "address": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.website",
+  "printed": false,
+  "pages": [
+   81
+  ],
+  "value": "www.kfintech.com",
+  "verbatim": "Website: www.kfintech.com",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "lccpl.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "website": "www.kfintech.com",
+    "address": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India"
+   }
+  ],
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D1 (2026-10-04, delegated) per spec §1.10 - registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.address",
+  "printed": false,
+  "pages": [
+   81
+  ],
+  "value": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India",
+  "verbatim": "Selenium Tower B, Plot No.31 & 32, Financial District",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "lccpl.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222/1800 309 4001",
+    "website": "www.kfintech.com",
+    "address": "Selenium Tower B, Plot No.31 & 32, Financial District, Nanakramguda, Serilingampally, Hyderabad, Rangareddi - 500 032, Telangana, India"
+   }
+  ],
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D6 (delegated 2026-10-04) - registrars is reference data (§1.10), as D1. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ }
+]

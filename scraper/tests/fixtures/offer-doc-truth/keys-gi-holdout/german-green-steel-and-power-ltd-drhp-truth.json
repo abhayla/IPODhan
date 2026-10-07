@@ -1,0 +1,742 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      102
+    ],
+    "value": [
+      "Systematix Corporate Services Limited",
+      "Emkay Global Financial Services Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Systematix Corporate Services Limited",
+    "rows": null,
+    "note": "2 BRLMs (GI p102 BRLM block; cover p2/p4). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.germansteel.in",
+    "verbatim": "Website: www.germansteel.in",
+    "rows": null,
+    "note": "Cover only; the GI registered-office block (p100) prints no website. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      101
+    ],
+    "value": "Umeshkumar Singh",
+    "verbatim": "Umeshkumar Singh is our Company Secretary and Compliance Officer",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      101
+    ],
+    "value": "+91 7211133101/ 9723555100",
+    "verbatim": "Telephone: +91 7211133101/ 9723555100",
+    "rows": null,
+    "note": "Two numbers printed (second without +91 prefix); same on cover and GI. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      101
+    ],
+    "value": "secretarial@germansteel.in",
+    "verbatim": "Email: secretarial@germansteel.in",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      4,
+      105
+    ],
+    "value": "www.bigshareonline.com",
+    "verbatim": "Website: www.bigshareonline.com",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      102
+    ],
+    "value": [
+      "Systematix Corporate Services Limited",
+      "Emkay Global Financial Services Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Systematix Corporate Services Limited",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      100
+    ],
+    "value": "German House, Near Bharat Petrol Pump, Opp. Kochrab Ashram, Paldi, Ahmedabad- 380007 Gujarat, India",
+    "verbatim": "German House, Near Bharat Petrol Pump, Opp. Kochrab Ashram, Paldi, Ahmedabad- 380007 Gujarat, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (same place). GI p100 text; cover p1/p3 print \"Ahmedabad- 380007, Gujarat, India\" (comma only, same value). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91 7211133101/ 9723555100",
+    "verbatim": "Telephone: +91 7211133101/ 9723555100",
+    "rows": null,
+    "note": "Only telephone printed for the company is the contact-person line on the cover (p3: \"Contact Person: Umeshkumar Singh ... Telephone\"); GI office block prints none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "secretarial@germansteel.in",
+    "verbatim": "Email: secretarial@germansteel.in",
+    "rows": null,
+    "note": "Cover contact email (same as compliance officer email); GI office block prints none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": "BRLM x2; REGISTRAR; LEGAL_COUNSEL_OFFER; STATUTORY_AUDITOR x2",
+    "verbatim": "Legal Counsel to the Offer M/s. Crawford Bayley & Co.",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "6 rows: 2 BRLMs (p102), registrar (p105), legal counsel to the Offer (p104), 2 joint statutory auditors (p104). Syndicate Members and Escrow/Public Offer/Sponsor/Refund banks \"[●]\". Bankers to our Company (HDFC, SBI, Bandhan) are not offer intermediaries. Former auditor KPSJ (change table) excluded. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": [
+      "Systematix Corporate Services Limited",
+      "Emkay Global Financial Services Limited",
+      "Bigshare Services Private Limited",
+      "M/s. Crawford Bayley & Co.",
+      "S A M A S & Associates, Chartered Accountants",
+      "Talati and Talati LLP, Chartered Accountants"
+    ],
+    "verbatim": "Emkay Global Financial Services Limited 7th Floor, The Ruby",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "6 rows: 2 BRLMs (p102), registrar (p105), legal counsel to the Offer (p104), 2 joint statutory auditors (p104). Syndicate Members and Escrow/Public Offer/Sponsor/Refund banks \"[●]\". Bankers to our Company (HDFC, SBI, Bandhan) are not offer intermediaries. Former auditor KPSJ (change table) excluded. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration number: INM000004224",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Kuldeep Singh/ Sagar Purandare",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": null,
+    "verbatim": "Telephone: +91 22 6704 8000",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": null,
+    "verbatim": "Email: ggspl.ipo@systematixgroup.in",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      102,
+      104,
+      105
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance email: investor@systematixgroup.in",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Systematix Corporate Services Limited",
+        "sebi_reg_no": "INM000004224",
+        "contact_person": "Kuldeep Singh/ Sagar Purandare",
+        "phone": "+91 22 6704 8000",
+        "email": "ggspl.ipo@systematixgroup.in",
+        "grievance_email": "investor@systematixgroup.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Emkay Global Financial Services Limited",
+        "sebi_reg_no": "INM000011229",
+        "contact_person": "Deepak Yadav/ Pooja Sarvankar",
+        "phone": "+91 22 6612 1212",
+        "email": "ggsapl.ipo@emkayglobal.com",
+        "grievance_email": "ibg@emkayglobal.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Babu Rapheal",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_OFFER",
+        "name": "M/s. Crawford Bayley & Co.",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2266 3353",
+        "email": "sanjay.asher@crawfordbayley.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S A M A S & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Mayur Mehta",
+        "phone": "+91 9662926629",
+        "email": "mayur@samas.ca",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Talati and Talati LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": "CA Umesh Talati",
+        "phone": "+91 9825057202",
+        "email": "umesh@talatiandtalati.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      105
+    ],
+    "value": "Bigshare Services Private Limited",
+    "verbatim": "Registrar to the Offer Bigshare Services Private Limited",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      105
+    ],
+    "value": "ipo@bigshareonline.com",
+    "verbatim": "Email: ipo@bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India"
+      }
+    ],
+    "note": "Investor grievance email investor@bigshareonline.com also printed (p4, p105). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      105
+    ],
+    "value": "+91 22 6263 8200",
+    "verbatim": "Telephone: +91 22 6263 8200",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      4,
+      105
+    ],
+    "value": "www.bigshareonline.com",
+    "verbatim": "Website: www.bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      105
+    ],
+    "value": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India",
+    "verbatim": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor, Pinnacle Business Park, Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400093 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. Cover p4 prints the same address with \"Next to Ahura Centre, Andheri (East), Mumbai 400093,\" (commas only). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  }
+]

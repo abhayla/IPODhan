@@ -1,0 +1,1172 @@
+[
+ {
+  "key": "financial_data.revenue_fy2022",
+  "printed": true,
+  "pages": [
+   377
+  ],
+  "value": 892.2484,
+  "verbatim": "Total revenue from operations 97,978.76 1,12,978.18 1,12,112.56 89,224.84",
+  "rows": null,
+  "note": "FY2022 revenue 89,224.84 Rs lakhs = 892.25 crore. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2023",
+  "printed": true,
+  "pages": [
+   377
+  ],
+  "value": 1121.1256,
+  "verbatim": "Total revenue from operations 97,978.76 1,12,978.18 1,12,112.56 89,224.84",
+  "rows": null,
+  "note": "FY2023 revenue 112,112.56 Rs lakhs = 1,121.13 crore. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2024",
+  "printed": true,
+  "pages": [
+   377
+  ],
+  "value": 1129.7818,
+  "verbatim": "Total revenue from operations 97,978.76 1,12,978.18 1,12,112.56 89,224.84",
+  "rows": null,
+  "note": "FY2024 revenue 112,978.18 Rs lakhs = 1,129.78 crore. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2025",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2025 not printed: restated financials cover FY2022-FY2024 plus a nine-month stub to Dec 31, 2024 (stub is not a fiscal year, D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2022",
+  "printed": true,
+  "pages": [
+   264
+  ],
+  "value": null,
+  "verbatim": "Profit After Tax(4) (₹ in lakhs) 3,207.64 4,166.66 3,119.75 3,416.89",
+  "rows": null,
+  "note": "CONFLICT (strict rule): P&L/summary copies \"Profit after tax\"/\"Profit for the year\" FY2024 4,166.66 / FY2023 3,119.75 / FY2022 3,416.89 lakhs (p31, p264, p388, p401) vs note 50A p397 \"Profit after tax as per restated consolidated Ind AS financial information\" 4,165.71 / 3,127.93 / 3,459.76 (these equal Total Comprehensive Income p97, likely a mislabel, but labelled as PAT). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2023",
+  "printed": true,
+  "pages": [
+   264
+  ],
+  "value": null,
+  "verbatim": "Profit After Tax(4) (₹ in lakhs) 3,207.64 4,166.66 3,119.75 3,416.89",
+  "rows": null,
+  "note": "CONFLICT (strict rule): P&L/summary copies \"Profit after tax\"/\"Profit for the year\" FY2024 4,166.66 / FY2023 3,119.75 / FY2022 3,416.89 lakhs (p31, p264, p388, p401) vs note 50A p397 \"Profit after tax as per restated consolidated Ind AS financial information\" 4,165.71 / 3,127.93 / 3,459.76 (these equal Total Comprehensive Income p97, likely a mislabel, but labelled as PAT). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2024",
+  "printed": true,
+  "pages": [
+   264
+  ],
+  "value": null,
+  "verbatim": "Profit After Tax(4) (₹ in lakhs) 3,207.64 4,166.66 3,119.75 3,416.89",
+  "rows": null,
+  "note": "CONFLICT (strict rule): P&L/summary copies \"Profit after tax\"/\"Profit for the year\" FY2024 4,166.66 / FY2023 3,119.75 / FY2022 3,416.89 lakhs (p31, p264, p388, p401) vs note 50A p397 \"Profit after tax as per restated consolidated Ind AS financial information\" 4,165.71 / 3,127.93 / 3,459.76 (these equal Total Comprehensive Income p97, likely a mislabel, but labelled as PAT). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2025",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2025 not printed: restated financials cover FY2022-FY2024 plus a nine-month stub to Dec 31, 2024 (stub is not a fiscal year, D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.net_worth",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": 176.0616,
+  "verbatim": "Net worth(1) 23,339.30 17,606.16 13,440.45 10,705.51",
+  "rows": null,
+  "note": "Latest FULL fiscal year FY2024 Rs17,606.16 lakhs = Rs176.06 crore (D11). Same p397, p445. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.eps",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": null,
+  "verbatim": "Basic EPS (₹) (2)(4) 37.93 49.27 36.89 40.40",
+  "rows": null,
+  "note": "CONFLICT (strict rule): \"Basic EPS\" FY2024 49.27 (p31, p160 Basis for Offer Price, p401, p97 P&L \"Basic and Diluted\") vs 7.91 (p32 \"Basic EPS (Rs)(2)(4)(7)\", p380 note, p97 P&L \"Basic and Diluted (Post December 31, 2024)\"); FY2023 36.89 vs 5.93; FY2022 40.40 vs 6.49. Diluted identical split. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.roe",
+  "printed": true,
+  "pages": [
+   388
+  ],
+  "value": 23.67,
+  "verbatim": "4 Return on Equity Ratio Ratio 23.67% 23.21% 31.92%",
+  "rows": null,
+  "note": "FY2024 Return on Equity 23.67% (ratio note 47; same p421 ROE row \"13.70% 23.67%\"). Industry-report RoE tables p255-258 are peers, ignored. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.debt_to_equity",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": 1.13,
+  "verbatim": "Debt-equity ratio (2) 1.48 1.13 1.05 1.42",
+  "rows": null,
+  "note": "FY2024 1.13; same p260, p264, p388. Capitalisation p427 1.49 is as at Dec 31, 2024 (stub, not FY). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.reserves_and_surplus",
+  "printed": true,
+  "pages": [
+   95
+  ],
+  "value": 167.6046,
+  "verbatim": "845.70 16,760.46 17,606.16",
+  "rows": null,
+  "note": "FY2024 \"Other equity\" Rs16,760.46 lakhs = Rs167.60 crore (D9); restated balance sheet p95 (same p345). Layout line \"(b) Other equity 23,339.30...\" on p95 is a column-shift artefact of the Equity-attributable row. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_assets",
+  "printed": true,
+  "pages": [
+   95
+  ],
+  "value": 559.7349,
+  "verbatim": "3. TOTAL ASSETS (1+2) 93,045.64 55,973.49 37,458.76 35,027.70",
+  "rows": null,
+  "note": "FY2024 Rs55,973.49 lakhs = Rs559.73 crore; same p345, p388. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_borrowing",
+  "printed": true,
+  "pages": [
+   32
+  ],
+  "value": null,
+  "verbatim": "Total borrowings(6) 34,680.18 19,839.01 14,166.89 15,170.49",
+  "rows": null,
+  "note": "CONFLICT (strict rule): FY2024 \"Total borrowings\" 19,839.01 lakhs (summary p32; same in ratio note p388) vs \"Total Borrowings (1)\" 19,376.37 lakhs (risk factor p51, excludes preference-share liability component). FY2023 also differs (14,166.89 vs 13,740.50). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_pre_issue",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": 84.13,
+  "verbatim": "Total (A) 4,42,86,400 84.13",
+  "rows": null,
+  "note": "Promoters pre-Offer 84.13% (same p77, p123, p127, p327). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_post_issue",
+  "printed": false,
+  "pages": [
+   31
+  ],
+  "value": null,
+  "verbatim": "Total (A) 4,42,86,400 84.13 [●] [●] [●] [●]",
+  "rows": null,
+  "note": "placeholder: post-Offer % \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.market_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at issue price not printed (p85 \"[●]\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pre_ipo_eps",
+  "printed": true,
+  "pages": [
+   160
+  ],
+  "value": null,
+  "verbatim": "March 31, 2024 49.27 49.27 3.00",
+  "rows": null,
+  "note": "Latest full FY2024 restated basic EPS (D8). CONFLICT (strict rule): \"Basic EPS\" FY2024 49.27 (p31, p160 Basis for Offer Price, p401, p97 P&L \"Basic and Diluted\") vs 7.91 (p32 \"Basic EPS (Rs)(2)(4)(7)\", p380 note, p97 P&L \"Basic and Diluted (Post December 31, 2024)\"); FY2023 36.89 vs 5.93; FY2022 40.40 vs 6.49. Diluted identical split. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.post_ipo_eps",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"post-Offer EPS\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ronw",
+  "printed": true,
+  "pages": [
+   161
+  ],
+  "value": null,
+  "verbatim": "March 31, 2024 23.67 3.00",
+  "rows": null,
+  "note": "CONFLICT (strict rule): FY2024 RoNW 23.67% (Basis for Offer Price p161; KPI p260 \"23.67%\"; ratio note p388) vs Other Financial Information p401 \"Return on net worth (in %)(3)\" 26.84% (average net worth basis). FY2023 23.21 vs 25.84; FY2022 31.92 vs 42.84. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pe_ratio",
+  "printed": false,
+  "pages": [
+   160
+  ],
+  "value": null,
+  "verbatim": "Based on basic EPS for Fiscal [●] [●]",
+  "rows": null,
+  "note": "Own P/E \"[●]\" (price band not fixed). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2022",
+  "printed": true,
+  "pages": [
+   260
+  ],
+  "value": null,
+  "verbatim": "EBITDA(2) (₹ in lakhs) 6,818.34 8,010.96 5,259.43 3,915.23",
+  "rows": null,
+  "note": "CONFLICT (strict rule): \"EBITDA\" FY2024 8,010.96 / FY2023 5,259.43 / FY2022 3,915.23 lakhs (KPI tables p162, p260, p264) vs Other Financial Information p401 \"EBITDA(6)\" 8,708.71 / 6,127.54 / 4,656.39 (same 8,708.71 in ratio note p388). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2023",
+  "printed": true,
+  "pages": [
+   260
+  ],
+  "value": null,
+  "verbatim": "EBITDA(2) (₹ in lakhs) 6,818.34 8,010.96 5,259.43 3,915.23",
+  "rows": null,
+  "note": "CONFLICT (strict rule): \"EBITDA\" FY2024 8,010.96 / FY2023 5,259.43 / FY2022 3,915.23 lakhs (KPI tables p162, p260, p264) vs Other Financial Information p401 \"EBITDA(6)\" 8,708.71 / 6,127.54 / 4,656.39 (same 8,708.71 in ratio note p388). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2024",
+  "printed": true,
+  "pages": [
+   260
+  ],
+  "value": null,
+  "verbatim": "EBITDA(2) (₹ in lakhs) 6,818.34 8,010.96 5,259.43 3,915.23",
+  "rows": null,
+  "note": "CONFLICT (strict rule): \"EBITDA\" FY2024 8,010.96 / FY2023 5,259.43 / FY2022 3,915.23 lakhs (KPI tables p162, p260, p264) vs Other Financial Information p401 \"EBITDA(6)\" 8,708.71 / 6,127.54 / 4,656.39 (same 8,708.71 in ratio note p388). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2025",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2025 not printed: restated financials cover FY2022-FY2024 plus a nine-month stub to Dec 31, 2024 (stub is not a fiscal year, D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2022",
+  "printed": true,
+  "pages": [
+   408
+  ],
+  "value": 901.8702,
+  "verbatim": "Total Income 98,732.49 100.00% 1,13,753.57 100.00% 1,13,019.76 100.00% 90,187.02 100.00%",
+  "rows": null,
+  "note": "FY2022 total income 90,187.02 Rs lakhs = 901.87 crore. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2023",
+  "printed": true,
+  "pages": [
+   408
+  ],
+  "value": 1130.1976,
+  "verbatim": "Total Income 98,732.49 100.00% 1,13,753.57 100.00% 1,13,019.76 100.00% 90,187.02 100.00%",
+  "rows": null,
+  "note": "FY2023 total income 113,019.76 Rs lakhs = 1,130.20 crore. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2024",
+  "printed": true,
+  "pages": [
+   408
+  ],
+  "value": 1137.5357,
+  "verbatim": "Total Income 98,732.49 100.00% 1,13,753.57 100.00% 1,13,019.76 100.00% 90,187.02 100.00%",
+  "rows": null,
+  "note": "FY2024 total income 113,753.57 Rs lakhs = 1,137.54 crore. Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11) [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2025",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "FY2025 not printed: restated financials cover FY2022-FY2024 plus a nine-month stub to Dec 31, 2024 (stub is not a fiscal year, D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.current_ratio",
+  "printed": true,
+  "pages": [
+   388
+  ],
+  "value": 1.06,
+  "verbatim": "0.92 1.06 0.97 -",
+  "rows": null,
+  "note": "FY2024 current ratio 1.06 (ratio note 47 p388: current assets 27,240.60 / current liabilities 25,714.02; label \"1 Current Ratio\" on the next line). Only copy. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.quick_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"quick ratio\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.inventory_turnover",
+  "printed": true,
+  "pages": [
+   260
+  ],
+  "value": null,
+  "verbatim": "Inventory turnover ratio(9) (Times) 3.43 6.81 18.02 11.25",
+  "rows": null,
+  "note": "CONFLICT (strict rule): FY2024 \"Inventory turnover ratio\" 6.81 (KPI p260, p264) vs ratio note 47 p388 \"Inventory Turnover Ratio\" 8.85 (revenue / traded inventories). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.fiscal_year",
+  "printed": true,
+  "pages": [
+   32
+  ],
+  "value": [
+   2024,
+   2023,
+   2022
+  ],
+  "verbatim": "March 31, 2024 March 31, 2023 March 31, 2022",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.revenue",
+  "printed": true,
+  "pages": [
+   377
+  ],
+  "value": null,
+  "verbatim": "Total revenue from operations 97,978.76 1,12,978.18 1,12,112.56 89,224.84",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "Same values p31, p162, p260, p264, p346 (no conflict). 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.total_income",
+  "printed": true,
+  "pages": [
+   408
+  ],
+  "value": null,
+  "verbatim": "Total Income 98,732.49 100.00% 1,13,753.57 100.00% 1,13,019.76 100.00% 90,187.02 100.00%",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "Same values in restated P&L p97. 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.ebitda",
+  "printed": true,
+  "pages": [
+   260
+  ],
+  "value": null,
+  "verbatim": "EBITDA(2) (₹ in lakhs) 6,818.34 8,010.96 5,259.43 3,915.23",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "CONFLICT (strict rule): \"EBITDA\" FY2024 8,010.96 / FY2023 5,259.43 / FY2022 3,915.23 lakhs (KPI tables p162, p260, p264) vs Other Financial Information p401 \"EBITDA(6)\" 8,708.71 / 6,127.54 / 4,656.39 (same 8,708.71 in ratio note p388). 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.pat",
+  "printed": true,
+  "pages": [
+   264
+  ],
+  "value": null,
+  "verbatim": "Profit After Tax(4) (₹ in lakhs) 3,207.64 4,166.66 3,119.75 3,416.89",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "CONFLICT (strict rule): P&L/summary copies \"Profit after tax\"/\"Profit for the year\" FY2024 4,166.66 / FY2023 3,119.75 / FY2022 3,416.89 lakhs (p31, p264, p388, p401) vs note 50A p397 \"Profit after tax as per restated consolidated Ind AS financial information\" 4,165.71 / 3,127.93 / 3,459.76 (these equal Total Comprehensive Income p97, likely a mislabel, but labelled as PAT). 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.net_worth",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": null,
+  "verbatim": "Net worth(1) 23,339.30 17,606.16 13,440.45 10,705.51",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "Same p397 note 51A, p445 (no conflict). 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.basis",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": "RESTATED",
+  "verbatim": "derived from the Restated Consolidated Financial Information",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.unit",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": "LAKHS",
+  "verbatim": "(₹ in lakhs, except per share data)",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_basic",
+  "printed": true,
+  "pages": [
+   31
+  ],
+  "value": null,
+  "verbatim": "Basic EPS (₹) (2)(4) 37.93 49.27 36.89 40.40",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "CONFLICT (strict rule): \"Basic EPS\" FY2024 49.27 (p31, p160 Basis for Offer Price, p401, p97 P&L \"Basic and Diluted\") vs 7.91 (p32 \"Basic EPS (Rs)(2)(4)(7)\", p380 note, p97 P&L \"Basic and Diluted (Post December 31, 2024)\"); FY2023 36.89 vs 5.93; FY2022 40.40 vs 6.49. Diluted identical split. 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_diluted",
+  "printed": true,
+  "pages": [
+   32
+  ],
+  "value": null,
+  "verbatim": "Diluted EPS (₹) 37.93 49.27 36.89 40.40",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "CONFLICT (strict rule): \"Basic EPS\" FY2024 49.27 (p31, p160 Basis for Offer Price, p401, p97 P&L \"Basic and Diluted\") vs 7.91 (p32 \"Basic EPS (Rs)(2)(4)(7)\", p380 note, p97 P&L \"Basic and Diluted (Post December 31, 2024)\"); FY2023 36.89 vs 5.93; FY2022 40.40 vs 6.49. Diluted identical split. 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.op_cash_flow",
+  "printed": true,
+  "pages": [
+   348
+  ],
+  "value": null,
+  "verbatim": "Net Cash Flow generated from Operating Activities (A) 4,492.46 4,250.38 5,786.39 443.00",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "Same p98. 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.dscr",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": null,
+  "verbatim": "Debt service coverage ratio (3) 1.46 2.37 3.52 4.36",
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "Same 2.37/3.52/4.36 in ratio note 47 p388. 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.rent_expense",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 112978.18,
+    "total_income": 113753.57,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 17606.16,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 4250.38,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 2.37
+   },
+   {
+    "period": "FY2023",
+    "fiscal_year": 2023,
+    "period_months": 12,
+    "revenue": 112112.56,
+    "total_income": 113019.76,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 13440.45,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 5786.39,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 3.52
+   },
+   {
+    "period": "FY2022",
+    "fiscal_year": 2022,
+    "period_months": 12,
+    "revenue": 89224.84,
+    "total_income": 90187.02,
+    "ebitda": null,
+    "pat": null,
+    "net_worth": 10705.51,
+    "eps_basic": null,
+    "eps_diluted": null,
+    "op_cash_flow": 443.0,
+    "rent_expense": null,
+    "basis": "RESTATED",
+    "unit": "LAKHS",
+    "dscr": 4.36
+   }
+  ],
+  "note": "Not printed as a plain rent expense: only \"Rent, Rates & Taxes\" combined (p378, MD&A p413) and related-party rent rows (p34-38). 3 rows FY2024, FY2023, FY2022; Restated Consolidated (only consolidated restated set printed; nine-month stub to Dec 31, 2024 excluded, D11), Rs lakhs. Full fiscal years only (D11). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ }
+]

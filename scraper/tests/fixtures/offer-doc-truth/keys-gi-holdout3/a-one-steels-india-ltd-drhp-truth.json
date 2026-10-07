@@ -1,0 +1,702 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89
+    ],
+    "value": [
+      "PL Capital Markets Private Limited",
+      "Khambatta Securities Limited"
+    ],
+    "verbatim": "Book Running Lead Managers PL Capital Markets Private Limited 3rd Floor, Sadhana House",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.aonesteelgroup.com",
+    "verbatim": "Website: www.aonesteelgroup.com",
+    "rows": null,
+    "note": "Cover only; GI Registered and Corporate Office block (p87) prints no website. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      88
+    ],
+    "value": "Pooja Sara Nagaraja",
+    "verbatim": "Pooja Sara Nagaraja is our Company Secretary and Compliance Officer",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      88
+    ],
+    "value": "080-4564 6000",
+    "verbatim": "Telephone: 080-4564 6000",
+    "rows": null,
+    "note": "GI p88 form; cover p3 \"Tel: 080-4564 6000\"; cover p1 \"Tel: 080-45646000\" (formatting only). [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      88
+    ],
+    "value": "legal@aonesteelgroup.com",
+    "verbatim": "E-mail: legal@aonesteelgroup.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      91
+    ],
+    "value": "www.bigshareonline.com",
+    "verbatim": "Website: www.bigshareonline.com",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89
+    ],
+    "value": [
+      "PL Capital Markets Private Limited",
+      "Khambatta Securities Limited"
+    ],
+    "verbatim": "Book Running Lead Managers PL Capital Markets Private Limited 3rd Floor, Sadhana House",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      87
+    ],
+    "value": "A-One House, No. 326, CQAL Layout, Ward No. 08, Sahakarnagar, Bangalore – 560092, India",
+    "verbatim": "A-One House, No. 326, CQAL Layout, Ward No. 08, Sahakarnagar, Bangalore – 560092, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (single office), GI p87 form. Cover p3 prints \"A-One House No. 326, CQAL Layout, Ward No. 08, Sahakarnagar, Bangalore – 560 092, Karnataka, India\" (same address; adds state; formatting only). [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "080-4564 6000",
+    "verbatim": "Tel: 080-4564 6000",
+    "rows": null,
+    "note": "Cover contact-block telephone (same as compliance officer phone; cover p1 \"080-45646000\"); GI office block (p87) prints none. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "legal@aonesteelgroup.com",
+    "verbatim": "E-mail: legal@aonesteelgroup.com; Website: www.aonesteelgroup.com",
+    "rows": null,
+    "note": "Cover contact e-mail (same as compliance officer e-mail); GI office block (p87) prints none. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": "BRLM x2; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal counsel to our Company as to Indian law SNG & Partners",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p88-89, cover p2/p3), registrar (GI p91, cover p2/p3), Indian legal counsel to the Company (p91), statutory auditor (p93). Syndicate Members and Escrow/Public Issue Account/Refund/Sponsor banks \"[●]\"; monitoring agency to be appointed (p94). Bankers to our Company (HDFC Bank, Axis Bank) are not offer intermediaries; no change in auditors. Formatting-only: PL contact persons GI p88 on two lines without slash vs cover p3 \"Ashwinikumar Chavan/Purva Kanabar\"; Khambatta phone GI p89 \"9953989693; 0120 4415469\" vs cover \"+91 9953989693; 0120 4415469\"; registrar phone GI p91 \"022- 62638200\" vs cover \"+91 22 6263 8200\"; registrar name cover p3 \"Bigshare Services private Limited\" (case). Khambatta contact person is a CONFLICT (null in row): CONFLICT: Khambatta Securities Limited contact person printed as \"Chandan Mishra\" (with Nisha Shaw) on cover p2 and cover p3 (\"Contact Person: Chandan Mishra/Nisha Shaw\") and as \"Chandhan Mishra\" (with Nisha Shaw) on GI p89 (\"Contact Person: Chandhan Mishra\"); two different well-formed spellings. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": [
+      "PL Capital Markets Private Limited",
+      "Khambatta Securities Limited",
+      "Bigshare Services Private Limited",
+      "SNG & Partners",
+      "M/s Singhi & Co"
+    ],
+    "verbatim": "Khambatta Securities Limited 806, World Trade Tower",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p88-89, cover p2/p3), registrar (GI p91, cover p2/p3), Indian legal counsel to the Company (p91), statutory auditor (p93). Syndicate Members and Escrow/Public Issue Account/Refund/Sponsor banks \"[●]\"; monitoring agency to be appointed (p94). Bankers to our Company (HDFC Bank, Axis Bank) are not offer intermediaries; no change in auditors. Formatting-only: PL contact persons GI p88 on two lines without slash vs cover p3 \"Ashwinikumar Chavan/Purva Kanabar\"; Khambatta phone GI p89 \"9953989693; 0120 4415469\" vs cover \"+91 9953989693; 0120 4415469\"; registrar phone GI p91 \"022- 62638200\" vs cover \"+91 22 6263 8200\"; registrar name cover p3 \"Bigshare Services private Limited\" (case). Khambatta contact person is a CONFLICT (null in row): CONFLICT: Khambatta Securities Limited contact person printed as \"Chandan Mishra\" (with Nisha Shaw) on cover p2 and cover p3 (\"Contact Person: Chandan Mishra/Nisha Shaw\") and as \"Chandhan Mishra\" (with Nisha Shaw) on GI p89 (\"Contact Person: Chandhan Mishra\"); two different well-formed spellings. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No.: INM000011914",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Vinayak Morbale",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "CONFLICT: Khambatta Securities Limited contact person printed as \"Chandan Mishra\" (with Nisha Shaw) on cover p2 and cover p3 (\"Contact Person: Chandan Mishra/Nisha Shaw\") and as \"Chandhan Mishra\" (with Nisha Shaw) on GI p89 (\"Contact Person: Chandhan Mishra\"); two different well-formed spellings. (Khambatta row contact_person null). Legal counsel and auditor print no contact person. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": null,
+    "verbatim": "Telephone: 9953989693; 0120 4415469",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": null,
+    "verbatim": "Email: ipo@khambattasecurities.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      88,
+      89,
+      91,
+      93
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance E-mail: mbcomplaints@khambattasecurities.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "PL Capital Markets Private Limited",
+        "sebi_reg_no": "INM000011237",
+        "contact_person": "Ashwinikumar Chavan/Purva Kanabar",
+        "phone": "+91 22 6632 2222",
+        "email": "aonesteelsipo@plindia.com",
+        "grievance_email": "grievance-mbd@plindia.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Khambatta Securities Limited",
+        "sebi_reg_no": "INM000011914",
+        "contact_person": null,
+        "phone": "9953989693; 0120 4415469",
+        "email": "ipo@khambattasecurities.com",
+        "grievance_email": "mbcomplaints@khambattasecurities.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "022- 62638200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "SNG & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "011 43582041",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Singhi & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (0) 80 2346 3462/65",
+        "email": "bangalore@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      91
+    ],
+    "value": "Bigshare Services Private Limited",
+    "verbatim": "Registrar to the Offer Bigshare Services Private Limited",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "022- 62638200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India"
+      }
+    ],
+    "note": "Cover p3 prints \"Bigshare Services private Limited\" (case only). [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "022- 62638200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      91
+    ],
+    "value": "ipo@bigshareonline.com",
+    "verbatim": "E-mail: ipo@bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "022- 62638200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      91
+    ],
+    "value": "022- 62638200",
+    "verbatim": "Telephone: 022- 62638200",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "022- 62638200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India"
+      }
+    ],
+    "note": "GI p91 form; cover p2 \"Tel.: +91 22 6263 8200\", cover p3 \"Tel: +91 22 6263 8200\" (same number, formatting only). [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      91
+    ],
+    "value": "www.bigshareonline.com",
+    "verbatim": "Website: www.bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "022- 62638200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      3,
+      91
+    ],
+    "value": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India",
+    "verbatim": "Office No S6-2, 6th",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "022- 62638200",
+        "website": "www.bigshareonline.com",
+        "address": "Office No S6-2, 6th Floor Pinnacle Business Park, Next to Ahura Centre, Mahakali Caves Road, Andheri (East) Mumbai - 400093, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. Cover p3 prints \"Office No. S-62, 6th floor, Pinnacle Business Park, next to Ahura Centre, Mahakali Caves Road, Andheri (East), Mumbai – 400093\". [pages = PDF page index, 1-based; printed page = pdf-3]"
+  }
+]

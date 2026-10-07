@@ -1,0 +1,747 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      78,
+      79
+    ],
+    "value": [
+      "JM Financial Limited",
+      "ICICI Securities Limited",
+      "IIFL Capital Services Limited"
+    ],
+    "verbatim": "Book Running Lead Managers JM Financial Limited ICICI Securities Limited",
+    "rows": null,
+    "note": "3 BRLMs. IIFL printed with \"(formerly known as IIFL Securities Limited)\" on cover p2/p3 and GI p79. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.karamtara.com",
+    "verbatim": "Website: www.karamtara.com",
+    "rows": null,
+    "note": "Cover only; GI registered office block (p77) prints no website. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      78
+    ],
+    "value": "Sanjay Khare",
+    "verbatim": "Sanjay Khare is the Company Secretary, Compliance Officer and Head - Legal of our Company",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      78
+    ],
+    "value": "+91 22 4071 0000",
+    "verbatim": "Tel: +91 22 4071 0000",
+    "rows": null,
+    "note": "Cover p1/p3 print \"Telephone: +91 22 4071 0000\" (same). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      78
+    ],
+    "value": "investors@karamtara.com",
+    "verbatim": "E-mail: investors@karamtara.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      79
+    ],
+    "value": "www.linkintime.co.in",
+    "verbatim": "Website: www.linkintime.co.in",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      78,
+      79
+    ],
+    "value": [
+      "JM Financial Limited",
+      "ICICI Securities Limited",
+      "IIFL Capital Services Limited"
+    ],
+    "verbatim": "Book Running Lead Managers JM Financial Limited ICICI Securities Limited",
+    "rows": null,
+    "note": "3 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      77
+    ],
+    "value": "705, Morya Landmark II New Link Road, Andheri (West) Mumbai – 400 053 Maharashtra, India",
+    "verbatim": "705, Morya Landmark II New Link Road, Andheri (West) Mumbai – 400 053 Maharashtra, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (GI p77). Cover p3 prints \"705, Morya Landmark II, New Link Road, Andheri (West), Mumbai – 400 053, Maharashtra, India\" (commas only). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91 22 4071 0000",
+    "verbatim": "Telephone: +91 22 4071 0000",
+    "rows": null,
+    "note": "Cover telephone (same as compliance officer phone); GI office block (p77) prints none. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "investors@karamtara.com",
+    "verbatim": "E-mail: investors@karamtara.com",
+    "rows": null,
+    "note": "Cover contact email (same as compliance officer email); GI office block (p77) prints none. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": "BRLM x3; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal Counsel to our Company as to Indian law Cyril Amarchand Mangaldas",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "6 rows: 3 BRLMs (GI p78-79, cover p3), registrar (GI p79, cover p3), Indian legal counsel to the Company (p79), statutory auditor (p78). Bankers to the Offer, Sponsor Banks and Syndicate Members \"[●]\". Bankers to our Company (Axis, Bank of Baroda, Canara, DCB, HDFC, ICICI Bank, IDBI, Indian Bank, Punjab and Sind, PNB, SBM, SBI, YES) are not offer intermediaries; former auditor (M/s C K S P and Co. LLP, change table p78) excluded. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": [
+      "JM Financial Limited",
+      "ICICI Securities Limited",
+      "IIFL Capital Services Limited",
+      "MUFG Intime India Private Limited",
+      "Cyril Amarchand Mangaldas",
+      "M/s Chokshi & Chokshi LLP"
+    ],
+    "verbatim": "IIFL Capital Services Limited (formerly known as IIFL Securities Limited)",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "6 rows: 3 BRLMs (GI p78-79, cover p3), registrar (GI p79, cover p3), Indian legal counsel to the Company (p79), statutory auditor (p78). Bankers to the Offer, Sponsor Banks and Syndicate Members \"[●]\". Bankers to our Company (Axis, Bank of Baroda, Canara, DCB, HDFC, ICICI Bank, IDBI, Indian Bank, Punjab and Sind, PNB, SBM, SBI, YES) are not offer intermediaries; former auditor (M/s C K S P and Co. LLP, change table p78) excluded. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration Number: INM000010940",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Dhruv Bhavsar / Pawan Kumar Jain",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "ICICI contact printed \"Ramesh Vaswana/ Abhijit Diwan\" on cover p2/p3 and \"Ramesh Vaswana / Abhijit Diwan\" on GI p78 (spacing only). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": null,
+    "verbatim": "Tel: +91 22 4646 4728",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": null,
+    "verbatim": "Email: karamtara.ipo@iiflcap.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      3,
+      78,
+      79
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance ID: ig.ib@iiflcap.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "karamtara.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Ramesh Vaswana / Abhijit Diwan",
+        "phone": "+91 22 6807 7100",
+        "email": "karamtara.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Dhruv Bhavsar / Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "karamtara.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 81081 14949",
+        "email": "karamtara.ipo@linkintime.co.in",
+        "grievance_email": "karamtara.ipo@linkintime.co.in"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "M/s Chokshi & Chokshi LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2383 6900",
+        "email": "contact@chokshiandchokshi.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "Registrar grievance e-mail is printed identical to its main e-mail. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      79
+    ],
+    "value": "MUFG Intime India Private Limited",
+    "verbatim": "MUFG Intime India Private Limited (formerly Link Intime India Private Limited)",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "karamtara.ipo@linkintime.co.in",
+        "phone": "+91 81081 14949",
+        "website": "www.linkintime.co.in",
+        "address": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "Printed with former name \"(formerly Link Intime India Private Limited)\" on cover p2/p3 and GI p79. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "karamtara.ipo@linkintime.co.in",
+        "phone": "+91 81081 14949",
+        "website": "www.linkintime.co.in",
+        "address": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      79
+    ],
+    "value": "karamtara.ipo@linkintime.co.in",
+    "verbatim": "E-mail: karamtara.ipo@linkintime.co.in",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "karamtara.ipo@linkintime.co.in",
+        "phone": "+91 81081 14949",
+        "website": "www.linkintime.co.in",
+        "address": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      79
+    ],
+    "value": "+91 81081 14949",
+    "verbatim": "Tel: +91 81081 14949",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "karamtara.ipo@linkintime.co.in",
+        "phone": "+91 81081 14949",
+        "website": "www.linkintime.co.in",
+        "address": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "GI p79 form; cover p2/p3 print \"+91 810 811 4949\" (same digits, spacing only). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      79
+    ],
+    "value": "www.linkintime.co.in",
+    "verbatim": "Website: www.linkintime.co.in",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "karamtara.ipo@linkintime.co.in",
+        "phone": "+91 81081 14949",
+        "website": "www.linkintime.co.in",
+        "address": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      3,
+      79
+    ],
+    "value": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India",
+    "verbatim": "C-101, 247 Park L B S Marg, Vikhroli (West)",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "karamtara.ipo@linkintime.co.in",
+        "phone": "+91 81081 14949",
+        "website": "www.linkintime.co.in",
+        "address": "C-101, 247 Park L B S Marg, Vikhroli (West) Mumbai - 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  }
+]

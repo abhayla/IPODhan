@@ -1,0 +1,2052 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82
+    ],
+    "value": [
+      "Kotak Mahindra Capital Company Limited",
+      "Morgan Stanley India Company Private Limited",
+      "BofA Securities India Limited",
+      "Axis Capital Limited",
+      "BNP Paribas",
+      "Citigroup Global Markets India Private Limited",
+      "CLSA India Private Limited",
+      "DAM Capital Advisors Limited",
+      "Goldman Sachs (India) Securities Private Limited",
+      "HDFC Bank Limited",
+      "HSBC Securities and Capital Markets (India) Private Limited",
+      "ICICI Securities Limited",
+      "IIFL Capital Services Limited",
+      "Jefferies India Private Limited",
+      "JM Financial Limited",
+      "J.P. Morgan India Private Limited",
+      "SBI Capital Markets Limited",
+      "UBS Securities India Private Limited",
+      "360 ONE WAM Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Kotak Mahindra Capital Company Limited Morgan Stanley India Company Private Limited",
+    "rows": null,
+    "note": "19 BRLMs. IIFL printed with \"(formerly known as IIFL Securities Limited)\" on cover p2/p3 and GI p81 (alias, not part of the name). [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.jio.com",
+    "verbatim": "Website: www.jio.com",
+    "rows": null,
+    "note": "Cover only; GI registered/corporate office blocks (p78) print no website. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      79
+    ],
+    "value": "Venkataraman Ramachandran",
+    "verbatim": "Compliance Officer Mr. Venkataraman Ramachandran",
+    "rows": null,
+    "note": "Printed with honorific \"Mr.\" (cover p3 \"Mr. Venkataraman Ramachandran, Compliance Officer\"). Company Secretary is a different person: Ms. Savithri Parekh (GI p79, cover p1/p3). [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      79
+    ],
+    "value": "+91 22 7967 0000",
+    "verbatim": "Tel: +91 22 7967 0000",
+    "rows": null,
+    "note": "GI p79 Compliance Officer block; same number on cover p1/p3 contact block and for the Company Secretary. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      79
+    ],
+    "value": "jpl.investorrelations@jio.com",
+    "verbatim": "E-mail: jpl.investorrelations@jio.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      4,
+      84
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82
+    ],
+    "value": [
+      "Kotak Mahindra Capital Company Limited",
+      "Morgan Stanley India Company Private Limited",
+      "BofA Securities India Limited",
+      "Axis Capital Limited",
+      "BNP Paribas",
+      "Citigroup Global Markets India Private Limited",
+      "CLSA India Private Limited",
+      "DAM Capital Advisors Limited",
+      "Goldman Sachs (India) Securities Private Limited",
+      "HDFC Bank Limited",
+      "HSBC Securities and Capital Markets (India) Private Limited",
+      "ICICI Securities Limited",
+      "IIFL Capital Services Limited",
+      "Jefferies India Private Limited",
+      "JM Financial Limited",
+      "J.P. Morgan India Private Limited",
+      "SBI Capital Markets Limited",
+      "UBS Securities India Private Limited",
+      "360 ONE WAM Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Kotak Mahindra Capital Company Limited Morgan Stanley India Company Private Limited",
+    "rows": null,
+    "note": "19 BRLMs. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      78
+    ],
+    "value": "Office-101, Saffron, Nr. Centre Point, Panchwati 5 Rasta, Ambawadi, Ahmedabad 380 006, Gujarat, India",
+    "verbatim": "Registered Office: Office-101, Saffron, Nr. Centre Point, Panchwati 5 Rasta, Ambawadi, Ahmedabad 380 006, Gujarat, India",
+    "rows": null,
+    "note": "Registered Office (cover p3; GI p78 same, line-broken; cover p1 prints \"Office - 101\"). Separate Corporate Office also printed (GI p78, cover p1/p3): \"TC-22, 5th Floor, A Wing, Reliance Corporate Park, Thane Belapur Road, Ghansoli, Navi Mumbai 400 701, Maharashtra, India\". [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91 22 7967 0000",
+    "verbatim": "E-mail: jpl.investorrelations@jio.com; Tel: +91 22 7967 0000",
+    "rows": null,
+    "note": "Cover contact-block telephone (same as compliance officer phone); GI office blocks (p78) print none. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "jpl.investorrelations@jio.com",
+    "verbatim": "E-mail: jpl.investorrelations@jio.com; Tel: +91 22 7967 0000; Website: www.jio.com",
+    "rows": null,
+    "note": "Cover contact e-mail (same as compliance officer e-mail); GI office blocks (p78) print none. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": "BRLM x19; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN x2; LEGAL_COUNSEL_COMPANY_INTERNATIONAL; STATUTORY_AUDITOR x2",
+    "verbatim": "Lead Legal Counsel to the Company as to Indian law Shardul Amarchand Mangaldas & Co",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "25 rows: 19 BRLMs (GI p79-82, cover p1-4), registrar (GI p84, cover p2/p4), lead Indian legal counsel and Indian legal counsel to the Company (p83), international legal counsel to the Company (p84), joint statutory auditors x2 (p84). Syndicate Members and Escrow/Public Issue Account/Refund/Sponsor banks \"[●]\"; monitoring agency to be appointed (p86); \"Banker(s) to the Company\" heading p84 lists none. No change in auditors. IIFL printed with \"(formerly known as IIFL Securities Limited)\" (alias, excluded from name). Formatting-only: Morgan Stanley phone cover p1 \"+ 91 22 6118 1000\" vs p3/GI \"+91 22 6118 1000\". No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": [
+      "Kotak Mahindra Capital Company Limited",
+      "Morgan Stanley India Company Private Limited",
+      "BofA Securities India Limited",
+      "Axis Capital Limited",
+      "BNP Paribas",
+      "Citigroup Global Markets India Private Limited",
+      "CLSA India Private Limited",
+      "DAM Capital Advisors Limited",
+      "Goldman Sachs (India) Securities Private Limited",
+      "HDFC Bank Limited",
+      "HSBC Securities and Capital Markets (India) Private Limited",
+      "ICICI Securities Limited",
+      "IIFL Capital Services Limited",
+      "Jefferies India Private Limited",
+      "JM Financial Limited",
+      "J.P. Morgan India Private Limited",
+      "SBI Capital Markets Limited",
+      "UBS Securities India Private Limited",
+      "360 ONE WAM Limited",
+      "KFin Technologies Limited",
+      "Shardul Amarchand Mangaldas & Co",
+      "Cyril Amarchand Mangaldas",
+      "Latham & Watkins LLP",
+      "Deloitte Haskins & Sells LLP, Chartered Accountants",
+      "Chaturvedi & Shah LLP, Chartered Accountants"
+    ],
+    "verbatim": "Book Running Lead Managers Kotak Mahindra Capital Company Limited Morgan Stanley India Company Private Limited",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "25 rows: 19 BRLMs (GI p79-82, cover p1-4), registrar (GI p84, cover p2/p4), lead Indian legal counsel and Indian legal counsel to the Company (p83), international legal counsel to the Company (p84), joint statutory auditors x2 (p84). Syndicate Members and Escrow/Public Issue Account/Refund/Sponsor banks \"[●]\"; monitoring agency to be appointed (p86); \"Banker(s) to the Company\" heading p84 lists none. No change in auditors. IIFL printed with \"(formerly known as IIFL Securities Limited)\" (alias, excluded from name). Formatting-only: Morgan Stanley phone cover p1 \"+ 91 22 6118 1000\" vs p3/GI \"+91 22 6118 1000\". No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No.: MB/INM000011336",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Aanchal Wagle/ Chandresh Sharma",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "Legal counsels and auditors print no contact person. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": null,
+    "verbatim": "Tel: + 91 40 6716 2222/ 1800 309 4001",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": null,
+    "verbatim": "E-mail: jioplatforms.ipo@kfintech.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      3,
+      4,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance E-mail: einward.ris@kfintech.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Kotak Mahindra Capital Company Limited",
+        "sebi_reg_no": "INM000008704",
+        "contact_person": "Ganesh Rane",
+        "phone": "+91 22 4336 0000",
+        "email": "jio.ipo@kotak.com",
+        "grievance_email": "kmccredressal@kotak.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Morgan Stanley India Company Private Limited",
+        "sebi_reg_no": "INM000011203",
+        "contact_person": "Keyur Thakar/ Hrithik Khanna",
+        "phone": "+91 22 6118 1000",
+        "email": "jpl_ipo@morganstanley.com",
+        "grievance_email": "investors_india@morganstanley.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "BofA Securities India Limited",
+        "sebi_reg_no": "INM000011625",
+        "contact_person": "Sneh Ashish",
+        "phone": "+91 22 6632 8000",
+        "email": "dg.jpl_ipo@bofa.com",
+        "grievance_email": "dg.india_merchantbanking@bofa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Axis Capital Limited",
+        "sebi_reg_no": "INM000012029",
+        "contact_person": "Harish Patel/Simran Gadh",
+        "phone": "+91 22 4325 2183",
+        "email": "jio.ipo@axiscap.in",
+        "grievance_email": "complaints@axiscap.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "BNP Paribas",
+        "sebi_reg_no": "INM000011534",
+        "contact_person": "Ankur Thacker",
+        "phone": "+91 22 3370 4000",
+        "email": "LIST.CIB.JioIPO@asia.bnpparibas.com",
+        "grievance_email": "indiainvestors.care@asia.bnpparibas.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Citigroup Global Markets India Private Limited",
+        "sebi_reg_no": "INM000010718",
+        "contact_person": "Naman Kulshreshtha",
+        "phone": "+91 22 6175 9999",
+        "email": "jio.ipo@citi.com",
+        "grievance_email": "investors.cgmib@citi.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "CLSA India Private Limited",
+        "sebi_reg_no": "INM000010619",
+        "contact_person": "Prachi Chandgothia",
+        "phone": "+91 22 6650 5050",
+        "email": "jio.ipo@clsa.com",
+        "grievance_email": "investor.helpdesk@clsa.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "DAM Capital Advisors Limited",
+        "sebi_reg_no": "MB/INM000011336",
+        "contact_person": "Aanchal Wagle/ Chandresh Sharma",
+        "phone": "+91 22 4202 2500",
+        "email": "jio.ipo@damcapital.in",
+        "grievance_email": "complaint@damcapital.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "Goldman Sachs (India) Securities Private Limited",
+        "sebi_reg_no": "INM000011054",
+        "contact_person": "Saurav S",
+        "phone": "+91 22 6616 9000",
+        "email": "jioipo@gs.com",
+        "grievance_email": "india-client-support@gs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HDFC Bank Limited",
+        "sebi_reg_no": "INM000011252",
+        "contact_person": "Bharti Ranga/ Souradeep Ghosh",
+        "phone": "+91 22 3395 8233",
+        "email": "jioplatforms.ipo@hdfc.bank.in",
+        "grievance_email": "investor.redressal@hdfcbank.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "HSBC Securities and Capital Markets (India) Private Limited",
+        "sebi_reg_no": "INM000010353",
+        "contact_person": "Harsh Thakkar/ Harshit Tayal",
+        "phone": "+91 22 6864 1289",
+        "email": "jplipo@hsbc.co.in",
+        "grievance_email": "investorgrievance@hsbc.co.in"
+      },
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Aboli Pitre/ Hitesh Malhotra",
+        "phone": "+91 22 6807 7100",
+        "email": "jioplatforms.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "IIFL Capital Services Limited",
+        "sebi_reg_no": "INM000010940",
+        "contact_person": "Gaurav Mittal/ Pawan Kumar Jain",
+        "phone": "+91 22 4646 4728",
+        "email": "jio.ipo@iiflcap.com",
+        "grievance_email": "ig.ib@iiflcap.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Akshat Shah/ Meghna Biju",
+        "phone": "+91 22 4356 6000",
+        "email": "Jio.Platforms.IPO@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "jpl.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "J.P. Morgan India Private Limited",
+        "sebi_reg_no": "INM000002970",
+        "contact_person": "Shivam Goel/ Rishank Chheda",
+        "phone": "+91 22 6157 3000",
+        "email": "JIO_IPO@jpmorgan.com",
+        "grievance_email": "investorsmb.jpmipl@jpmorgan.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "SBI Capital Markets Limited",
+        "sebi_reg_no": "INM000003531",
+        "contact_person": "Krithika Shetty/ Prashant Patankar",
+        "phone": "+91 22 4006 9807",
+        "email": "jio.ipo@sbicaps.com",
+        "grievance_email": "investor.relations@sbicaps.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "UBS Securities India Private Limited",
+        "sebi_reg_no": "INM000013101",
+        "contact_person": "Vidhit Patni",
+        "phone": "+91 22 6155 6000",
+        "email": "OL-jioipo@ubs.com",
+        "grievance_email": "igbmindia@ubs.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "360 ONE WAM Limited",
+        "sebi_reg_no": "INM000012801",
+        "contact_person": "Devesh Patkar",
+        "phone": "+91 22 4031 7000",
+        "email": "jioplatforms.ipo@360.one",
+        "grievance_email": "mbinvestorcomplaints@360.one"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "email": "jioplatforms.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Shardul Amarchand Mangaldas & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+ 91 22 4933 5555",
+        "email": "cm.partners@amsshardul.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Cyril Amarchand Mangaldas",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 2496 4455",
+        "email": "ipo.cam@cyrilshroff.com",
+        "grievance_email": null
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INTERNATIONAL",
+        "name": "Latham & Watkins LLP",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+65 6536 1161",
+        "email": "JioIPO@lw.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Deloitte Haskins & Sells LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6185 4000",
+        "email": "kvora@deloitte.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Chaturvedi & Shah LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 4163 8500",
+        "email": "cas@cas.ind.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      84
+    ],
+    "value": "KFin Technologies Limited",
+    "verbatim": "Registrar to the Issue KFin Technologies Limited",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "jioplatforms.ipo@kfintech.com",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "jioplatforms.ipo@kfintech.com",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      84
+    ],
+    "value": "jioplatforms.ipo@kfintech.com",
+    "verbatim": "E-mail: jioplatforms.ipo@kfintech.com",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "jioplatforms.ipo@kfintech.com",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      4,
+      84
+    ],
+    "value": "+ 91 40 6716 2222/ 1800 309 4001",
+    "verbatim": "Tel: + 91 40 6716 2222/ 1800 309 4001",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "jioplatforms.ipo@kfintech.com",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "Two numbers printed in one field (landline / toll-free), identical on cover p2/p4 and GI p84. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      4,
+      84
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "jioplatforms.ipo@kfintech.com",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      4,
+      84
+    ],
+    "value": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India",
+    "verbatim": "Plot No. 31 & 32, Gachibowli",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "jioplatforms.ipo@kfintech.com",
+        "phone": "+ 91 40 6716 2222/ 1800 309 4001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower-B Plot No. 31 & 32, Gachibowli Financial District, Nanakramguda Serilingampally, Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf]"
+  }
+]

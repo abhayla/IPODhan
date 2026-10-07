@@ -1,0 +1,679 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      89
+    ],
+    "value": [
+      "ICICI Securities Limited",
+      "JM Financial Limited"
+    ],
+    "verbatim": "Book Running Lead Managers ICICI Securities Limited JM Financial Limited",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.tempsens.com",
+    "verbatim": "Website: www.tempsens.com",
+    "rows": null,
+    "note": "Cover only; GI registered/corporate office blocks (p88) print no website. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      89
+    ],
+    "value": "Vishal Jain",
+    "verbatim": "Vishal Jain is the Company Secretary and Compliance Officer of our Company",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      89
+    ],
+    "value": "+91 29 4294 3092",
+    "verbatim": "Tel: +91 29 4294 3092",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      89
+    ],
+    "value": "compliance@tempsens.com",
+    "verbatim": "E-mail: compliance@tempsens.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      90
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      89
+    ],
+    "value": [
+      "ICICI Securities Limited",
+      "JM Financial Limited"
+    ],
+    "verbatim": "Book Running Lead Managers ICICI Securities Limited JM Financial Limited",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      88
+    ],
+    "value": "TF-304, Florence Classic 10, Ashapuri Society, Akota Vadodara 390 020 Gujarat, India",
+    "verbatim": "TF-304, Florence Classic 10, Ashapuri Society, Akota Vadodara 390 020 Gujarat, India",
+    "rows": null,
+    "note": "Registered Office (GI p88). Cover p3 prints \"TF-304, Florence Classic, 10, Ashapuri Society, Akota Vadodara 390 020, Gujarat, India\" (commas only). Separate Corporate Office also printed (GI p88, cover p1/p3): \"B-188, B-189, B-169 (Part), B-188A & F-188 (E) Road No. 5, Industrial Area Madri Udaipur 313 003 Rajasthan, India\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91 29 4294 3092",
+    "verbatim": "Tel: +91 29 4294 3092; E-mail: compliance@tempsens.com",
+    "rows": null,
+    "note": "Cover contact telephone (same as compliance officer phone); GI office blocks (p88) print none. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "compliance@tempsens.com",
+    "verbatim": "E-mail: compliance@tempsens.com; Website: www.tempsens.com",
+    "rows": null,
+    "note": "Cover contact email (same as compliance officer email); GI office blocks (p88) print none. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": "BRLM x2; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal Advisers to our Company as to Indian Law S&R Associates",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p89, cover p3), registrar (GI p90, cover p3), Indian legal adviser to the Company (p89), current statutory auditor (p89-90). Syndicate Members and Escrow/Refund/Public Offer/Sponsor banks \"[●]\". Bankers to our Company (SBI, Kotak) are not offer intermediaries; former auditor (Bansi Lal Shah & Co., change table p90) excluded. ICICI Securities phone and registrar phone are CONFLICTS (null in row): CONFLICT: GI p89 prints \"Tel: +91 22 4336 0000\" for ICICI Securities Limited; cover p2 prints \"Tel: +91 22 6807 7100\" and cover p3 prints \"Tel: +91 22 6807 7100\". CONFLICT: GI p90 prints \"Tel: +91 40 6716 2222 / 1800 309 4001\" (two numbers); cover p2 prints \"Tel: +91 40 6716 2222\" and cover p3 prints \"Tel: +91 40 6716 2222\" (one number). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": [
+      "ICICI Securities Limited",
+      "JM Financial Limited",
+      "KFin Technologies Limited",
+      "S&R Associates",
+      "Walker Chandiok & Co. LLP, Chartered Accountants"
+    ],
+    "verbatim": "Current Statutory Auditors of our Company Walker Chandiok & Co. LLP, Chartered Accountants",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p89, cover p3), registrar (GI p90, cover p3), Indian legal adviser to the Company (p89), current statutory auditor (p89-90). Syndicate Members and Escrow/Refund/Public Offer/Sponsor banks \"[●]\". Bankers to our Company (SBI, Kotak) are not offer intermediaries; former auditor (Bansi Lal Shah & Co., change table p90) excluded. ICICI Securities phone and registrar phone are CONFLICTS (null in row): CONFLICT: GI p89 prints \"Tel: +91 22 4336 0000\" for ICICI Securities Limited; cover p2 prints \"Tel: +91 22 6807 7100\" and cover p3 prints \"Tel: +91 22 6807 7100\". CONFLICT: GI p90 prints \"Tel: +91 40 6716 2222 / 1800 309 4001\" (two numbers); cover p2 prints \"Tel: +91 40 6716 2222\" and cover p3 prints \"Tel: +91 40 6716 2222\" (one number). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No.: INR000000221",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": null,
+    "verbatim": "Contact Person: M. Murali Krishna",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": null,
+    "verbatim": "Tel: +91 11 4069 8000",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "CONFLICT: GI p89 prints \"Tel: +91 22 4336 0000\" for ICICI Securities Limited; cover p2 prints \"Tel: +91 22 6807 7100\" and cover p3 prints \"Tel: +91 22 6807 7100\". (ICICI row phone null) CONFLICT: GI p90 prints \"Tel: +91 40 6716 2222 / 1800 309 4001\" (two numbers); cover p2 prints \"Tel: +91 40 6716 2222\" and cover p3 prints \"Tel: +91 40 6716 2222\" (one number). (registrar row phone null) [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": null,
+    "verbatim": "E-mail: Tarun.gupta@walkerchandiok.in",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      3,
+      89,
+      90
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance ID: einward.ris@kfintech.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Kishan Rastogi / Rahul Sharma",
+        "phone": null,
+        "email": "tempsens.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030/ 3262",
+        "email": "tempsens.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "S&R Associates",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 11 4069 8000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Walker Chandiok & Co. LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 124 462 8000",
+        "email": "Tarun.gupta@walkerchandiok.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      90
+    ],
+    "value": "KFin Technologies Limited",
+    "verbatim": "Registrar to the Offer KFin Technologies Limited",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      90
+    ],
+    "value": "tempsens.ipo@kfintech.com",
+    "verbatim": "E-mail: tempsens.ipo@kfintech.com",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      90
+    ],
+    "value": null,
+    "verbatim": "Tel: +91 40 6716 2222 / 1800 309 4001",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "CONFLICT: GI p90 prints \"Tel: +91 40 6716 2222 / 1800 309 4001\" (two numbers); cover p2 prints \"Tel: +91 40 6716 2222\" and cover p3 prints \"Tel: +91 40 6716 2222\" (one number). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      90
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-5]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      3,
+      90
+    ],
+    "value": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India",
+    "verbatim": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "tempsens.ipo@kfintech.com",
+        "phone": null,
+        "website": "www.kfintech.com",
+        "address": "Selenium, Tower B Plot No. 31 and 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. Cover p3 prints \"Selenium, Tower-B Plot No. 31 & 32, Gachibowli, Financial District Nanakramguda, Serilingampally Hyderabad 500 032 Telangana, India\" (formatting only). [pages = PDF page index, 1-based; printed page = pdf-5]"
+  }
+]

@@ -1,0 +1,2995 @@
+[
+ {
+  "key": "ipos.symbol",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No trading symbol / scrip code printed. Searched \"symbol\",\"scrip code\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.company_name",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Panchatv Bharat Limited",
+  "verbatim": "PANCHATV BHARAT LIMITED",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.issue_size",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 245840000,
+  "verbatim": "aggregating up to ₹ 2,458.40 Lakhs",
+  "rows": null,
+  "note": "Total Issue Rs2,458.40 lakhs (17,56,000 shares x Rs140). Unit rupee. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.lot_size",
+  "printed": false,
+  "pages": [
+   263
+  ],
+  "value": null,
+  "verbatim": "multiples of 1000 Equity Shares subject to a minimum allotment of 2000 Equity Shares",
+  "rows": null,
+  "note": "Lot size not stated as a single \"lot size\" value; the Terms of the Issue say allotment \"in multiples of 1000 Equity Shares subject to a minimum allotment of 2000 Equity Shares\" (p263). Unverified as the application lot. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.registrar",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Maashitla Securities Private Limited",
+  "verbatim": "MAASHITLA SECURITIES PRIVATE LIMITED",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.sector",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Industry statement not located in this Prospectus text (searched \"operates in textiles and apparel industry\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.price_range_min",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 140,
+  "verbatim": "at a price of ₹ 140/- per Equity Share",
+  "rows": null,
+  "note": "Fixed price issue: single Issue Price Rs140 (no band); recorded as both min and max. Fixed-price SME issue (BSE SME): prints one Issue Price (Rs140), no band; amounts in Rs lakhs unless noted. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.price_range_max",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 140,
+  "verbatim": "at a price of ₹ 140/- per Equity Share",
+  "rows": null,
+  "note": "Fixed price issue: single Issue Price Rs140 (no band); recorded as both min and max. Fixed-price SME issue (BSE SME): prints one Issue Price (Rs140), no band; amounts in Rs lakhs unless noted. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.listing_exchanges",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": [
+   "BSE"
+  ],
+  "verbatim": "proposed to be listed on the SME Platform of BSE Limited (“BSE SME”)",
+  "rows": null,
+  "note": "BSE SME. The Prospectus decides it. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.face_value",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 10,
+  "verbatim": "The face value of the Equity Shares is ₹ 10/- each",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.company_description",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "OUT OF DETERMINISTIC SCOPE BY SPEC: §5.6 F1 \"genuine model case\"; OD-164(b) \"the company description stays out\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.lead_managers",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": [
+   "Mark Corporate Advisors Private Limited"
+  ],
+  "verbatim": "LEAD MANAGER: MARK CORPORATE ADVISORS PRIVATE LIMITED",
+  "rows": null,
+  "note": "1 Lead Manager. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.isin",
+  "printed": true,
+  "pages": [
+   6
+  ],
+  "value": "INE0VXN01011",
+  "verbatim": "in our case being INE0VXN01011",
+  "rows": null,
+  "note": "ISIN printed in the Definitions section. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.segment",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "SME",
+  "verbatim": "proposed to be listed on the SME Platform of BSE Limited (“BSE SME”)",
+  "rows": null,
+  "note": "SME platform (BSE SME) named explicitly. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.offering_type",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D3 (delegated 2026-10-04) - identity context copied from the stored row (OD-91(4)); changing it rebuilds the field plan (§2.8). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.objectives",
+  "printed": true,
+  "pages": [
+   87
+  ],
+  "value": [
+   "Funding of capital expenditure towards purchase of property at Delhi and renovation, modernization and fit-out thereof (Rs600.00 lakhs)",
+   "Funding working capital requirements (Rs1,150.00 lakhs)",
+   "General corporate purposes (Rs366.88 lakhs)"
+  ],
+  "verbatim": "1. Funding of capital expenditure towards purchase of property at Delhi and renovation, modernization and fit-out thereof; 2. Funding working capital requirements of our Company; and 3. General corpor",
+  "rows": null,
+  "note": "Objects of the fresh Issue (not a pure OFS); Net Proceeds Rs2,116.88 lakhs. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.company_website",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "https://www.panchatvlimited.com/",
+  "verbatim": "https://www.panchatvlimited.c om/",
+  "rows": null,
+  "note": "Website printed with a space inside the domain (\"c om\") in the text layer. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipos.cin",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "U13999DL2024PLC427903",
+  "verbatim": "Corporate Identification Number: U13999DL2024PLC427903",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_description",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "OUT OF DETERMINISTIC SCOPE BY SPEC: §5.6 F1 \"genuine model case\"; OD-164(b) \"the company description stays out\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.issue_type",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Fixed Price (100%)",
+  "verbatim": "Fixed Price Issue",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.fresh_issue",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 245840000,
+  "verbatim": "aggregating up to ₹ 2,458.40 Lakhs",
+  "rows": null,
+  "note": "Entire Issue is a Fresh Issue; Rs2,458.40 lakhs. Unit rupee. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.ofs_issue",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 0,
+  "verbatim": "Not applicable as the entire Issue constitutes fresh issue of Equity Shares",
+  "rows": null,
+  "note": "No Offer for Sale (OFS size \"Nil\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.face_value",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 10,
+  "verbatim": "The face value of the Equity Shares is ₹ 10/- each",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.exchanges",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": [
+   "BSE"
+  ],
+  "verbatim": "proposed to be listed on the SME Platform of BSE Limited (“BSE SME”)",
+  "rows": null,
+  "note": "Equals ipos.listing_exchanges. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.compliance_officer",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Chanchal Khandelwal",
+  "verbatim": "Ms. Chanchal Khandelwal Company Secretary & Compliance Officer",
+  "rows": null,
+  "note": "Changed from the draft (Himani Goel). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.compliance_officer_phone",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "+91 8920318885",
+  "verbatim": "Tel: +91 8920318885",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.compliance_officer_email",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "cs@panchatvlimited.com",
+  "verbatim": "Email: cs@panchatvlimited.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.upi_cutoff_time",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "5:00 PM on Bid/Offer Closing Date",
+  "verbatim": "UPI mandate end time and date shall be at 5:00 pm on the Issue Closing Date",
+  "rows": null,
+  "note": "Issue opens Thu Sept 10, 2026; closes Tue Sept 15, 2026 (p1). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.designated_exchange",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "BSE",
+  "verbatim": "the Designated Stock Exchange will be BSE",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.lot_multiple",
+  "printed": false,
+  "pages": [
+   263
+  ],
+  "value": null,
+  "verbatim": "multiples of 1000 Equity Shares subject to a minimum allotment of 2000 Equity Shares",
+  "rows": null,
+  "note": "Lot multiple not stated as such; see ipos.lot_size note (allotment multiples of 1000, minimum allotment 2000). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.allocation_pct",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": {
+   "MARKET_MAKER": "88,000 shares (Rs123.20 lakhs)",
+   "NET_ISSUE_TO_PUBLIC": "16,68,000 shares (Rs2,335.20 lakhs)",
+   "RETAIL": "minimum 50% of the Net Issue (Reg 253)",
+   "OTHER_INVESTORS": "balance of the Net Issue"
+  },
+  "verbatim": "a minimum 50% of the Net Issue is allocated for Individual Applicants who apply for minimum application size",
+  "rows": null,
+  "note": "No QIB/anchor portion in a fixed-price SME issue. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.pre_ipo_placement",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No Pre-IPO placement statement located. Searched \"Pre-IPO\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.bid_windows",
+  "printed": true,
+  "pages": [
+   266
+  ],
+  "value": [
+   {
+    "activity": "Issue Period applications and revisions",
+    "window": "10.00 a.m. to 5.00 p.m. IST"
+   }
+  ],
+  "verbatim": "accepted only between 10.00 a.m. to 5.00 p.m.",
+  "rows": null,
+  "note": "Issue dates printed on p1. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.promoter_shares_held",
+  "printed": true,
+  "pages": [
+   85
+  ],
+  "value": {
+   "Sanjay Gupta": 2176524,
+   "Sooraj Gupta": 1628046,
+   "Sanyogita Gupta": null
+  },
+  "verbatim": "1. Sanjay Gupta Managing Director 21,76,524 53.15% 2. Sooraj Gupta Whole-time Director 16,28,046 39.76%",
+  "rows": null,
+  "note": "Pre-Issue shares of the two promoter-directors (53.15%, 39.76%); Sanyogita Gupta (new promoter) holds none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.sebi_regulation_cited",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Regulation 229(1) and 253(3)",
+  "verbatim": "in terms of Regulation 229(1) and Regulation 253(3) of Chapter IX of the SEBI ICDR Regulations",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.promoter_group_transactions_since_drhp",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No statement of transactions since the Draft Prospectus located. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.cut_off_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not applicable: fixed price issue (no cut-off price). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.min_investment",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Rupee minimum investment not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.isin",
+  "printed": true,
+  "pages": [
+   6
+  ],
+  "value": "INE0VXN01011",
+  "verbatim": "in our case being INE0VXN01011",
+  "rows": null,
+  "note": "Same as ipos.isin. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.registrar_link",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": "www.maashitla.com",
+  "verbatim": "Website: www.maashitla.com",
+  "rows": null,
+  "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.lead_managers",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": [
+   "Mark Corporate Advisors Private Limited"
+  ],
+  "verbatim": "LEAD MANAGER: MARK CORPORATE ADVISORS PRIVATE LIMITED",
+  "rows": null,
+  "note": "1 Lead Manager. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_address",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Ground Floor, Property No. IX/3615, Sat Narayan Mandir Gali, Gandhi Nagar, East Delhi, Delhi, India, 110031",
+  "verbatim": "Ground Floor, Property No. IX/3615, Sat Narayan Mandir Gali, Gandhi Nagar, East Delhi, Delhi, India, 110031",
+  "rows": null,
+  "note": "Registered office changed from the draft; corporate office Ahmedabad also printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_phone",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "+91 8920318885",
+  "verbatim": "Tel: +91 8920318885",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_email",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "cs@panchatvlimited.com",
+  "verbatim": "Email: cs@panchatvlimited.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_city",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Delhi",
+  "verbatim": "Gandhi Nagar, East Delhi, Delhi",
+  "rows": null,
+  "note": "Registered office: East Delhi, Delhi. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_state",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Delhi",
+  "verbatim": "East Delhi, Delhi, India, 110031",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.company_pincode",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "110031",
+  "verbatim": "India, 110031",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.qib_shares_offered",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Fixed-price SME issue: only Market Maker (88,000) and Net Issue (16,68,000) share counts are printed; no QIB/NII/retail/anchor counts. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.nii_shares_offered",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Fixed-price SME issue: only Market Maker (88,000) and Net Issue (16,68,000) share counts are printed; no QIB/NII/retail/anchor counts. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.retail_shares_offered",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Fixed-price SME issue: only Market Maker (88,000) and Net Issue (16,68,000) share counts are printed; no QIB/NII/retail/anchor counts. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.retail_max_allottees",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.employee_shares_offered",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee reservation printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.anchor_shares_offered",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Fixed-price SME issue: only Market Maker (88,000) and Net Issue (16,68,000) share counts are printed; no QIB/NII/retail/anchor counts. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.max_retail_subscription",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No rupee ceiling for retail applications located. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.max_employee_subscription",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee reservation printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.employee_discount",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee discount printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.sponsor_banks",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Sponsor Bank not named in the text located (Banker to the Issue: ICICI Bank Limited as Public Issue Bank, p10). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.tick_size",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No tick size printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.ipo_market_timings",
+  "printed": true,
+  "pages": [
+   266
+  ],
+  "value": "10:00 AM - 5:00 PM IST",
+  "verbatim": "accepted only between 10.00 a.m. to 5.00 p.m.",
+  "rows": null,
+  "note": "Application submission hours. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.category_details",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No exchange category codes printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_details.sub_categories_upi",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No UPI sub-category code list printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.revenue_fy2024",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": 39.3125,
+  "verbatim": "Revenue from Operations XXI 5,685.11 4899.33 3,931.25",
+  "rows": null,
+  "note": "Rs3,931.25 lakhs = Rs39.31 crore (FY2024; restated, now the company). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.profit_fy2024",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": 2.0211,
+  "verbatim": "VII Profit (Loss) for the period (V- VI) 403.10 282.81 202.11",
+  "rows": null,
+  "note": "Restated profit FY2024 Rs202.11 lakhs (draft had 186.68). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.net_worth",
+  "printed": true,
+  "pages": [
+   253
+  ],
+  "value": 12.62,
+  "verbatim": "Net Worth 12.62 9.05 3.39",
+  "rows": null,
+  "note": "FY2026 Net Worth Rs12.62 crore (printed in crore, eligibility table). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.eps",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": 9.84,
+  "verbatim": "Basic 9.84 7.94 5.94",
+  "rows": null,
+  "note": "FY2026 basic = diluted EPS Rs9.84. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.roe",
+  "printed": true,
+  "pages": [
+   214
+  ],
+  "value": 37.2,
+  "verbatim": "Return on Equity Ratio 37.20% 45.47%",
+  "rows": null,
+  "note": "FY2026 Return on Equity ratio 37.20% (notes ratio table; KPI table prints Return on Net Worth 31.93%). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.debt_to_equity",
+  "printed": true,
+  "pages": [
+   214
+  ],
+  "value": 1.12,
+  "verbatim": "Debt-Equity Ratio 1.12 0.86",
+  "rows": null,
+  "note": "FY2026 Debt-Equity ratio 1.12. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.reserves_and_surplus",
+  "printed": true,
+  "pages": [
+   50
+  ],
+  "value": 8.5291,
+  "verbatim": "Reserves and Surplus VI 852.91 495.38 -",
+  "rows": null,
+  "note": "FY2026 Rs852.91 lakhs = Rs8.53 crore. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_assets",
+  "printed": true,
+  "pages": [
+   50
+  ],
+  "value": 33.7757,
+  "verbatim": "Total 3,377.57 2716.01 1688.06",
+  "rows": null,
+  "note": "FY2026 Rs3,377.57 lakhs (also printed Rs33.78 crore on p253). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_borrowing",
+  "printed": true,
+  "pages": [
+   107
+  ],
+  "value": 14.1758,
+  "verbatim": "Total Borrowings 1,417.58 773.91 766.33",
+  "rows": null,
+  "note": "FY2026 Rs1,417.58 lakhs = Rs14.18 crore (KPI table). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_pre_issue",
+  "printed": false,
+  "pages": [
+   85
+  ],
+  "value": null,
+  "verbatim": "1. Sanjay Gupta Managing Director 21,76,524 53.15%",
+  "rows": null,
+  "note": "No Promoters total row located: directors table prints Sanjay Gupta 53.15% and Sooraj Gupta 39.76%; no derived totals. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.promoter_holding_post_issue",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Post-Issue percentages not captured; no derived totals. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.market_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at issue price not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pre_ipo_eps",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": 9.84,
+  "verbatim": "Basic 9.84 7.94 5.94",
+  "rows": null,
+  "note": "Latest-FY EPS; doc does not label it pre-IPO EPS. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.post_ipo_eps",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"post-issue EPS\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ronw",
+  "printed": true,
+  "pages": [
+   107
+  ],
+  "value": 31.93,
+  "verbatim": "Return on Net Worth (In %) 31.93% 31.25% 59.59%",
+  "rows": null,
+  "note": "FY2026 RoNW 31.93%; weighted average 45.65%. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.pe_ratio",
+  "printed": true,
+  "pages": [
+   105
+  ],
+  "value": 14.23,
+  "verbatim": "P/E ratio based on the Basic & Diluted EPS, as restated for March 31, 2026 14.23",
+  "rows": null,
+  "note": "P/E at the Issue Price (Rs140) on FY2026 EPS = 14.23 (peer-table own-company P/E cell is \"NA\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2024",
+  "printed": true,
+  "pages": [
+   107
+  ],
+  "value": 3.2247,
+  "verbatim": "EBITDA 643.74 455.13 322.47",
+  "rows": null,
+  "note": "FY2024 EBITDA Rs322.47 lakhs (KPI table). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this Prospectus: FY2026, FY2025, FY2024 only (p50-52). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.total_income_fy2024",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": 39.3125,
+  "verbatim": "I Total Income 4899.33 3931.25",
+  "rows": null,
+  "note": "Total Income FY2024 Rs3,931.25 lakhs (FY2026 cell is blank in the text layer). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.current_ratio",
+  "printed": true,
+  "pages": [
+   107
+  ],
+  "value": 1.88,
+  "verbatim": "Current Ratio 1.88 1.53 1.41",
+  "rows": null,
+  "note": "FY2026 current ratio 1.88. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.quick_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"quick ratio\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_data.inventory_turnover",
+  "printed": true,
+  "pages": [
+   214
+  ],
+  "value": 3.57,
+  "verbatim": "Inventory Turnover Ratio 3.57 4.72",
+  "rows": null,
+  "note": "FY2026 inventory turnover 3.57x. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.fiscal_year",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": [
+   2026,
+   2025,
+   2024
+  ],
+  "verbatim": "FY 2025-26 FY 2024-25 FY 2023-24",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.revenue",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": null,
+  "verbatim": "Revenue from Operations XXI 5,685.11 4899.33 3,931.25",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.total_income",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": null,
+  "verbatim": "I Total Income 4899.33 3931.25",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.ebitda",
+  "printed": true,
+  "pages": [
+   107
+  ],
+  "value": null,
+  "verbatim": "EBITDA 643.74 455.13 322.47",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.pat",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": null,
+  "verbatim": "VII Profit (Loss) for the period (V- VI) 403.10 282.81 202.11",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.net_worth",
+  "printed": false,
+  "pages": [
+   253
+  ],
+  "value": null,
+  "verbatim": "Net Worth 12.62 9.05 3.39",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "Yearly \"Net worth\" row not printed (only FY2026 Rs12.62 crore, p253, with 9.05 and 3.39 for FY2025/FY2024 in crore). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.basis",
+  "printed": true,
+  "pages": [
+   50
+  ],
+  "value": "RESTATED",
+  "verbatim": "RESTATED STATEMENT OF ASSETS AND LIABILITIES",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.unit",
+  "printed": true,
+  "pages": [
+   50
+  ],
+  "value": "LAKH",
+  "verbatim": "Annexure – I (₹ in Lakhs)",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_basic",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": null,
+  "verbatim": "Basic 9.84 7.94 5.94",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.eps_diluted",
+  "printed": true,
+  "pages": [
+   51
+  ],
+  "value": null,
+  "verbatim": "Diluted 9.84 7.94 5.94",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.op_cash_flow",
+  "printed": true,
+  "pages": [
+   52
+  ],
+  "value": null,
+  "verbatim": "Net Cash generated from Operating Activities (A) (1,085.12) 71.82 (40.24)",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.dscr",
+  "printed": true,
+  "pages": [
+   214
+  ],
+  "value": null,
+  "verbatim": "Debt Service Coverage Ratio 0.44 0.65",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). DSCR 0.44, 0.65, 0.64. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "financial_statements.rent_expense",
+  "printed": true,
+  "pages": [
+   210
+  ],
+  "value": null,
+  "verbatim": "Office Rent 7.29 8.10 6.20",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 5685.11,
+    "total_income": 5687.28,
+    "ebitda": 643.74,
+    "pat": 403.1,
+    "net_worth": null,
+    "eps_basic": 9.84,
+    "eps_diluted": 9.84,
+    "op_cash_flow": -1085.12,
+    "rent_expense": 7.29,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.44
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 4899.33,
+    "total_income": 4899.33,
+    "ebitda": 455.13,
+    "pat": 282.81,
+    "net_worth": null,
+    "eps_basic": 7.94,
+    "eps_diluted": 7.94,
+    "op_cash_flow": 71.82,
+    "rent_expense": 8.1,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.65
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 3931.25,
+    "total_income": 3931.25,
+    "ebitda": 322.47,
+    "pat": 202.11,
+    "net_worth": null,
+    "eps_basic": 5.94,
+    "eps_diluted": 5.94,
+    "op_cash_flow": -40.24,
+    "rent_expense": 6.2,
+    "basis": "RESTATED",
+    "unit": "LAKH",
+    "dscr": 0.64
+   }
+  ],
+  "note": "Other expenses note \"Office Rent\". 3 rows FY2026, FY2025, FY2024; Restated, Rs lakhs. Net worth in the statements is share capital plus reserves (not labelled \"Net worth\" per year; Rs12.62 crore FY2026 printed on p253). FY2026 total income is blank in the text layer (revenue 5,685.11 + other income 2.17). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.price_floor",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 140,
+  "verbatim": "at a price of ₹ 140/- per Equity Share",
+  "rows": null,
+  "note": "Fixed price issue: single Issue Price Rs140 recorded as both. Fixed-price SME issue (BSE SME): prints one Issue Price (Rs140), no band; amounts in Rs lakhs unless noted. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.price_cap",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 140,
+  "verbatim": "at a price of ₹ 140/- per Equity Share",
+  "rows": null,
+  "note": "Fixed price issue: single Issue Price Rs140 recorded as both. Fixed-price SME issue (BSE SME): prints one Issue Price (Rs140), no band; amounts in Rs lakhs unless noted. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.mcap_at_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at issue price not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.pe_at_cap",
+  "printed": true,
+  "pages": [
+   105
+  ],
+  "value": 14.23,
+  "verbatim": "P/E ratio based on the Basic & Diluted EPS, as restated for March 31, 2026 14.23",
+  "rows": null,
+  "note": "Fixed price: single P/E 14.23 at the Issue Price recorded for both. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.mcap_at_floor",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at issue price not printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.pe_at_floor",
+  "printed": true,
+  "pages": [
+   105
+  ],
+  "value": 14.23,
+  "verbatim": "P/E ratio based on the Basic & Diluted EPS, as restated for March 31, 2026 14.23",
+  "rows": null,
+  "note": "Fixed price: single P/E 14.23 at the Issue Price recorded for both. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.ronw_weighted_3y",
+  "printed": true,
+  "pages": [
+   105
+  ],
+  "value": 45.65,
+  "verbatim": "Weighted Average 45.65%",
+  "rows": null,
+  "note": "Weighted RoNW 45.65% (FY2026 31.93 x3, FY2025 31.25 x2, FY2024 59.59 x1). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.shares_at_floor",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 1756000,
+  "verbatim": "Fresh Issue 17,56,000 equity shares",
+  "rows": null,
+  "note": "Fixed share count 17,56,000 (all Fresh Issue) at the single Issue Price. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.shares_at_cap",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 1756000,
+  "verbatim": "Fresh Issue 17,56,000 equity shares",
+  "rows": null,
+  "note": "Fixed share count 17,56,000 (all Fresh Issue) at the single Issue Price. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.fresh_shares_at_floor",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 1756000,
+  "verbatim": "Fresh Issue 17,56,000 equity shares",
+  "rows": null,
+  "note": "Fixed share count 17,56,000 (all Fresh Issue) at the single Issue Price. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.fresh_shares_at_cap",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 1756000,
+  "verbatim": "Fresh Issue 17,56,000 equity shares",
+  "rows": null,
+  "note": "Fixed share count 17,56,000 (all Fresh Issue) at the single Issue Price. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.ofs_shares",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 0,
+  "verbatim": "Not applicable as the entire Issue constitutes fresh issue of Equity Shares",
+  "rows": null,
+  "note": "No OFS. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.total_shares_at_floor",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 1756000,
+  "verbatim": "Fresh Issue 17,56,000 equity shares",
+  "rows": null,
+  "note": "Fixed share count 17,56,000 (all Fresh Issue) at the single Issue Price. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.total_shares_at_cap",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 1756000,
+  "verbatim": "Fresh Issue 17,56,000 equity shares",
+  "rows": null,
+  "note": "Fixed share count 17,56,000 (all Fresh Issue) at the single Issue Price. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_valuation.pe_not_ascertainable_reason",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No \"not ascertainable\" statement. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.name",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": [
+   "Sanjay Gupta",
+   "Sooraj Gupta",
+   "Sanyogita Gupta"
+  ],
+  "verbatim": "PROMOTERS OF OUR COMPANY: MR. SANJAY GUPTA, MR. SOORAJ GUPTA AND MS. SANYOGITA GUPTA",
+  "rows": null,
+  "note": "3 Promoters (Sanyogita Gupta added vs the draft). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.waca",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": {
+   "Sanjay Gupta": 10.67,
+   "Sooraj Gupta": 8.19,
+   "Sanyogita Gupta": null
+  },
+  "verbatim": "1. Sanjay Gupta 21,76,524 10.67 2. Sooraj Gupta 16,28,046 8.19 3. Sanyogita Gupta - -",
+  "rows": null,
+  "note": "Average cost of acquisition per Equity Share (Rs); \"-\" for Sanyogita Gupta. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.is_promoter_group",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": {
+   "Sanjay Gupta": false,
+   "Sooraj Gupta": false,
+   "Sanyogita Gupta": false
+  },
+  "verbatim": "PROMOTERS OF OUR COMPANY: MR. SANJAY GUPTA",
+  "rows": null,
+  "note": "All three are Promoters. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.role",
+  "printed": true,
+  "pages": [
+   1,
+   10
+  ],
+  "value": "BRLM; REGISTRAR; PUBLIC_ISSUE_BANK",
+  "verbatim": "Banker to the Issue / Public Issue Bank i.e. ICICI Bank Limited",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "3 rows captured (SEBI numbers BRLM INM000012128, registrar INR000004370 p2): Lead Manager and Registrar (p1), Public Issue Bank ICICI (p10). Auditor/legal counsel/market maker rows not captured (unverified). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.name",
+  "printed": true,
+  "pages": [
+   1,
+   10
+  ],
+  "value": [
+   "Mark Corporate Advisors Private Limited",
+   "Maashitla Securities Private Limited",
+   "ICICI Bank Limited"
+  ],
+  "verbatim": "Banker to the Issue / Public Issue Bank i.e. ICICI Bank Limited",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "3 rows captured (SEBI numbers BRLM INM000012128, registrar INR000004370 p2): Lead Manager and Registrar (p1), Public Issue Bank ICICI (p10). Auditor/legal counsel/market maker rows not captured (unverified). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.seq",
+  "printed": true,
+  "pages": [
+   21
+  ],
+  "value": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49,
+   50,
+   51,
+   52,
+   53,
+   54,
+   55,
+   56,
+   57,
+   58,
+   59
+  ],
+  "verbatim": "1. Some events may have mate",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Some events may have material impact quantitatively."
+   },
+   {
+    "seq": 2,
+    "heading": " Some events may have material impact qualitatively instead of quantitatively."
+   },
+   {
+    "seq": 3,
+    "heading": " Some events may not be material individually but may be found material collectively."
+   }
+  ],
+  "note": "59 numbered risk factors, pdf p21-47; rows = first 3 only. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.heading",
+  "printed": true,
+  "pages": [
+   21
+  ],
+  "value": null,
+  "verbatim": "1. Some events may have mate",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Some events may have material impact quantitatively."
+   },
+   {
+    "seq": 2,
+    "heading": " Some events may have material impact qualitatively instead of quantitatively."
+   },
+   {
+    "seq": 3,
+    "heading": " Some events may not be material individually but may be found material collectively."
+   }
+  ],
+  "note": "See seq; rows = first 3 headings. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.brlm_name",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "brlm_name": "Mark Corporate Advisors",
+    "as_of_date": null,
+    "issues_3y": null,
+    "closed_below_issue_price": null,
+    "fy_issue_counts": null,
+    "parse_complete": false
+   }
+  ],
+  "note": "Lead Manager track record not located/verified in the text layer; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.as_of_date",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "brlm_name": "Mark Corporate Advisors",
+    "as_of_date": null,
+    "issues_3y": null,
+    "closed_below_issue_price": null,
+    "fy_issue_counts": null,
+    "parse_complete": false
+   }
+  ],
+  "note": "Lead Manager track record not located/verified in the text layer; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.issues_3y",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "brlm_name": "Mark Corporate Advisors",
+    "as_of_date": null,
+    "issues_3y": null,
+    "closed_below_issue_price": null,
+    "fy_issue_counts": null,
+    "parse_complete": false
+   }
+  ],
+  "note": "Lead Manager track record not located/verified in the text layer; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "brlm_track_record.closed_below_issue_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "brlm_name": "Mark Corporate Advisors",
+    "as_of_date": null,
+    "issues_3y": null,
+    "closed_below_issue_price": null,
+    "fy_issue_counts": null,
+    "parse_complete": false
+   }
+  ],
+  "note": "Lead Manager track record not located/verified in the text layer; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.shares_held",
+  "printed": true,
+  "pages": [
+   85
+  ],
+  "value": {
+   "Sanjay Gupta": 2176524,
+   "Sooraj Gupta": 1628046,
+   "Sanyogita Gupta": null
+  },
+  "verbatim": "1. Sanjay Gupta Managing Director 21,76,524 53.15% 2. Sooraj Gupta Whole-time Director 16,28,046 39.76%",
+  "rows": null,
+  "note": "Pre-Issue shares; Sanyogita Gupta holds none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoters.waca_last_year",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "One-year WACA table not located separately (average cost table p82 only). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.sebi_reg_no",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "SEBI Registration Number: INM000012128",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "3 rows captured (SEBI numbers BRLM INM000012128, registrar INR000004370 p2): Lead Manager and Registrar (p1), Public Issue Bank ICICI (p10). Auditor/legal counsel/market maker rows not captured (unverified). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.contact_person",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Mr. Manish Gaur/ Mr Niraj Kothari",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "3 rows captured (SEBI numbers BRLM INM000012128, registrar INR000004370 p2): Lead Manager and Registrar (p1), Public Issue Bank ICICI (p10). Auditor/legal counsel/market maker rows not captured (unverified). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.phone",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "+91 022 26123207/08",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "3 rows captured (SEBI numbers BRLM INM000012128, registrar INR000004370 p2): Lead Manager and Registrar (p1), Public Issue Bank ICICI (p10). Auditor/legal counsel/market maker rows not captured (unverified). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.email",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "smeipo@markcorporateadvisors.com",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "3 rows captured (SEBI numbers BRLM INM000012128, registrar INR000004370 p2): Lead Manager and Registrar (p1), Public Issue Bank ICICI (p10). Auditor/legal counsel/market maker rows not captured (unverified). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_intermediaries.grievance_email",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "Mark Corporate Advisors Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Manish Gaur/ Mr Niraj Kothari",
+    "phone": "+91 022 26123207/08",
+    "email": "smeipo@markcorporateadvisors.com",
+    "grievance_email": null
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "Maashitla Securities Private Limited",
+    "sebi_reg_no": null,
+    "contact_person": "Mr. Mukul Agrawal",
+    "phone": "+91 011-47581432",
+    "email": "investor.ipo@maashitla.com",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": null,
+    "email": null,
+    "grievance_email": null
+   }
+  ],
+  "note": "Grievance e-mails not captured. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.body",
+  "printed": true,
+  "pages": [
+   21
+  ],
+  "value": null,
+  "verbatim": "1. Some events may have mate",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Some events may have material impact quantitatively."
+   },
+   {
+    "seq": 2,
+    "heading": " Some events may have material impact qualitatively instead of quantitatively."
+   },
+   {
+    "seq": 3,
+    "heading": " Some events may not be material individually but may be found material collectively."
+   }
+  ],
+  "note": "Every risk factor has body text. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "ipo_risk_factors.kpis",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " Some events may have material impact quantitatively."
+   },
+   {
+    "seq": 2,
+    "heading": " Some events may have material impact qualitatively instead of quantitatively."
+   },
+   {
+    "seq": 3,
+    "heading": " Some events may not be material individually but may be found material collectively."
+   }
+  ],
+  "note": "No numeric KPI tables embedded inside the numbered risk factors identified; judgment call. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.period",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Only the average-cost-of-acquisition table (p82) located; no 1Y/18M/3Y WACA range table located; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.waca",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Only the average-cost-of-acquisition table (p82) located; no 1Y/18M/3Y WACA range table located; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.cap_multiple",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Only the average-cost-of-acquisition table (p82) located; no 1Y/18M/3Y WACA range table located; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.price_low",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Only the average-cost-of-acquisition table (p82) located; no 1Y/18M/3Y WACA range table located; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.price_high",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "Only the average-cost-of-acquisition table (p82) located; no 1Y/18M/3Y WACA range table located; unverified. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.company_name",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": [
+   "Anjani Synthetics Limited"
+  ],
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.is_listed",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": true,
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.pe_ratio",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": [
+   9.05
+  ],
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.eps",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": [
+   2.57
+  ],
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.diluted_eps",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": [
+   2.57
+  ],
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.ronw",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": [
+   4.24
+  ],
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.nav",
+  "printed": true,
+  "pages": [
+   106
+  ],
+  "value": [
+   60.64
+  ],
+  "verbatim": "Peer* 2 Anjani Synthetics Limited 28,176.0 4 10 23.25 9.05 2.57 4.24 60.64 379.07",
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "1 listed peer (Anjani Synthetics Limited, p106); FY2026; CMP June 30, 2026; EPS basic = diluted; statement basis not labelled (peer figures sourced from annual reports/audited financials). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.pbv_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "P/BV not printed in the peer table. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "peer_companies.financial_statement_type",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "company_name": "Anjani Synthetics Limited",
+    "is_listed": true,
+    "pe_ratio": 9.05,
+    "eps": 2.57,
+    "diluted_eps": 2.57,
+    "ronw": 4.24,
+    "nav": 60.64,
+    "pbv_ratio": null,
+    "financial_statement_type": "STANDALONE",
+    "face_value": 10
+   }
+  ],
+  "note": "Peer statement basis (standalone/consolidated) not labelled in the table; sourced from annual reports/audited financials. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.total_shares_offered",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No anchor portion in a fixed-price SME issue. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.total_amount_raised",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No anchor portion in a fixed-price SME issue. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.anchor_investors_count",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No anchor portion in a fixed-price SME issue. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "anchor_investors.investor_list",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No anchor portion in a fixed-price SME issue. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "documents.filing_date",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "2026-09-03",
+  "verbatim": "PROSPECTUS Dated: September 03, 2026",
+  "rows": null,
+  "note": "Date of the Prospectus; RoC filing date not separately printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "listing_performance.listing_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Listing price not printed in the Prospectus (issue price Rs140 only). [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.name",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Maashitla Securities Private Limited",
+  "verbatim": "MAASHITLA SECURITIES PRIVATE LIMITED",
+  "rows": [
+   {
+    "name": "Maashitla Securities Private Limited",
+    "short_name": null,
+    "email": "investor.ipo@maashitla.com",
+    "phone": "+91 011-47581432",
+    "website": "www.maashitla.com",
+    "address": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.short_name",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "name": "Maashitla Securities Private Limited",
+    "short_name": null,
+    "email": "investor.ipo@maashitla.com",
+    "phone": "+91 011-47581432",
+    "website": "www.maashitla.com",
+    "address": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India"
+   }
+  ],
+  "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.email",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "investor.ipo@maashitla.com",
+  "verbatim": "Email: investor.ipo@maashitla.com",
+  "rows": [
+   {
+    "name": "Maashitla Securities Private Limited",
+    "short_name": null,
+    "email": "investor.ipo@maashitla.com",
+    "phone": "+91 011-47581432",
+    "website": "www.maashitla.com",
+    "address": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.phone",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "+91 011-47581432",
+  "verbatim": "Tel: +91 011-47581432",
+  "rows": [
+   {
+    "name": "Maashitla Securities Private Limited",
+    "short_name": null,
+    "email": "investor.ipo@maashitla.com",
+    "phone": "+91 011-47581432",
+    "website": "www.maashitla.com",
+    "address": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.website",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": "www.maashitla.com",
+  "verbatim": "Website: www.maashitla.com",
+  "rows": [
+   {
+    "name": "Maashitla Securities Private Limited",
+    "short_name": null,
+    "email": "investor.ipo@maashitla.com",
+    "phone": "+91 011-47581432",
+    "website": "www.maashitla.com",
+    "address": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India"
+   }
+  ],
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D1 (2026-10-04, delegated) per spec §1.10 - registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ },
+ {
+  "key": "registrars.address",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India",
+  "verbatim": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India",
+  "rows": [
+   {
+    "name": "Maashitla Securities Private Limited",
+    "short_name": null,
+    "email": "investor.ipo@maashitla.com",
+    "phone": "+91 011-47581432",
+    "website": "www.maashitla.com",
+    "address": "451, Krishna Apra Business Square, Netaji Subhash Place, Pitampura, Delhi - 110034, India"
+   }
+  ],
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D6 (delegated 2026-10-04) - registrars is reference data (§1.10), as D1. [pages = PDF page index, 1-based; printed page = pdf-4]"
+ }
+]

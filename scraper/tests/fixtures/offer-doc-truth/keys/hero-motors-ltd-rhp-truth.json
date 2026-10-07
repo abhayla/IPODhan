@@ -1,0 +1,4270 @@
+[
+ {
+  "key": "ipos.symbol",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No trading symbol / scrip code printed. Searched \"symbol\",\"scrip code\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.company_name",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": "Hero Motors Limited",
+  "verbatim": "HERO MOTORS LIMITED",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.issue_size",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 10000000000,
+  "verbatim": "aggregating up to ₹ 10,000.00 million",
+  "rows": null,
+  "note": "Total Offer Rs10,000.00 million (Fresh Issue Rs6,000.00m + OFS Rs4,000.00m); share count \"[●]\". Unit rupee. DRHP had Rs9,000m. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.lot_size",
+  "printed": false,
+  "pages": [
+   516
+  ],
+  "value": null,
+  "verbatim": "Maximum Bid Such number of Equity Shares in multiples of [●] Equity Shares",
+  "rows": null,
+  "note": "placeholder: Bid Lot \"[●] Equity Shares\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.registrar",
+  "printed": true,
+  "pages": [
+   2,
+   82
+  ],
+  "value": "KFin Technologies Limited",
+  "verbatim": "KFin Technologies Limited",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.sector",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No sector/industry classification label printed. Searched \"sector\",\"industry\". Business description only (auto components). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.price_range_min",
+  "printed": false,
+  "pages": [
+   3
+  ],
+  "value": null,
+  "verbatim": "THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY",
+  "rows": null,
+  "note": "placeholder: Price Band \"[●]\"; \"THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY\" (p3). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.price_range_max",
+  "printed": false,
+  "pages": [
+   3
+  ],
+  "value": null,
+  "verbatim": "THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY",
+  "rows": null,
+  "note": "placeholder: Price Band \"[●]\"; \"THE PRICE BAND AND THE MINIMUM BID LOT WILL BE DECIDED BY OUR COMPANY\" (p3). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.listing_exchanges",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": [
+   "BSE",
+   "NSE"
+  ],
+  "verbatim": "proposed to be listed on the BSE Limited",
+  "rows": null,
+  "note": "The RHP decides it (DRHP key yielded to the later document, OD-129/OD-30). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.face_value",
+  "printed": true,
+  "pages": [
+   3
+  ],
+  "value": 10,
+  "verbatim": "THE FACE VALUE OF EQUITY SHARES IS ₹ 10 EACH",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.company_description",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "OUT OF DETERMINISTIC SCOPE BY SPEC: §5.6 F1 \"genuine model case\"; OD-164(b) \"the company description stays out\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.lead_managers",
+  "printed": true,
+  "pages": [
+   2,
+   82
+  ],
+  "value": [
+   "ICICI Securities Limited",
+   "DAM Capital Advisors Limited",
+   "JM Financial Limited"
+  ],
+  "verbatim": "JM Financial Limited Prachee Dhuri",
+  "rows": null,
+  "note": "3 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.isin",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No ISIN of the company printed. Searched \"INE[0-9A-Z]{9}\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.segment",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "in accordance with Regulation 6(1)",
+  "rows": null,
+  "note": "Segment label (Mainboard/SME) not printed; implied only by \"Regulation 6(1) of the SEBI ICDR Regulations\". Searched \"Main Board\",\"SME\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.offering_type",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D3 (delegated 2026-10-04) - identity context copied from the stored row (OD-91(4)); changing it rebuilds the field plan (§2.8). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.objectives",
+  "printed": true,
+  "pages": [
+   119,
+   120
+  ],
+  "value": [
+   "Repayment/prepayment/redemption of certain outstanding borrowings (Rs1,900.00 million)",
+   "Capital expenditure for capacity expansion at Gautam Buddha Nagar facility (Rs2,000.00 million)",
+   "Inorganic growth through unidentified acquisitions, strategic initiatives and general corporate purposes ([●])"
+  ],
+  "verbatim": "Repayment/prepayment/redemption in full or in part, of certain outstanding borrowings availed by our Company; 1,900.00",
+  "rows": null,
+  "note": "Objects of the Fresh Issue (not a pure OFS); amounts printed except the last object \"[●]\". DRHP had a working-capital object. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.company_website",
+  "printed": true,
+  "pages": [
+   1,
+   3
+  ],
+  "value": "www.heromotors.com",
+  "verbatim": "www.heromotors.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipos.cin",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "U29299PB1998PLC039602",
+  "verbatim": "Corporate Identity Number: U29299PB1998PLC039602",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_description",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "OUT OF DETERMINISTIC SCOPE BY SPEC: §5.6 F1 \"genuine model case\"; OD-164(b) \"the company description stays out\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.issue_type",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Book Built (100%)",
+  "verbatim": "100% Book Built Offer",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.fresh_issue",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 6000000000,
+  "verbatim": "aggregating up to ₹6,000.00 million",
+  "rows": null,
+  "note": "Fresh Issue rupee size Rs6,000.00 million (share count \"[●]\"); DRHP Rs5,000m. Unit rupee. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.ofs_issue",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": 4000000000,
+  "verbatim": "aggregating up to ₹4,000.00 million",
+  "rows": null,
+  "note": "OFS rupee size Rs4,000.00 million (O P Munjal Holdings 3,950.00m; Hero Cycles 50.00m); share count \"[●]\". Unit rupee. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.face_value",
+  "printed": true,
+  "pages": [
+   3
+  ],
+  "value": 10,
+  "verbatim": "THE FACE VALUE OF EQUITY SHARES IS ₹ 10 EACH",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.exchanges",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": [
+   "BSE",
+   "NSE"
+  ],
+  "verbatim": "proposed to be listed on the BSE Limited",
+  "rows": null,
+  "note": "Equals ipos.listing_exchanges; the RHP decides it (OD-129, OD-30). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.compliance_officer",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Sakshi Dureja",
+  "verbatim": "Sakshi Dureja Company Secretary and Compliance Officer",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.compliance_officer_phone",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "+91 120 4412 000",
+  "verbatim": "Telephone: + 91 120 4412 000",
+  "rows": null,
+  "note": "Printed \"+ 91 120 4412 000\" (corporate office). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.compliance_officer_email",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "investorrelations@heromotors.com",
+  "verbatim": "Email: investorrelations@heromotors.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.upi_cutoff_time",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": "5:00 PM on Bid/Offer Closing Date",
+  "verbatim": "The UPI mandate end time and date shall be at 5:00 p.m. on Bid/Offer Closing Day",
+  "rows": null,
+  "note": "Closing date now printed: Friday, September 18, 2026 (p2). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.designated_exchange",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": "BSE",
+  "verbatim": "For the purposes of the Offer, BSE is the Designated Stock Exchange",
+  "rows": null,
+  "note": "DRHP had \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.lot_multiple",
+  "printed": false,
+  "pages": [
+   516
+  ],
+  "value": null,
+  "verbatim": "Maximum Bid Such number of Equity Shares in multiples of [●] Equity Shares",
+  "rows": null,
+  "note": "placeholder: bid lot in multiples of \"[●] Equity Shares\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.allocation_pct",
+  "printed": true,
+  "pages": [
+   3
+  ],
+  "value": {
+   "QIB": "not more than 50% of the Offer (Reg 6(1))",
+   "NIB": "not less than 15% of the Offer (1/3 for >Rs0.20m-1m, 2/3 for >Rs1m)",
+   "RIB": "not less than 35% of the Offer",
+   "ANCHOR": "up to 60% of QIB Portion (one-third reserved for domestic Mutual Funds)",
+   "MF_of_Net_QIB": "5%"
+  },
+  "verbatim": "not more than 50% of the Offer shall be available",
+  "rows": null,
+  "note": "No employee reservation printed for this Offer. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.pre_ipo_placement",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No Pre-IPO Placement statement in the RHP (DRHP had up to Rs1,000m). Searched \"Pre-IPO\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.bid_windows",
+  "printed": true,
+  "pages": [
+   512
+  ],
+  "value": [
+   {
+    "activity": "Bid/Offer Period (except closing date) submission & revision",
+    "window": "10.00 a.m. to 5.00 p.m. IST"
+   },
+   {
+    "activity": "Closing date online ASBA (3-in-1) RIBs",
+    "window": "10.00 a.m. to 5.00 p.m. IST"
+   },
+   {
+    "activity": "Closing date bank ASBA online / syndicate UPI up to Rs0.50m",
+    "window": "10.00 a.m. to 4.00 p.m. IST"
+   },
+   {
+    "activity": "Closing date syndicate non-retail non-individual electronic",
+    "window": "10.00 a.m. to 3.00 p.m. IST"
+   },
+   {
+    "activity": "Closing date physical (Bank ASBA)",
+    "window": "10.00 a.m. to 1.00 p.m. IST"
+   },
+   {
+    "activity": "Closing date physical syndicate >Rs0.50m",
+    "window": "10.00 a.m. to 12.00 p.m. IST"
+   },
+   {
+    "activity": "QIB/NIB upward revision on closing date",
+    "window": "10.00 a.m. to 4.00 p.m. IST"
+   },
+   {
+    "activity": "RIB revision/cancellation on closing date",
+    "window": "10.00 a.m. to 5.00 p.m. IST"
+   }
+  ],
+  "verbatim": "Only between 10.00 a.m. and 5.00 p.m. IST",
+  "rows": null,
+  "note": "Dates printed: opens Wed Sept 16, 2026; closes Fri Sept 18, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.promoter_shares_held",
+  "printed": true,
+  "pages": [
+   99
+  ],
+  "value": {
+   "O P Munjal Holdings": 273123055,
+   "Pankaj Munjal": 9400436,
+   "Charu Munjal": 942425,
+   "Abhishek Munjal": 706210
+  },
+  "verbatim": "Total 284,172,126 73.46",
+  "rows": null,
+  "note": "4 Promoters; Total 284,172,126 = 73.46%. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.sebi_regulation_cited",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Regulation 6(1)",
+  "verbatim": "The Offer is being made in accordance with Regulation 6(1)",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.promoter_group_transactions_since_drhp",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No statement of promoter/promoter-group transactions since the DRHP. Searched \"since the filing of the DRHP\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.cut_off_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "placeholder: Cut-off price is within the Price Band \"[●]\"; only the concept is defined. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.min_investment",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "placeholder: Bid Lot and price are [●]; no rupee minimum investment printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.isin",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No ISIN printed (see ipos.isin). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.registrar_link",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": "www.kfintech.com",
+  "verbatim": "Website: www.kfintech.com",
+  "rows": null,
+  "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.lead_managers",
+  "printed": true,
+  "pages": [
+   2,
+   82
+  ],
+  "value": [
+   "ICICI Securities Limited",
+   "DAM Capital Advisors Limited",
+   "JM Financial Limited"
+  ],
+  "verbatim": "JM Financial Limited Prachee Dhuri",
+  "rows": null,
+  "note": "3 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_address",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Hero Nagar, GT Road, Ludhiana, Punjab – 141 003, India",
+  "verbatim": "Hero Nagar, GT Road, Ludhiana, Punjab – 141 003, India",
+  "rows": null,
+  "note": "Registered office; corporate office Noida also printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_phone",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "+91 120 4412 000",
+  "verbatim": "Telephone: + 91 120 4412 000",
+  "rows": null,
+  "note": "Corporate office telephone. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_email",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "investorrelations@heromotors.com",
+  "verbatim": "Email: investorrelations@heromotors.com",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_city",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Ludhiana",
+  "verbatim": "GT Road, Ludhiana",
+  "rows": null,
+  "note": "Registered office city. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_state",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "Punjab",
+  "verbatim": "Ludhiana, Punjab",
+  "rows": null,
+  "note": "Registered office state. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.company_pincode",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "141003",
+  "verbatim": "Punjab – 141 003",
+  "rows": null,
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.qib_shares_offered",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.nii_shares_offered",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.retail_shares_offered",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.retail_max_allottees",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Depends on Bid Lot [●]; not printed. Searched \"maximum number of RIBs\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.employee_shares_offered",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee reservation printed for this Offer. Searched \"Employee Reservation Portion\" (hits only in BRLM past-issue notes). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.anchor_shares_offered",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: share counts by category \"[●]\"; only % rules printed (see allocation_pct). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.max_retail_subscription",
+  "printed": false,
+  "pages": [
+   516
+  ],
+  "value": null,
+  "verbatim": "Maximum Bid Such number of Equity Shares in multiples of [●] Equity Shares",
+  "rows": null,
+  "note": "placeholder: Maximum Bid is \"such number of Equity Shares in multiples of [●]\" - no rupee ceiling printed in the offer structure. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.max_employee_subscription",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee reservation printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.employee_discount",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No employee discount printed for this Offer (no employee reservation). Searched \"Employee Discount\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.sponsor_banks",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": [
+   "Axis Bank Limited",
+   "ICICI Bank Limited"
+  ],
+  "verbatim": "Public Offer Account Bank and Sponsor Bank Axis Bank Limited",
+  "rows": null,
+  "note": "Two Sponsor Banks named (Axis p82, ICICI p82). DRHP had \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.tick_size",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No tick size printed. Searched \"tick size\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.ipo_market_timings",
+  "printed": true,
+  "pages": [
+   512
+  ],
+  "value": "10:00 AM - 5:00 PM IST",
+  "verbatim": "Only between 10.00 a.m. and 5.00 p.m. IST",
+  "rows": null,
+  "note": "Bid submission hours (widest window). Not exchange trading hours. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.category_details",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No exchange category codes printed. Searched \"category code\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_details.sub_categories_upi",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No UPI sub-category code list printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.revenue_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.revenue_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.revenue_fy2024",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": 1064.386,
+  "verbatim": "Revenue from operations (I) 11,883.51 10,895.93 10,643.86",
+  "rows": null,
+  "note": "Rs10,643.86 million = Rs1,064.39 crore (consolidated). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.profit_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.profit_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.profit_fy2024",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": 17.035,
+  "verbatim": "Restated profit for the period/year (IX= VII-VIII)* 411.68 327.96 170.35",
+  "rows": null,
+  "note": "Restated profit FY2024 Rs170.35 million. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.net_worth",
+  "printed": false,
+  "pages": [
+   457
+  ],
+  "value": null,
+  "verbatim": "Net assets (A) 4,824.48 4,239.52 3,854.44",
+  "rows": null,
+  "note": "No \"Net worth\" value printed: the RHP prints only \"Net assets (A) 4,824.48\" (FY2026) in the NAV computation (p457) and defines net worth in the RoNW notes; the DRHP summary row \"Net Worth\" is gone. No derived values. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.eps",
+  "printed": true,
+  "pages": [
+   132
+  ],
+  "value": 1.15,
+  "verbatim": "March 31, 2026 1.15 1.14 3",
+  "rows": null,
+  "note": "FY2026 basic EPS Rs1.15 (diluted 1.14; consolidated). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.roe",
+  "printed": true,
+  "pages": [
+   135
+  ],
+  "value": 8.56,
+  "verbatim": "Return on Equity(6) (%) 8.56% 7.70% 4.54%",
+  "rows": null,
+  "note": "FY2026 ROE 8.56% (KPI table). Notes ratio table p439 prints 9.08% on an average-equity basis. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.debt_to_equity",
+  "printed": true,
+  "pages": [
+   439
+  ],
+  "value": 0.83,
+  "verbatim": "Debt- Equity Ratio Total Debt Shareholder’s Equity 0.83 0.96 0.81",
+  "rows": null,
+  "note": "FY2026 Debt-Equity ratio 0.83 (notes p439). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.reserves_and_surplus",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 116.32,
+  "verbatim": "Other equity 1,163.20 677.06 322.61",
+  "rows": null,
+  "note": "FY2026 \"Other equity\" Rs1,163.20 million (consolidated). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.total_assets",
+  "printed": true,
+  "pages": [
+   72
+  ],
+  "value": 1371.828,
+  "verbatim": "Total assets 13,718.28 11,646.20 10,598.55",
+  "rows": null,
+  "note": "FY2026 Rs13,718.28 million (consolidated). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.total_borrowing",
+  "printed": true,
+  "pages": [
+   428
+  ],
+  "value": 400.789,
+  "verbatim": "Total Borrowings 3,020.20 987.69 - 4,007.89",
+  "rows": null,
+  "note": "FY2026 total borrowings Rs4,007.89 million (liquidity-risk maturity table total; current 3,020.20 + 1-5y 987.69). No summary-table row. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.promoter_holding_pre_issue",
+  "printed": true,
+  "pages": [
+   99
+  ],
+  "value": 73.46,
+  "verbatim": "Total 284,172,126 73.46",
+  "rows": null,
+  "note": "Promoters pre-Offer 73.46% (284,172,126 shares). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.promoter_holding_post_issue",
+  "printed": false,
+  "pages": [
+   99
+  ],
+  "value": null,
+  "verbatim": "Total 284,172,126 73.46 [●] [●]",
+  "rows": null,
+  "note": "placeholder: post-Offer % \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.market_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Market cap at offer price not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.pre_ipo_eps",
+  "printed": true,
+  "pages": [
+   132
+  ],
+  "value": 1.15,
+  "verbatim": "March 31, 2026 1.15 1.14 3",
+  "rows": null,
+  "note": "Latest-FY basic EPS; doc does not label it pre-IPO EPS. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.post_ipo_eps",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"post-Offer EPS\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.ronw",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": 8.53,
+  "verbatim": "March 31, 2026 8.53 3 Weighted Average 7.58",
+  "rows": null,
+  "note": "FY2026 RoNW 8.53%; weighted average 7.58%. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.pe_ratio",
+  "printed": false,
+  "pages": [
+   133
+  ],
+  "value": null,
+  "verbatim": "Hero Motors Limited 10 Not applicable 11,883.51",
+  "rows": null,
+  "note": "Own P/E \"Not applicable\" (Hero Motors row of peer table); price band [●]. Only peer P/Es printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.ebitda_fy2024",
+  "printed": true,
+  "pages": [
+   134
+  ],
+  "value": 86.276,
+  "verbatim": "EBITDA(3) 1,477.82 1,140.04 862.76",
+  "rows": null,
+  "note": "FY2024 EBITDA Rs862.76 million as restated in the RHP (DRHP printed 828.08); Adjusted EBITDA 1,257.38 is a second definition. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.total_income_fy2022",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.total_income_fy2023",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Restated periods in this RHP: FY2026, FY2025, FY2024 only (p73). FY2022/FY2023 not printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.total_income_fy2024",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": 1083.419,
+  "verbatim": "Total income (III=I+II) 12,167.42 11,112.33 10,834.19",
+  "rows": null,
+  "note": "Rs10,834.19 million. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.current_ratio",
+  "printed": true,
+  "pages": [
+   439
+  ],
+  "value": 0.94,
+  "verbatim": "Current ratio Current Assets Current Liabilities 0.94 1.00 1.09",
+  "rows": null,
+  "note": "FY2026 current ratio 0.94 (notes ratio table). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.quick_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed. Searched \"quick ratio\" (0 hits). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_data.inventory_turnover",
+  "printed": true,
+  "pages": [
+   439
+  ],
+  "value": 5.95,
+  "verbatim": "Inventory Turnover ratio Revenue Average Inventory 5.95 5.87 5.67",
+  "rows": null,
+  "note": "FY2026 inventory turnover 5.95x (notes ratio table). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.fiscal_year",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": [
+   2026,
+   2025,
+   2024
+  ],
+  "verbatim": "For the Year ended March 31, 2026 For the Year ended March 31, 2025 For the Year ended March 31, 2024",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.revenue",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": null,
+  "verbatim": "Revenue from operations (I) 11,883.51 10,895.93 10,643.86",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.total_income",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": null,
+  "verbatim": "Total income (III=I+II) 12,167.42 11,112.33 10,834.19",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.ebitda",
+  "printed": true,
+  "pages": [
+   134
+  ],
+  "value": null,
+  "verbatim": "EBITDA(3) 1,477.82 1,140.04 862.76",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.pat",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": null,
+  "verbatim": "Restated profit for the period/year (IX= VII-VIII)* 411.68 327.96 170.35",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.net_worth",
+  "printed": false,
+  "pages": [
+   457
+  ],
+  "value": null,
+  "verbatim": "Net assets (A) 4,824.48 4,239.52 3,854.44",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "No labelled \"Net worth\" row printed (only \"Net assets (A)\" in the NAV computation). 3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.basis",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": "RESTATED",
+  "verbatim": "SUMMARY OF RESTATED STATEMENT OF PROFIT AND LOSS",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.unit",
+  "printed": true,
+  "pages": [
+   73
+  ],
+  "value": "MILLION",
+  "verbatim": "(in ₹ million, except for share data and if otherwise stated)",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.eps_basic",
+  "printed": true,
+  "pages": [
+   132
+  ],
+  "value": null,
+  "verbatim": "March 31, 2024 0.36 0.35 1 March 31, 2025 0.67 0.66 2 March 31, 2026 1.15 1.14 3",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.eps_diluted",
+  "printed": true,
+  "pages": [
+   132
+  ],
+  "value": null,
+  "verbatim": "March 31, 2024 0.36 0.35 1 March 31, 2025 0.67 0.66 2 March 31, 2026 1.15 1.14 3",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.op_cash_flow",
+  "printed": true,
+  "pages": [
+   74
+  ],
+  "value": null,
+  "verbatim": "Net cash generated from operating activities (A) 1,440.42 483.43 1,319.66",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.dscr",
+  "printed": true,
+  "pages": [
+   439
+  ],
+  "value": null,
+  "verbatim": "Debt Service Coverage ratio",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). DSCR 1.75, 1.85, 2.66 (notes ratio table p439). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "financial_statements.rent_expense",
+  "printed": true,
+  "pages": [
+   413
+  ],
+  "value": null,
+  "verbatim": "Rent 30.97 29.95 25.30",
+  "rows": [
+   {
+    "period": "FY2026",
+    "fiscal_year": 2026,
+    "period_months": 12,
+    "revenue": 11883.51,
+    "total_income": 12167.42,
+    "ebitda": 1477.82,
+    "pat": 411.68,
+    "net_worth": null,
+    "eps_basic": 1.15,
+    "eps_diluted": 1.14,
+    "op_cash_flow": 1440.42,
+    "rent_expense": 30.97,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.75
+   },
+   {
+    "period": "FY2025",
+    "fiscal_year": 2025,
+    "period_months": 12,
+    "revenue": 10895.93,
+    "total_income": 11112.33,
+    "ebitda": 1140.04,
+    "pat": 327.96,
+    "net_worth": null,
+    "eps_basic": 0.67,
+    "eps_diluted": 0.66,
+    "op_cash_flow": 483.43,
+    "rent_expense": 29.95,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 1.85
+   },
+   {
+    "period": "FY2024",
+    "fiscal_year": 2024,
+    "period_months": 12,
+    "revenue": 10643.86,
+    "total_income": 10834.19,
+    "ebitda": 862.76,
+    "pat": 170.35,
+    "net_worth": null,
+    "eps_basic": 0.36,
+    "eps_diluted": 0.35,
+    "op_cash_flow": 1319.66,
+    "rent_expense": 25.3,
+    "basis": "RESTATED",
+    "unit": "MILLION",
+    "dscr": 2.66
+   }
+  ],
+  "note": "Other expenses note \"Rent\". 3 rows FY2026, FY2025, FY2024; Restated Consolidated, Rs million. net_worth not printed as a labelled value (see financial_data.net_worth). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.price_floor",
+  "printed": false,
+  "pages": [
+   133
+  ],
+  "value": null,
+  "verbatim": "After the completion of the Offer - At the Floor Price [●]",
+  "rows": null,
+  "note": "placeholder: Floor/Cap Price \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.price_cap",
+  "printed": false,
+  "pages": [
+   133
+  ],
+  "value": null,
+  "verbatim": "After the completion of the Offer - At the Floor Price [●]",
+  "rows": null,
+  "note": "placeholder: Floor/Cap Price \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.mcap_at_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.pe_at_cap",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "placeholder / not applicable: own P/E at floor/cap not printed (peer-table row \"Not applicable\"; price band [●]). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.mcap_at_floor",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not printed (price band [●]). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.pe_at_floor",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "placeholder / not applicable: own P/E at floor/cap not printed (peer-table row \"Not applicable\"; price band [●]). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.ronw_weighted_3y",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": 7.58,
+  "verbatim": "Weighted Average 7.58",
+  "rows": null,
+  "note": "Weighted RoNW 7.58% (FY2024 4.42 x1, FY2025 7.74 x2, FY2026 8.53 x3). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.shares_at_floor",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.shares_at_cap",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.fresh_shares_at_floor",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.fresh_shares_at_cap",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.ofs_shares",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.total_shares_at_floor",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.total_shares_at_cap",
+  "printed": false,
+  "pages": [
+   1
+  ],
+  "value": null,
+  "verbatim": "Fresh issue of up to [●] Equity Shares of face value of ₹10 each",
+  "rows": null,
+  "note": "placeholder: Fresh Issue / OFS / total Offer share count \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_valuation.pe_not_ascertainable_reason",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "No \"not ascertainable\" statement; own P/E is \"Not applicable\" (no price band yet). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoters.name",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": [
+   "Pankaj Munjal",
+   "Charu Munjal",
+   "Abhishek Munjal",
+   "O P Munjal Holdings"
+  ],
+  "verbatim": "THE PROMOTERS OF OUR COMPANY ARE PANKAJ MUNJAL, CHARU MUNJAL, ABHISHEK MUNJAL AND O P MUNJAL HOLDINGS",
+  "rows": null,
+  "note": "4 Promoters. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoters.waca",
+  "printed": true,
+  "pages": [
+   65
+  ],
+  "value": {
+   "O P Munjal Holdings": 0.03,
+   "Pankaj Munjal": 0.04,
+   "Charu Munjal": 0.03,
+   "Abhishek Munjal": 0.03
+  },
+  "verbatim": "Promoters O P Munjal Holdings**^ 273,123,055 0.03# Pankaj Munjal 9,400,436 0.04",
+  "rows": null,
+  "note": "Average cost of acquisition per Equity Share (Rs). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoters.is_promoter_group",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": {
+   "Pankaj Munjal": false,
+   "Charu Munjal": false,
+   "Abhishek Munjal": false,
+   "O P Munjal Holdings": false
+  },
+  "verbatim": "THE PROMOTERS OF OUR COMPANY ARE PANKAJ MUNJAL",
+  "rows": null,
+  "note": "All four are Promoters; Hero Cycles Limited is a Promoter Group Selling Shareholder. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.role",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": "BRLM x3; REGISTRAR; STATUTORY_AUDITOR; LEGAL_COUNSEL_COMPANY_INDIAN; ESCROW_BANK; REFUND_BANK; PUBLIC_ISSUE_BANK; SPONSOR_BANK x2",
+  "verbatim": "Legal Counsel to our Company as to Indian law Cyril Amarchand Mangaldas",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.name",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": [
+   "ICICI Securities Limited",
+   "DAM Capital Advisors Limited",
+   "JM Financial Limited",
+   "KFin Technologies Limited",
+   "Deloitte Haskins & Sells LLP",
+   "Cyril Amarchand Mangaldas",
+   "ICICI Bank Limited",
+   "ICICI Bank Limited",
+   "Axis Bank Limited",
+   "Axis Bank Limited",
+   "ICICI Bank Limited"
+  ],
+  "verbatim": "Legal Counsel to our Company as to Indian law Cyril Amarchand Mangaldas",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_risk_factors.seq",
+  "printed": true,
+  "pages": [
+   24
+  ],
+  "value": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49,
+   50,
+   51,
+   52,
+   53,
+   54,
+   55,
+   56,
+   57,
+   58,
+   59,
+   60,
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73,
+   74,
+   75,
+   76,
+   77,
+   78,
+   79,
+   80,
+   81,
+   82,
+   83,
+   84,
+   85,
+   86,
+   87
+  ],
+  "verbatim": "1. We generate a portion of",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " We generate a portion of our revenue from operations from jurisdictions outside India, in particular, from Europe which contributed 33.59%, 28.45% and 29.33% of our revenue from operations, in the Fiscals 2026, 2025 and 2024, respectively. Any adverse events affecting these jurisdictions could have an adverse impact on our revenue from operations."
+   },
+   {
+    "seq": 2,
+    "heading": " Our business is dependent on the performance of certain industries particularly e-bikes and two wheelers, both in the Indian and overseas markets. Any adverse changes in the conditions affecting these industries can adversely impact our business, results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " We depend on a certain limited set of suppliers for the supply of critical raw materials. Further, we do not have definitive supply agreements with all our suppliers for the supply of raw materials. Interruptions in the supply of raw materials could adversely affect our business, financial condition, results of operations and cash flows."
+   }
+  ],
+  "note": "87 numbered risk factors, pdf p24-68; rows = first 3 only. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_risk_factors.heading",
+  "printed": true,
+  "pages": [
+   24
+  ],
+  "value": null,
+  "verbatim": "1. We generate a portion of",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " We generate a portion of our revenue from operations from jurisdictions outside India, in particular, from Europe which contributed 33.59%, 28.45% and 29.33% of our revenue from operations, in the Fiscals 2026, 2025 and 2024, respectively. Any adverse events affecting these jurisdictions could have an adverse impact on our revenue from operations."
+   },
+   {
+    "seq": 2,
+    "heading": " Our business is dependent on the performance of certain industries particularly e-bikes and two wheelers, both in the Indian and overseas markets. Any adverse changes in the conditions affecting these industries can adversely impact our business, results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " We depend on a certain limited set of suppliers for the supply of critical raw materials. Further, we do not have definitive supply agreements with all our suppliers for the supply of raw materials. Interruptions in the supply of raw materials could adversely affect our business, financial condition, results of operations and cash flows."
+   }
+  ],
+  "note": "See seq; rows = first 3 headings. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "brlm_track_record.brlm_name",
+  "printed": true,
+  "pages": [
+   503,
+   505,
+   506
+  ],
+  "value": [
+   "ICICI Securities",
+   "DAM Capital",
+   "JM Financial"
+  ],
+  "verbatim": "Summary statement of price information of past issues handled by JM Financial Limited",
+  "rows": [
+   {
+    "brlm_name": "ICICI Securities",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 53,
+    "closed_below_issue_price": 18,
+    "fy_issue_counts": {
+     "2024-25": "23",
+     "2025-26": "22",
+     "2026-27": "8"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "DAM Capital",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 18,
+    "closed_below_issue_price": 4,
+    "fy_issue_counts": {
+     "2024-25": "5",
+     "2025-26": "11",
+     "2026-27": "2"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "JM Financial",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 52,
+    "closed_below_issue_price": 19,
+    "fy_issue_counts": {
+     "2024-25": "13",
+     "2025-26": "27",
+     "2026-27": "12"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "3 per-BRLM \"Summary statement of price information\" tables (ICICI p503-504, DAM p505, JM p506), FYs 2024-25, 2025-26, 2026-27 (latest partial, as on the RHP date Sept 9, 2026). closed_below_issue_price = IPOs trading at discount on 30th calendar day (sum of 3 buckets). Text layer splits some labels (e.g. \"202 6- 27*\"). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "brlm_track_record.as_of_date",
+  "printed": true,
+  "pages": [
+   505
+  ],
+  "value": "2026-09-09",
+  "verbatim": "The information is as on the date of this offer document",
+  "rows": [
+   {
+    "brlm_name": "ICICI Securities",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 53,
+    "closed_below_issue_price": 18,
+    "fy_issue_counts": {
+     "2024-25": "23",
+     "2025-26": "22",
+     "2026-27": "8"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "DAM Capital",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 18,
+    "closed_below_issue_price": 4,
+    "fy_issue_counts": {
+     "2024-25": "5",
+     "2025-26": "11",
+     "2026-27": "2"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "JM Financial",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 52,
+    "closed_below_issue_price": 19,
+    "fy_issue_counts": {
+     "2024-25": "13",
+     "2025-26": "27",
+     "2026-27": "12"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "3 per-BRLM \"Summary statement of price information\" tables (ICICI p503-504, DAM p505, JM p506), FYs 2024-25, 2025-26, 2026-27 (latest partial, as on the RHP date Sept 9, 2026). closed_below_issue_price = IPOs trading at discount on 30th calendar day (sum of 3 buckets). Text layer splits some labels (e.g. \"202 6- 27*\"). as_of = RHP date. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "brlm_track_record.issues_3y",
+  "printed": true,
+  "pages": [
+   504,
+   505,
+   506
+  ],
+  "value": null,
+  "verbatim": "2026-27 2 11,700.00",
+  "rows": [
+   {
+    "brlm_name": "ICICI Securities",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 53,
+    "closed_below_issue_price": 18,
+    "fy_issue_counts": {
+     "2024-25": "23",
+     "2025-26": "22",
+     "2026-27": "8"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "DAM Capital",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 18,
+    "closed_below_issue_price": 4,
+    "fy_issue_counts": {
+     "2024-25": "5",
+     "2025-26": "11",
+     "2026-27": "2"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "JM Financial",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 52,
+    "closed_below_issue_price": 19,
+    "fy_issue_counts": {
+     "2024-25": "13",
+     "2025-26": "27",
+     "2026-27": "12"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "3 per-BRLM \"Summary statement of price information\" tables (ICICI p503-504, DAM p505, JM p506), FYs 2024-25, 2025-26, 2026-27 (latest partial, as on the RHP date Sept 9, 2026). closed_below_issue_price = IPOs trading at discount on 30th calendar day (sum of 3 buckets). Text layer splits some labels (e.g. \"202 6- 27*\"). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "brlm_track_record.closed_below_issue_price",
+  "printed": false,
+  "pages": [
+   504,
+   505,
+   506
+  ],
+  "value": null,
+  "verbatim": "2026-27 2 11,700.00",
+  "rows": [
+   {
+    "brlm_name": "ICICI Securities",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 53,
+    "closed_below_issue_price": 18,
+    "fy_issue_counts": {
+     "2024-25": "23",
+     "2025-26": "22",
+     "2026-27": "8"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "DAM Capital",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 18,
+    "closed_below_issue_price": 4,
+    "fy_issue_counts": {
+     "2024-25": "5",
+     "2025-26": "11",
+     "2026-27": "2"
+    },
+    "parse_complete": true
+   },
+   {
+    "brlm_name": "JM Financial",
+    "as_of_date": "2026-09-09",
+    "issues_3y": 52,
+    "closed_below_issue_price": 19,
+    "fy_issue_counts": {
+     "2024-25": "13",
+     "2025-26": "27",
+     "2026-27": "12"
+    },
+    "parse_complete": true
+   }
+  ],
+  "note": "3 per-BRLM \"Summary statement of price information\" tables (ICICI p503-504, DAM p505, JM p506), FYs 2024-25, 2025-26, 2026-27 (latest partial, as on the RHP date Sept 9, 2026). closed_below_issue_price = IPOs trading at discount on 30th calendar day (sum of 3 buckets). Text layer splits some labels (e.g. \"202 6- 27*\"). [pages = PDF page index, 1-based; printed page = pdf-5] NOT THIS DOCUMENT'S FIELD: D14."
+ },
+ {
+  "key": "promoters.shares_held",
+  "printed": true,
+  "pages": [
+   99
+  ],
+  "value": {
+   "O P Munjal Holdings": 273123055,
+   "Pankaj Munjal": 9400436,
+   "Charu Munjal": 942425,
+   "Abhishek Munjal": 706210
+  },
+  "verbatim": "O P Munjal Holdings* 273,123,055 70.60",
+  "rows": null,
+  "note": "Held on the date of the RHP. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoters.waca_last_year",
+  "printed": true,
+  "pages": [
+   111
+  ],
+  "value": {
+   "O P Munjal Holdings": null,
+   "Pankaj Munjal": null,
+   "Charu Munjal": null,
+   "Abhishek Munjal": null
+  },
+  "verbatim": "Promoters O P Munjal Holdings**^ 273,123,055 0.03# Nil Nil Pankaj Munjal 9,400,436 0.04 Nil Nil",
+  "rows": null,
+  "note": "One-year shares acquired \"Nil\" and weighted price \"Nil\" for all four; recorded null. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.sebi_reg_no",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": null,
+  "verbatim": "SEBI Registration No.: INM000011179",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.contact_person",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": null,
+  "verbatim": "Contact Person: Namrata Ravasia",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.phone",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "Tel: +91 22 6807 7100",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.email",
+  "printed": true,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "E-mail: heromotors.ipo@icicisecurities.com",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_intermediaries.grievance_email",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": null,
+  "verbatim": "Investor grievance e-mail: customercare@icicisecurities.com",
+  "rows": [
+   {
+    "role": "BRLM",
+    "name": "ICICI Securities Limited",
+    "sebi_reg_no": "INM000011179",
+    "contact_person": "Namrata Ravasia",
+    "phone": "+91 22 6807 7100",
+    "email": "heromotors.ipo@icicisecurities.com",
+    "grievance_email": "customercare@icicisecurities.com"
+   },
+   {
+    "role": "BRLM",
+    "name": "DAM Capital Advisors Limited",
+    "sebi_reg_no": "MB/INM000011336",
+    "contact_person": "Puneet Agnihotri/ Chandresh Sharma",
+    "phone": "+91 22 4202 2500",
+    "email": "hml.ipo@damcapital.in",
+    "grievance_email": "complaint@damcapital.in"
+   },
+   {
+    "role": "BRLM",
+    "name": "JM Financial Limited",
+    "sebi_reg_no": "INM000010361",
+    "contact_person": "Prachee Dhuri",
+    "phone": "+91 22 6630 3030",
+    "email": "heromotors.ipo@jmfl.com",
+    "grievance_email": "grievance.ibd@jmfl.com"
+   },
+   {
+    "role": "REGISTRAR",
+    "name": "KFin Technologies Limited",
+    "sebi_reg_no": "INR000000221",
+    "contact_person": "M. Murali Krishna",
+    "phone": "+91 40 6716 2222",
+    "email": "heromotors.ipo@kfintech.com",
+    "grievance_email": "einward.ris@kfintech.com"
+   },
+   {
+    "role": "STATUTORY_AUDITOR",
+    "name": "Deloitte Haskins & Sells LLP",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 124 679 2000",
+    "email": "rkagarwal@deloitte.com",
+    "grievance_email": null
+   },
+   {
+    "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+    "name": "Cyril Amarchand Mangaldas",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "+91 120 669 9000",
+    "email": null,
+    "grievance_email": null
+   },
+   {
+    "role": "ESCROW_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "REFUND_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   },
+   {
+    "role": "PUBLIC_ISSUE_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "Axis Bank Limited",
+    "sebi_reg_no": "INBI00000017",
+    "contact_person": "Supriya Gopi",
+    "phone": "011-47396618",
+    "email": "cbbnewdelhi.operationshead@axisbank.com",
+    "grievance_email": null
+   },
+   {
+    "role": "SPONSOR_BANK",
+    "name": "ICICI Bank Limited",
+    "sebi_reg_no": null,
+    "contact_person": null,
+    "phone": "022 -68052182",
+    "email": "Ipocmg@icicibank.in",
+    "grievance_email": null
+   }
+  ],
+  "note": "11 rows: 3 BRLMs, registrar, statutory auditor (p81), Indian legal counsel, escrow+refund bank (ICICI), public offer account bank (Axis), 2 sponsor banks (Axis, ICICI) (p82). Syndicate members, if any, not captured; bank contact details partly truncated. Bankers to the Company are not offer intermediaries. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_risk_factors.body",
+  "printed": true,
+  "pages": [
+   24
+  ],
+  "value": null,
+  "verbatim": "1. We generate a portion of",
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " We generate a portion of our revenue from operations from jurisdictions outside India, in particular, from Europe which contributed 33.59%, 28.45% and 29.33% of our revenue from operations, in the Fiscals 2026, 2025 and 2024, respectively. Any adverse events affecting these jurisdictions could have an adverse impact on our revenue from operations."
+   },
+   {
+    "seq": 2,
+    "heading": " Our business is dependent on the performance of certain industries particularly e-bikes and two wheelers, both in the Indian and overseas markets. Any adverse changes in the conditions affecting these industries can adversely impact our business, results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " We depend on a certain limited set of suppliers for the supply of critical raw materials. Further, we do not have definitive supply agreements with all our suppliers for the supply of raw materials. Interruptions in the supply of raw materials could adversely affect our business, financial condition, results of operations and cash flows."
+   }
+  ],
+  "note": "Every risk factor has body text. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "ipo_risk_factors.kpis",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "seq": 1,
+    "heading": " We generate a portion of our revenue from operations from jurisdictions outside India, in particular, from Europe which contributed 33.59%, 28.45% and 29.33% of our revenue from operations, in the Fiscals 2026, 2025 and 2024, respectively. Any adverse events affecting these jurisdictions could have an adverse impact on our revenue from operations."
+   },
+   {
+    "seq": 2,
+    "heading": " Our business is dependent on the performance of certain industries particularly e-bikes and two wheelers, both in the Indian and overseas markets. Any adverse changes in the conditions affecting these industries can adversely impact our business, results of operations, cash flows and financial condition."
+   },
+   {
+    "seq": 3,
+    "heading": " We depend on a certain limited set of suppliers for the supply of critical raw materials. Further, we do not have definitive supply agreements with all our suppliers for the supply of raw materials. Interruptions in the supply of raw materials could adversely affect our business, financial condition, results of operations and cash flows."
+   }
+  ],
+  "note": "No numeric KPI tables embedded inside the numbered risk factors identified; judgment call. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.period",
+  "printed": true,
+  "pages": [
+   111
+  ],
+  "value": [
+   "1Y",
+   "18M",
+   "3Y"
+  ],
+  "verbatim": "Last 1 year NIL [●] NIL Last 18 months NIL [●] NIL Last 3 years NIL [●] NIL",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "3 rows (1Y, 18M, 3Y): WACA, range all \"NIL\" (no acquisitions) so recorded null (printed as NIL); cap multiple \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.waca",
+  "printed": true,
+  "pages": [
+   111
+  ],
+  "value": null,
+  "verbatim": "Last 1 year NIL [●] NIL Last 18 months NIL [●] NIL Last 3 years NIL [●] NIL",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "3 rows (1Y, 18M, 3Y): WACA, range all \"NIL\" (no acquisitions) so recorded null (printed as NIL); cap multiple \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.cap_multiple",
+  "printed": false,
+  "pages": [
+   111
+  ],
+  "value": null,
+  "verbatim": "Last 1 year NIL [●] NIL Last 18 months NIL [●] NIL Last 3 years NIL [●] NIL",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "placeholder: \"Cap Price is X times the WACA\" column is \"[●]\". 3 rows (1Y, 18M, 3Y): WACA, range all \"NIL\" (no acquisitions) so recorded null (printed as NIL); cap multiple \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.price_low",
+  "printed": true,
+  "pages": [
+   111
+  ],
+  "value": null,
+  "verbatim": "Last 1 year NIL [●] NIL Last 18 months NIL [●] NIL Last 3 years NIL [●] NIL",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "3 rows (1Y, 18M, 3Y): WACA, range all \"NIL\" (no acquisitions) so recorded null (printed as NIL); cap multiple \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "promoter_acquisition_ranges.price_high",
+  "printed": true,
+  "pages": [
+   111
+  ],
+  "value": null,
+  "verbatim": "Last 1 year NIL [●] NIL Last 18 months NIL [●] NIL Last 3 years NIL [●] NIL",
+  "rows": [
+   {
+    "period": "1Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "18M",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   },
+   {
+    "period": "3Y",
+    "waca": null,
+    "cap_multiple": null,
+    "price_low": null,
+    "price_high": null
+   }
+  ],
+  "note": "3 rows (1Y, 18M, 3Y): WACA, range all \"NIL\" (no acquisitions) so recorded null (printed as NIL); cap multiple \"[●]\". [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.company_name",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": [
+   "CIE Automotive India Limited",
+   "Endurance Technologies Limited",
+   "Sona BLW Precision Forgings Limited",
+   "UNO Minda Limited",
+   "Varroc Engineering Limited"
+  ],
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.is_listed",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": true,
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.pe_ratio",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": [
+   17.68,
+   40.84,
+   76.5,
+   59.84,
+   56.15
+  ],
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.eps",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": [
+   21.69,
+   67.66,
+   10.3,
+   20.78,
+   14.73
+  ],
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.diluted_eps",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": [
+   21.69,
+   67.66,
+   10.3,
+   20.75,
+   14.73
+  ],
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.ronw",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": [
+   13.18,
+   15.29,
+   10.77,
+   19.59,
+   18.7
+  ],
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.nav",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": [
+   164.65,
+   442.54,
+   93.93,
+   113.77,
+   80.45
+  ],
+  "verbatim": "CIE Automotive India Limited(5) 10 383.55",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.pbv_ratio",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "P/BV not printed in the peer table (columns: face value, closing price, revenue, EPS, NAV, P/E, RoNW). [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "peer_companies.financial_statement_type",
+  "printed": true,
+  "pages": [
+   133
+  ],
+  "value": "CONSOLIDATED",
+  "verbatim": "All the financial information for listed industry peers mentioned above is on a consolidated basis",
+  "rows": [
+   {
+    "company_name": "CIE Automotive India Limited",
+    "is_listed": true,
+    "pe_ratio": 17.68,
+    "eps": 21.69,
+    "diluted_eps": 21.69,
+    "ronw": 13.18,
+    "nav": 164.65,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Endurance Technologies Limited",
+    "is_listed": true,
+    "pe_ratio": 40.84,
+    "eps": 67.66,
+    "diluted_eps": 67.66,
+    "ronw": 15.29,
+    "nav": 442.54,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "Sona BLW Precision Forgings Limited",
+    "is_listed": true,
+    "pe_ratio": 76.5,
+    "eps": 10.3,
+    "diluted_eps": 10.3,
+    "ronw": 10.77,
+    "nav": 93.93,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 10
+   },
+   {
+    "company_name": "UNO Minda Limited",
+    "is_listed": true,
+    "pe_ratio": 59.84,
+    "eps": 20.78,
+    "diluted_eps": 20.75,
+    "ronw": 19.59,
+    "nav": 113.77,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 2
+   },
+   {
+    "company_name": "Varroc Engineering Limited",
+    "is_listed": true,
+    "pe_ratio": 56.15,
+    "eps": 14.73,
+    "diluted_eps": 14.73,
+    "ronw": 18.7,
+    "nav": 80.45,
+    "pbv_ratio": null,
+    "financial_statement_type": "CONSOLIDATED",
+    "face_value": 1
+   }
+  ],
+  "note": "5 listed peers (p133); FY2026, consolidated (unless only standalone available); P/E on closing price Sept 7, 2026. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "anchor_investors.total_shares_offered",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Tuesday, September 15, 2026",
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bid/Offer Period is Tuesday, September 15, 2026 (p2), after the RHP date (Sept 9, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "anchor_investors.total_amount_raised",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Tuesday, September 15, 2026",
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bid/Offer Period is Tuesday, September 15, 2026 (p2), after the RHP date (Sept 9, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "anchor_investors.anchor_investors_count",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Tuesday, September 15, 2026",
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bid/Offer Period is Tuesday, September 15, 2026 (p2), after the RHP date (Sept 9, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "anchor_investors.investor_list",
+  "printed": false,
+  "pages": [
+   2
+  ],
+  "value": null,
+  "verbatim": "ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Tuesday, September 15, 2026",
+  "rows": null,
+  "note": "Anchor allocation happens after the RHP: Anchor Investor Bid/Offer Period is Tuesday, September 15, 2026 (p2), after the RHP date (Sept 9, 2026); RHP prints only the rules. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "documents.filing_date",
+  "printed": true,
+  "pages": [
+   1
+  ],
+  "value": "2026-09-09",
+  "verbatim": "RED HERRING PROSPECTUS Dated: September 9, 2026",
+  "rows": null,
+  "note": "Date of the RHP; RoC filing date not separately printed. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "listing_performance.listing_price",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": null,
+  "note": "Not listed; not applicable in an RHP. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "registrars.name",
+  "printed": true,
+  "pages": [
+   2,
+   82
+  ],
+  "value": "KFin Technologies Limited",
+  "verbatim": "KFin Technologies Limited",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "heromotors.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222",
+    "website": "www.kfintech.com",
+    "address": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "registrars.short_name",
+  "printed": false,
+  "pages": [],
+  "value": null,
+  "verbatim": null,
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "heromotors.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222",
+    "website": "www.kfintech.com",
+    "address": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India"
+   }
+  ],
+  "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "registrars.email",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": "heromotors.ipo@kfintech.com",
+  "verbatim": "E-mail: heromotors.ipo@kfintech.com",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "heromotors.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222",
+    "website": "www.kfintech.com",
+    "address": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "registrars.phone",
+  "printed": true,
+  "pages": [
+   82
+  ],
+  "value": "+91 40 6716 2222",
+  "verbatim": "Tel: +91 40 6716 2222",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "heromotors.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222",
+    "website": "www.kfintech.com",
+    "address": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India"
+   }
+  ],
+  "note": "[pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "registrars.website",
+  "printed": false,
+  "pages": [
+   82
+  ],
+  "value": "www.kfintech.com",
+  "verbatim": "Website: www.kfintech.com",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "heromotors.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222",
+    "website": "www.kfintech.com",
+    "address": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India"
+   }
+  ],
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D1 (2026-10-04, delegated) per spec §1.10 - registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ },
+ {
+  "key": "registrars.address",
+  "printed": false,
+  "pages": [
+   82
+  ],
+  "value": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India",
+  "verbatim": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road",
+  "rows": [
+   {
+    "name": "KFin Technologies Limited",
+    "short_name": null,
+    "email": "heromotors.ipo@kfintech.com",
+    "phone": "+91 40 6716 2222",
+    "website": "www.kfintech.com",
+    "address": "301, The Centrium, 3rd Floor, 57, Lal Bahadur Shastri Road, Nav Pada, Kurla (West), Kurla, Mumbai 400070 Maharashtra, India"
+   }
+  ],
+  "note": "NOT THIS DOCUMENT'S FIELD: decision D6 (delegated 2026-10-04) - registrars is reference data (§1.10), as D1. [pages = PDF page index, 1-based; printed page = pdf-5]"
+ }
+]

@@ -1,0 +1,830 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95
+    ],
+    "value": [
+      "Motilal Oswal Investment Advisors Limited",
+      "JM Financial Limited",
+      "Monarch Networth Capital Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Motilal Oswal Investment Advisors Limited",
+    "rows": null,
+    "note": "3 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      2
+    ],
+    "value": "www.luminoindustries.com",
+    "verbatim": "Website: www.luminoindustries.com",
+    "rows": null,
+    "note": "Cover only (cover p1 table, cover p2); GI Registered and Corporate Office block (p93) prints no website. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      94
+    ],
+    "value": "Roshaan Davve",
+    "verbatim": "Roshaan Davve is the Company Secretary and Compliance Officer of our Company",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      94
+    ],
+    "value": "+91 33 2441 2008",
+    "verbatim": "Tel: +91 33 2441 2008",
+    "rows": null,
+    "note": "GI p94 and cover p1/p2 identical. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      94
+    ],
+    "value": "investor.relation@luminoindustries.com",
+    "verbatim": "E-mail: investor.relation@luminoindustries.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      2,
+      97
+    ],
+    "value": "www.bigshareonline.com",
+    "verbatim": "Website: www.bigshareonline.com",
+    "rows": null,
+    "note": "Registrar website (cover p2, GI p97); no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95
+    ],
+    "value": [
+      "Motilal Oswal Investment Advisors Limited",
+      "JM Financial Limited",
+      "Monarch Networth Capital Limited"
+    ],
+    "verbatim": "Book Running Lead Managers Motilal Oswal Investment Advisors Limited",
+    "rows": null,
+    "note": "3 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      93
+    ],
+    "value": "Unit No – 12/4, Merlin Acropolis 1858/1 Rajdanga Main Road Kolkata 700 107 West Bengal, India",
+    "verbatim": "Unit No – 12/4, Merlin Acropolis 1858/1 Rajdanga Main Road Kolkata 700 107 West Bengal, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (single office), GI p93 form (line-broken). Cover p2 prints \"Unit No- 12/4, Merlin Acropolis 1858/1 Rajdanga Main Road, Kolkata 700 107, West Bengal, India\" (hyphen vs dash, commas; formatting only). [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      2
+    ],
+    "value": "+91 33 2441 2008",
+    "verbatim": "Tel: +91 33 2441 2008 | E-mail: investor.relation@luminoindustries.com",
+    "rows": null,
+    "note": "Cover contact-block telephone (same as compliance officer phone); GI office block (p93) prints none. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      2
+    ],
+    "value": "investor.relation@luminoindustries.com",
+    "verbatim": "E-mail: investor.relation@luminoindustries.com | Website: www.luminoindustries.com",
+    "rows": null,
+    "note": "Cover contact e-mail (same as compliance officer e-mail); GI office block (p93) prints none. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": "BRLM x3; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR x2",
+    "verbatim": "Legal Counsel to the Company as to Indian Law Trilegal",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "7 rows: 3 BRLMs (GI p95, cover p1/p2), registrar (GI p97, cover p1/p2), Indian legal counsel to the Company (p96), joint statutory auditors x2 (p97; Singhi & Co. also in the change table p97-98). Syndicate Members and Escrow/Public Offer Account/Refund/Sponsor banks \"[●]\". Bankers to our Company (Canara Bank, Bank of Baroda, ICICI, HDFC, IDFC First, Indian Bank, IndusInd, PSB, RBL, PNB ...) are not offer intermediaries. Formatting-only: Monarch contact persons GI p95 \"Saahil Kinkhabwala/Aayushi Poddar\" vs cover p2 \"Saahil Kinkhabwala/ Aayushi Poddar\" (cover p1 wraps); Singhi phone change table p98 \"+ 91 33 2419 6000\" vs GI \"+91 33 2419 6000\". No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": [
+      "Motilal Oswal Investment Advisors Limited",
+      "JM Financial Limited",
+      "Monarch Networth Capital Limited",
+      "Bigshare Services Private Limited",
+      "Trilegal",
+      "Singhi & Co., Chartered Accountants",
+      "SDP & Associates, Chartered Accountants"
+    ],
+    "verbatim": "Monarch Networth Capital Limited 4th Floor, B Wing, Laxmi Towers",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "7 rows: 3 BRLMs (GI p95, cover p1/p2), registrar (GI p97, cover p1/p2), Indian legal counsel to the Company (p96), joint statutory auditors x2 (p97; Singhi & Co. also in the change table p97-98). Syndicate Members and Escrow/Public Offer Account/Refund/Sponsor banks \"[●]\". Bankers to our Company (Canara Bank, Bank of Baroda, ICICI, HDFC, IDFC First, Indian Bank, IndusInd, PSB, RBL, PNB ...) are not offer intermediaries. Formatting-only: Monarch contact persons GI p95 \"Saahil Kinkhabwala/Aayushi Poddar\" vs cover p2 \"Saahil Kinkhabwala/ Aayushi Poddar\" (cover p1 wraps); Singhi phone change table p98 \"+ 91 33 2419 6000\" vs GI \"+91 33 2419 6000\". No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": null,
+    "verbatim": "SEBI registration number: INM000011013",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Saahil Kinkhabwala/Aayushi Poddar",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "Monarch lists two people, printed \"Saahil Kinkhabwala/Aayushi Poddar\" (slash, no space; GI p95). Legal counsel and both auditors print no contact person. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": null,
+    "verbatim": "Tel: +91 12 4625 8598",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": null,
+    "verbatim": "Email: pranita@sdpa.co.in",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      95,
+      96,
+      97,
+      98
+    ],
+    "value": null,
+    "verbatim": "Investor grievance e-mail: moiaplredressal@motilaloswal.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Rohan Aerande",
+        "phone": "+91 22 7193 4380",
+        "email": "ipo.lumino@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+91 22 6630 3030",
+        "email": "lumino.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Monarch Networth Capital Limited",
+        "sebi_reg_no": "INM000011013",
+        "contact_person": "Saahil Kinkhabwala/Aayushi Poddar",
+        "phone": "+91 22 6647 6400",
+        "email": "ecm@mnclgroup.com",
+        "grievance_email": "mbd@mnclgroup.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "Bigshare Services Private Limited",
+        "sebi_reg_no": "INR000001385",
+        "contact_person": "Vinayak Morbale",
+        "phone": "+91 22 6263 8200",
+        "email": "ipo@bigshareonline.com",
+        "grievance_email": "investor@bigshareonline.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 12 4625 8598",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 2419 6000",
+        "email": "kolkata@singhico.com",
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "SDP & Associates, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 33 4007 5956",
+        "email": "pranita@sdpa.co.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      97
+    ],
+    "value": "Bigshare Services Private Limited",
+    "verbatim": "Registrar to the Offer Bigshare Services Private Limited",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      97
+    ],
+    "value": "ipo@bigshareonline.com",
+    "verbatim": "E-mail: ipo@bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      1,
+      2,
+      97
+    ],
+    "value": "+91 22 6263 8200",
+    "verbatim": "Tel: +91 22 6263 8200",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      2,
+      97
+    ],
+    "value": "www.bigshareonline.com",
+    "verbatim": "Website: www.bigshareonline.com",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      2,
+      97
+    ],
+    "value": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India",
+    "verbatim": "S6-2, 6th Floor, Pinnacle Business Park",
+    "rows": [
+      {
+        "name": "Bigshare Services Private Limited",
+        "short_name": null,
+        "email": "ipo@bigshareonline.com",
+        "phone": "+91 22 6263 8200",
+        "website": "www.bigshareonline.com",
+        "address": "S6-2, 6th Floor, Pinnacle Business Park Mahakali Caves Road, Next to Ahura Centre Andheri (East), Mumbai 400 093 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-3]"
+  }
+]

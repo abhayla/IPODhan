@@ -1,0 +1,702 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83
+    ],
+    "value": [
+      "ICICI Securities Limited",
+      "Jefferies India Private Limited"
+    ],
+    "verbatim": "Book Running Lead Managers ICICI Securities Limited ICICI Venture House",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "www.runwalenterprises.com",
+    "verbatim": "Website: www.runwalenterprises.com",
+    "rows": null,
+    "note": "Cover only (p1 wraps it as \"www.runwalenterprises. com\"); GI Registered and Corporate Office block (p81) prints no website. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      82
+    ],
+    "value": "Abhishek Kumar Jain",
+    "verbatim": "Abhishek Kumar Jain is the Company Secretary and Compliance Officer of our Company",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      82
+    ],
+    "value": "+91 22 6116 2422",
+    "verbatim": "Tel: +91 22 6116 2422",
+    "rows": null,
+    "note": "GI p82; cover p3 \"Telephone: +91 22 6116 2422\" (p1 wraps it across lines). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      82
+    ],
+    "value": "company.secretaries@runwalgroup.in",
+    "verbatim": "E-mail: company.secretaries@runwalgroup.in",
+    "rows": null,
+    "note": "Cover p1 wraps it as \"company.secretaries@ru nwalgroup.in\". [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      84
+    ],
+    "value": null,
+    "verbatim": null,
+    "rows": null,
+    "note": "CONFLICT: registrar website printed as \"www.in.mpms.mufg.com\" on cover p3 (\"Website: www.in.mpms.mufg.com\") and as \"www.linkintime.co.in\" on GI p84 (\"Website: www.linkintime.co.in\"); two different well-formed copies of the registrar's website. No allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83
+    ],
+    "value": [
+      "ICICI Securities Limited",
+      "Jefferies India Private Limited"
+    ],
+    "verbatim": "Book Running Lead Managers ICICI Securities Limited ICICI Venture House",
+    "rows": null,
+    "note": "2 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      81
+    ],
+    "value": "Runwal & Omkar E-Square, 4th Floor, Off: Eastern Exp Highway, Opp Sion Chunabhatti Signal, Sion East, Mumbai City, Mumbai – 400 022 Maharashtra, India",
+    "verbatim": "Runwal & Omkar E-Square, 4th Floor, Off: Eastern Exp Highway, Opp Sion Chunabhatti Signal, Sion East, Mumbai City, Mumbai – 400 022 Maharashtra, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (single office; GI p81 and cover p3). Cover p1 prints the same address as \"Runwal & Omkar Esquare, 4th floor, Off: Eastern Exp Highway, Opp Sion Chunabhatti signal, Sion-(E), Mumbai City, Mumbai, Maharashtra, India, 400022.\" (formatting/abbreviation only). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91 22 6116 2422",
+    "verbatim": "Telephone: +91 22 6116 2422; E-mail: company.secretaries@runwalgroup.in",
+    "rows": null,
+    "note": "Cover contact-block telephone (same as compliance officer phone); GI office block (p81) prints none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "company.secretaries@runwalgroup.in",
+    "verbatim": "E-mail: company.secretaries@runwalgroup.in; Website: www.runwalenterprises.com",
+    "rows": null,
+    "note": "Cover contact e-mail (same as compliance officer e-mail); GI office block (p81) prints none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": "BRLM x2; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal Counsel to the Company as to Indian Law",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p82-83, cover p2/p3), registrar (GI p84, cover p2/p3), Indian legal counsel to the Company (p83-84), statutory auditor (p84). Syndicate Members and Escrow/Public Issue Account/Refund/Sponsor banks \"[●]\". Bankers to our Company (IndusInd, ICICI Bank, ...) are not offer intermediaries; former auditor (M.B. Agrawal & Co., change table p85) excluded. Registrar printed with \"(formerly known as Link Intime India Private Limited)\" (alias, excluded from name). Jefferies investor grievance e-mail printed on cover p3 only (GI p83 prints none). Formatting-only: registrar phone cover p2 \"+91 81081 14949\" vs cover p3/GI p84 \"+91 810 811 4949\"; ICICI phone GI \"+ 91 22 6807 7100\" vs cover \"+91 22 6807 7100\". Auditor phone is a CONFLICT (null in row): CONFLICT: statutory auditor Singhi & Co. phone printed as \"+91 (22) 4973 6580\" in the GI auditor block p84 (\"Tel.: +91 (22) 4973 6580\") and as \"+91 022 6662 5537 / 38\" in the change-in-auditors table p85 (same entity, \"Tel.: +91 022 6662 5537 / 38\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": [
+      "ICICI Securities Limited",
+      "Jefferies India Private Limited",
+      "MUFG Intime India Private Limited",
+      "Trilegal",
+      "Singhi & Co., Chartered Accountants"
+    ],
+    "verbatim": "Book Running Lead Managers ICICI Securities Limited ICICI Venture House",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "5 rows: 2 BRLMs (GI p82-83, cover p2/p3), registrar (GI p84, cover p2/p3), Indian legal counsel to the Company (p83-84), statutory auditor (p84). Syndicate Members and Escrow/Public Issue Account/Refund/Sponsor banks \"[●]\". Bankers to our Company (IndusInd, ICICI Bank, ...) are not offer intermediaries; former auditor (M.B. Agrawal & Co., change table p85) excluded. Registrar printed with \"(formerly known as Link Intime India Private Limited)\" (alias, excluded from name). Jefferies investor grievance e-mail printed on cover p3 only (GI p83 prints none). Formatting-only: registrar phone cover p2 \"+91 81081 14949\" vs cover p3/GI p84 \"+91 810 811 4949\"; ICICI phone GI \"+ 91 22 6807 7100\" vs cover \"+91 22 6807 7100\". Auditor phone is a CONFLICT (null in row): CONFLICT: statutory auditor Singhi & Co. phone printed as \"+91 (22) 4973 6580\" in the GI auditor block p84 (\"Tel.: +91 (22) 4973 6580\") and as \"+91 022 6662 5537 / 38\" in the change-in-auditors table p85 (same entity, \"Tel.: +91 022 6662 5537 / 38\"). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No: INR000004058",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": null,
+    "verbatim": "Contact person: Shanti Gopalkrishnan",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "Legal counsel and auditor print no contact person. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": null,
+    "verbatim": "Telephone: +91 810 811 4949",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "CONFLICT: statutory auditor Singhi & Co. phone printed as \"+91 (22) 4973 6580\" in the GI auditor block p84 (\"Tel.: +91 (22) 4973 6580\") and as \"+91 022 6662 5537 / 38\" in the change-in-auditors table p85 (same entity, \"Tel.: +91 022 6662 5537 / 38\"). (auditor row phone null) [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": null,
+    "verbatim": "E-mail: runwalenterprises.ipo@in.mpms.mufg.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      82,
+      83,
+      84,
+      85
+    ],
+    "value": null,
+    "verbatim": "Investor grievance e-mail: jipl.grievance@jefferies.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "ICICI Securities Limited",
+        "sebi_reg_no": "INM000011179",
+        "contact_person": "Nikita Chirania/ Sumit Singh",
+        "phone": "+91 22 6807 7100",
+        "email": "runwal.ipo@icicisecurities.com",
+        "grievance_email": "customercare@icicisecurities.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Jefferies India Private Limited",
+        "sebi_reg_no": "INM000011443",
+        "contact_person": "Suhani Bhareja",
+        "phone": "+91 22 4356 6000",
+        "email": "runwal.enterprises.ipo@jefferies.com",
+        "grievance_email": "jipl.grievance@jefferies.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+91 810 811 4949",
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "grievance_email": "runwalenterprises.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Trilegal",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+(91) 22 4079 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Singhi & Co., Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": null,
+        "email": "mumbai@singhico.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "Jefferies grievance e-mail printed on cover p3 only; GI p83 prints none. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      84
+    ],
+    "value": "MUFG Intime India Private Limited",
+    "verbatim": "Registrar to the Issue MUFG Intime India Private Limited (formerly known as Link Intime India Private Limited)",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "phone": "+91 810 811 4949",
+        "website": null,
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India"
+      }
+    ],
+    "note": "Printed with former name \"(formerly known as Link Intime India Private Limited)\" on cover p2/p3 and GI p84 (alias, not part of the name). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "phone": "+91 810 811 4949",
+        "website": null,
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      84
+    ],
+    "value": "runwalenterprises.ipo@in.mpms.mufg.com",
+    "verbatim": "E-mail: runwalenterprises.ipo@in.mpms.mufg.com",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "phone": "+91 810 811 4949",
+        "website": null,
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      84
+    ],
+    "value": "+91 810 811 4949",
+    "verbatim": "Telephone: +91 810 811 4949",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "phone": "+91 810 811 4949",
+        "website": null,
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India"
+      }
+    ],
+    "note": "GI p84 / cover p3 form; cover p2 prints \"+91 81081 14949\" (same digits, formatting only). [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      84
+    ],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "phone": "+91 810 811 4949",
+        "website": null,
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. CONFLICT: registrar website printed as \"www.in.mpms.mufg.com\" on cover p3 (\"Website: www.in.mpms.mufg.com\") and as \"www.linkintime.co.in\" on GI p84 (\"Website: www.linkintime.co.in\"); two different well-formed copies of the registrar's website. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      3,
+      84
+    ],
+    "value": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India",
+    "verbatim": "C-101, Embassy 247, L.B.S. Marg",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "runwalenterprises.ipo@in.mpms.mufg.com",
+        "phone": "+91 810 811 4949",
+        "website": null,
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West), Mumbai 400-083, Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-4]"
+  }
+]

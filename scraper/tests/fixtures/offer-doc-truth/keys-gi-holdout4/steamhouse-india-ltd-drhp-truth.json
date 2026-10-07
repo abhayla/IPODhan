@@ -1,0 +1,619 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106
+    ],
+    "value": [
+      "Equirus Capital Private Limited"
+    ],
+    "verbatim": "Book Running Lead Manager Equirus Capital Private Limited",
+    "rows": null,
+    "note": "1 BRLM. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "https://steamhouse.in",
+    "verbatim": "Website: https://steamhouse.in",
+    "rows": null,
+    "note": "Cover p3 form; cover p1 table prints \"https://steamhouse.in/\" wrapped as \"https://steamhous / e.in/\" (formatting only). GI Registered and Corporate Office block (p105) prints no website. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      105
+    ],
+    "value": "Shyam Bhadresh Kapadia",
+    "verbatim": "Company Secretary and Compliance Officer Shyam Bhadresh Kapadia",
+    "rows": null,
+    "note": "GI p105 heading followed by the name (no \"is the Company Secretary\" sentence); cover p1/p3 \"Shyam Bhadresh Kapadia, Company Secretary and Compliance Officer\". [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      105
+    ],
+    "value": "+91 261 2998109",
+    "verbatim": "Telephone: +91 261 2998109",
+    "rows": null,
+    "note": "GI p105, cover p3 identical; cover p1 \"Tel: +91 261 2998109\". [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      105
+    ],
+    "value": "compliance@steamhouse.in",
+    "verbatim": "E-mail: compliance@steamhouse.in",
+    "rows": null,
+    "note": "Cover p1 wraps it \"compliance@steamhouse / .in\". [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      107
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": null,
+    "note": "Registrar website (cover p3, GI p107); no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106
+    ],
+    "value": [
+      "Equirus Capital Private Limited"
+    ],
+    "verbatim": "Book Running Lead Manager Equirus Capital Private Limited",
+    "rows": null,
+    "note": "1 BRLM. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      105
+    ],
+    "value": "Office No. – 324, Second Floor Four Point, V.I.P., Road, Vesu Surat – 395 007 Gujarat, India",
+    "verbatim": "Office No. – 324, Second Floor Four Point, V.I.P., Road, Vesu Surat – 395 007 Gujarat, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (single office), GI p105 form (line-broken, \"V.I.P., Road\" as printed). Cover p3 prints \"Office No. – 324, Second Floor, Four Point, V.I.P. Road, Vesu, Surat – 395007, Gujarat, India\" (cover p1 same, wrapped); formatting only. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "+91 261 2998109",
+    "verbatim": "Telephone: +91 261 2998109",
+    "rows": null,
+    "note": "Cover p3 Registered and Corporate Office telephone and cover p1 \"Tel: +91 261 2998109\" (same as compliance officer phone); GI office block (p105) prints none. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "compliance@steamhouse.in",
+    "verbatim": "E-mail: compliance@steamhouse.in",
+    "rows": null,
+    "note": "Cover contact e-mail (same as compliance officer e-mail); GI office block (p105) prints none. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": "BRLM; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal Counsel to our Company, as to Indian law AZB & Partners",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "4 rows: 1 BRLM (GI p106, cover p1/p3), registrar (GI p107, cover p1/p3; cover p1 shows the registrar name only as a logo, no text), Indian legal counsel to the Company (p106), statutory auditor (p106-107). Syndicate Members and Escrow/Public Offer/Refund/Sponsor banks \"[●]\". Bankers to our Company (Axis, Bandhan, HDFC, SBM, Federal, Yes Bank, Oxyzo) are not offer intermediaries; no change in auditors (p107). Equirus contact persons printed \"Mrunal Jadhav and Rahul Wadekar\" (\"and\" separator) on GI p106, cover p1 and cover p3. Equirus SEBI number printed \"INM00011286\" on GI p106 and cover p3 (identical copies; 8 digits after \"INM\" where the INM format elsewhere carries 9, e.g. Pantomath INM000012110) - malformed as printed, recorded exactly as printed; not a conflict (only one form exists in the document). Registrar phone: GI p107 \"+ 91-40-6716 2222/18003094001\"; cover p3 \"+ 91-40-67162222/ 18003094001\" (formatting only); cover p1 table prints only \"+91 40 671 62222\" (same main number, toll-free number omitted) - treated as a partial copy, not a conflict. No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": [
+      "Equirus Capital Private Limited",
+      "KFin Technologies Limited",
+      "AZB & Partners",
+      "Natvarlal Vepari & Co, Chartered Accountants"
+    ],
+    "verbatim": "Book Running Lead Manager Equirus Capital Private Limited",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "4 rows: 1 BRLM (GI p106, cover p1/p3), registrar (GI p107, cover p1/p3; cover p1 shows the registrar name only as a logo, no text), Indian legal counsel to the Company (p106), statutory auditor (p106-107). Syndicate Members and Escrow/Public Offer/Refund/Sponsor banks \"[●]\". Bankers to our Company (Axis, Bandhan, HDFC, SBM, Federal, Yes Bank, Oxyzo) are not offer intermediaries; no change in auditors (p107). Equirus contact persons printed \"Mrunal Jadhav and Rahul Wadekar\" (\"and\" separator) on GI p106, cover p1 and cover p3. Equirus SEBI number printed \"INM00011286\" on GI p106 and cover p3 (identical copies; 8 digits after \"INM\" where the INM format elsewhere carries 9, e.g. Pantomath INM000012110) - malformed as printed, recorded exactly as printed; not a conflict (only one form exists in the document). Registrar phone: GI p107 \"+ 91-40-6716 2222/18003094001\"; cover p3 \"+ 91-40-67162222/ 18003094001\" (formatting only); cover p1 table prints only \"+91 40 671 62222\" (same main number, toll-free number omitted) - treated as a partial copy, not a conflict. No two well-formed copies differ beyond formatting. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No.: INM00011286",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "Equirus SEBI number printed \"INM00011286\" on GI p106 and cover p3 (identical copies; 8 digits after \"INM\" where the INM format elsewhere carries 9, e.g. Pantomath INM000012110) - malformed as printed, recorded exactly as printed; not a conflict (only one form exists in the document). [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": null,
+    "verbatim": "Contact person: Mrunal Jadhav and Rahul Wadekar",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "Equirus lists two people joined by \"and\": \"Mrunal Jadhav and Rahul Wadekar\". Legal counsel and auditor print no contact person. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": null,
+    "verbatim": "Telephone: +91 (22) 6639 6880",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "Registrar phone: GI p107 \"+ 91-40-6716 2222/18003094001\"; cover p3 \"+ 91-40-67162222/ 18003094001\" (formatting only); cover p1 table prints only \"+91 40 671 62222\" (same main number, toll-free number omitted) - treated as a partial copy, not a conflict. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": null,
+    "verbatim": "E-mail: steamhouse.ipo@kfintech.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      106,
+      107
+    ],
+    "value": null,
+    "verbatim": "Investor Grievance ID: einward.ris@kfintech.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "Equirus Capital Private Limited",
+        "sebi_reg_no": "INM00011286",
+        "contact_person": "Mrunal Jadhav and Rahul Wadekar",
+        "phone": "+91 22 4332 0734",
+        "email": "steam.ipo@equirus.com",
+        "grievance_email": "investorsgrievance@equirus.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "KFin Technologies Limited",
+        "sebi_reg_no": "INR000000221",
+        "contact_person": "M. Murali Krishna",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "email": "steamhouse.ipo@kfintech.com",
+        "grievance_email": "einward.ris@kfintech.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "AZB & Partners",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 (22) 6639 6880",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "Natvarlal Vepari & Co, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 261 246 3636",
+        "email": "info@vepari.com",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      3,
+      107
+    ],
+    "value": "KFin Technologies Limited",
+    "verbatim": "Registrar to the Offer KFin Technologies Limited",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "steamhouse.ipo@kfintech.com",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India"
+      }
+    ],
+    "note": "Cover p1 shows the registrar as a logo only. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "steamhouse.ipo@kfintech.com",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      107
+    ],
+    "value": "steamhouse.ipo@kfintech.com",
+    "verbatim": "E-mail: steamhouse.ipo@kfintech.com",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "steamhouse.ipo@kfintech.com",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India"
+      }
+    ],
+    "note": "Cover p1 \"Email: steamhouse.ipo@kfintech.com\". [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      107
+    ],
+    "value": "+ 91-40-6716 2222/18003094001",
+    "verbatim": "Telephone: + 91-40-6716 2222/18003094001",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "steamhouse.ipo@kfintech.com",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India"
+      }
+    ],
+    "note": "Registrar phone: GI p107 \"+ 91-40-6716 2222/18003094001\"; cover p3 \"+ 91-40-67162222/ 18003094001\" (formatting only); cover p1 table prints only \"+91 40 671 62222\" (same main number, toll-free number omitted) - treated as a partial copy, not a conflict. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      107
+    ],
+    "value": "www.kfintech.com",
+    "verbatim": "Website: www.kfintech.com",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "steamhouse.ipo@kfintech.com",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      3,
+      107
+    ],
+    "value": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India",
+    "verbatim": "Selenium Tower B, Plot 31 & 32 Gachibowli,",
+    "rows": [
+      {
+        "name": "KFin Technologies Limited",
+        "short_name": null,
+        "email": "steamhouse.ipo@kfintech.com",
+        "phone": "+ 91-40-6716 2222/18003094001",
+        "website": "www.kfintech.com",
+        "address": "Selenium Tower B, Plot 31 & 32 Gachibowli, Financial District, Nanakramguda, Serilingampally Hyderabad 500 032 Telengana, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-4. Document is the Updated Draft Red Herring Prospectus-I dated December 8, 2025 (cached as DRHP).]"
+  }
+]

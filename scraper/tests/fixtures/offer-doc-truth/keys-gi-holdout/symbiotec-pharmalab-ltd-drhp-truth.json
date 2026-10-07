@@ -1,0 +1,812 @@
+[
+  {
+    "key": "ipos.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      103
+    ],
+    "value": [
+      "JM Financial Limited",
+      "Avendus Capital Private Limited",
+      "Motilal Oswal Investment Advisors Limited",
+      "Nomura Financial Advisory and Securities (India) Private Limited"
+    ],
+    "verbatim": "Book Running Lead Managers JM Financial Limited 7th Floor, Cnergy",
+    "rows": null,
+    "note": "4 BRLMs. Motilal Oswal printed with footnote marker \"^\" (GI p103) / \"^^\" (cover p2): marketing-only BRLM under SEBI Merchant Bankers Regulations 21A(1); still disclosed as a BRLM. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipos.company_website",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      102
+    ],
+    "value": "www.symbiotec.com",
+    "verbatim": "Website: www.symbiotec.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.compliance_officer",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      102
+    ],
+    "value": "Salil Jain",
+    "verbatim": "Salil Jain is the Company Secretary and Compliance Officer of our Company",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      103
+    ],
+    "value": "+91 731 667 6405",
+    "verbatim": "Telephone: +91 731 667 6405",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.compliance_officer_email",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      103
+    ],
+    "value": "secretarial@symbiotec.com",
+    "verbatim": "Email: secretarial@symbiotec.com",
+    "rows": null,
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.registrar_link",
+    "printed": true,
+    "pages": [
+      3,
+      103
+    ],
+    "value": "www.in.mpms.mufg.com",
+    "verbatim": "Website: www.in.mpms.mufg.com",
+    "rows": null,
+    "note": "Registrar website; no allotment-status URL printed. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.lead_managers",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      103
+    ],
+    "value": [
+      "JM Financial Limited",
+      "Avendus Capital Private Limited",
+      "Motilal Oswal Investment Advisors Limited",
+      "Nomura Financial Advisory and Securities (India) Private Limited"
+    ],
+    "verbatim": "Book Running Lead Managers JM Financial Limited 7th Floor, Cnergy",
+    "rows": null,
+    "note": "4 BRLMs. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.company_address",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      102
+    ],
+    "value": "385/2, Pigdamber Rau, Mhow, Indore – 453 331 Madhya Pradesh, India",
+    "verbatim": "385/2, Pigdamber Rau, Mhow, Indore – 453 331 Madhya Pradesh, India",
+    "rows": null,
+    "note": "Registered and Corporate Office (GI p102). Cover p1/p3 print \"385/2, Pigdamber, Rau, Mhow, Indore – 453 331, Madhya Pradesh, India\" (commas only). [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.company_phone",
+    "printed": true,
+    "pages": [
+      1,
+      3,
+      102
+    ],
+    "value": "+91 731 6676405",
+    "verbatim": "Telephone: +91 731 6676405 Website: www.symbiotec.com",
+    "rows": null,
+    "note": "GI office block form; cover prints \"+91 731 667 6405\" (same digits, spacing only). [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_details.company_email",
+    "printed": true,
+    "pages": [
+      1,
+      3
+    ],
+    "value": "secretarial@symbiotec.com",
+    "verbatim": "Email: secretarial@symbiotec.com",
+    "rows": null,
+    "note": "Cover contact email (same as compliance officer email); GI office block (p102) prints no email. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.role",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": "BRLM x4; REGISTRAR; LEGAL_COUNSEL_COMPANY_INDIAN; STATUTORY_AUDITOR",
+    "verbatim": "Legal Counsel to our Company as to Indian Law Khaitan & Co",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "7 rows: 4 BRLMs (p103), registrar (p103), Indian legal counsel to the Company (p105), statutory auditor (p105-106). Syndicate Members and Escrow/Public Offer/Refund/Sponsor banks \"[●]\". Bankers to our Company (HDFC, SBI, Axis) are not offer intermediaries. Phones kept in GI form (\"+ 91 ...\" with a space after + for JM, Avendus, Nomura, registrar; cover prints \"+91\"/\"+ 91\" variants, same digits). [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.name",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": [
+      "JM Financial Limited",
+      "Avendus Capital Private Limited",
+      "Motilal Oswal Investment Advisors Limited",
+      "Nomura Financial Advisory and Securities (India) Private Limited",
+      "MUFG Intime India Private Limited",
+      "Khaitan & Co",
+      "S R B C & CO LLP, Chartered Accountants"
+    ],
+    "verbatim": "Nomura Financial Advisory and Securities (India) Private Limited Ceejay House",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "7 rows: 4 BRLMs (p103), registrar (p103), Indian legal counsel to the Company (p105), statutory auditor (p105-106). Syndicate Members and Escrow/Public Offer/Refund/Sponsor banks \"[●]\". Bankers to our Company (HDFC, SBI, Axis) are not offer intermediaries. Phones kept in GI form (\"+ 91 ...\" with a space after + for JM, Avendus, Nomura, registrar; cover prints \"+91\"/\"+ 91\" variants, same digits). [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.sebi_reg_no",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": null,
+    "verbatim": "SEBI Registration No: INM000011419",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.contact_person",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": null,
+    "verbatim": "Contact Person: Sarthak Sawa / Shagun Lalwani",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.phone",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": null,
+    "verbatim": "Telephone: + 91 22 6630 3030",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.email",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": null,
+    "verbatim": "Email: symbiotec.ipo@jmfl.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "ipo_intermediaries.grievance_email",
+    "printed": true,
+    "pages": [
+      103,
+      105,
+      106
+    ],
+    "value": null,
+    "verbatim": "Investor grievance email: grievance.ibd@jmfl.com",
+    "rows": [
+      {
+        "role": "BRLM",
+        "name": "JM Financial Limited",
+        "sebi_reg_no": "INM000010361",
+        "contact_person": "Prachee Dhuri",
+        "phone": "+ 91 22 6630 3030",
+        "email": "symbiotec.ipo@jmfl.com",
+        "grievance_email": "grievance.ibd@jmfl.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Avendus Capital Private Limited",
+        "sebi_reg_no": "INM000011021",
+        "contact_person": "Sarthak Sawa / Shagun Lalwani",
+        "phone": "+ 91 22 6648 0050",
+        "email": "symbiotec.ipo@avendus.com",
+        "grievance_email": "investorgrievance@avendus.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Motilal Oswal Investment Advisors Limited",
+        "sebi_reg_no": "INM000011005",
+        "contact_person": "Kunal Thakkar/Vaibhav Shah",
+        "phone": "+91 22 7193 4380",
+        "email": "spl.ipo@motilaloswal.com",
+        "grievance_email": "moiaplredressal@motilaloswal.com"
+      },
+      {
+        "role": "BRLM",
+        "name": "Nomura Financial Advisory and Securities (India) Private Limited",
+        "sebi_reg_no": "INM000011419",
+        "contact_person": "Vishal Kanjani / Chirag Shah",
+        "phone": "+ 91 22 4037 4037",
+        "email": "symbiotecipo@nomura.com",
+        "grievance_email": "investorgrievances-in@nomura.com"
+      },
+      {
+        "role": "REGISTRAR",
+        "name": "MUFG Intime India Private Limited",
+        "sebi_reg_no": "INR000004058",
+        "contact_person": "Shanti Gopalkrishnan",
+        "phone": "+ 91 810 811 4949",
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "grievance_email": "symbiotecpharmalab.ipo@in.mpms.mufg.com"
+      },
+      {
+        "role": "LEGAL_COUNSEL_COMPANY_INDIAN",
+        "name": "Khaitan & Co",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 120 479 1000",
+        "email": null,
+        "grievance_email": null
+      },
+      {
+        "role": "STATUTORY_AUDITOR",
+        "name": "S R B C & CO LLP, Chartered Accountants",
+        "sebi_reg_no": null,
+        "contact_person": null,
+        "phone": "+91 22 6819 8000",
+        "email": "srbc.co@srb.in",
+        "grievance_email": null
+      }
+    ],
+    "note": "Registrar grievance email is printed identical to its main email. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "registrars.name",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      103
+    ],
+    "value": "MUFG Intime India Private Limited",
+    "verbatim": "MUFG Intime India Private Limited (Formerly Link Intime India Private Limited)",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "phone": "+ 91 810 811 4949",
+        "website": "www.in.mpms.mufg.com",
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "Printed with former name \"(Formerly Link Intime India Private Limited)\" on cover p2 and GI p103. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "registrars.short_name",
+    "printed": false,
+    "pages": [],
+    "value": null,
+    "verbatim": null,
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "phone": "+ 91 810 811 4949",
+        "website": "www.in.mpms.mufg.com",
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "No short name/abbreviation printed for the registrar. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "registrars.email",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      103
+    ],
+    "value": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+    "verbatim": "Email: symbiotecpharmalab.ipo@in.mpms.mufg.com",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "phone": "+ 91 810 811 4949",
+        "website": "www.in.mpms.mufg.com",
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "[pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "registrars.phone",
+    "printed": true,
+    "pages": [
+      2,
+      3,
+      103
+    ],
+    "value": "+ 91 810 811 4949",
+    "verbatim": "Telephone: + 91 810 811 4949",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "phone": "+ 91 810 811 4949",
+        "website": "www.in.mpms.mufg.com",
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "GI p103 form (space after +); cover p2 prints \"+91 810 811 4949\" (same digits). [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "registrars.website",
+    "printed": false,
+    "pages": [
+      3,
+      103
+    ],
+    "value": "www.in.mpms.mufg.com",
+    "verbatim": "Website: www.in.mpms.mufg.com",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "phone": "+ 91 810 811 4949",
+        "website": "www.in.mpms.mufg.com",
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  },
+  {
+    "key": "registrars.address",
+    "printed": false,
+    "pages": [
+      103
+    ],
+    "value": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India",
+    "verbatim": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083",
+    "rows": [
+      {
+        "name": "MUFG Intime India Private Limited",
+        "short_name": null,
+        "email": "symbiotecpharmalab.ipo@in.mpms.mufg.com",
+        "phone": "+ 91 810 811 4949",
+        "website": "www.in.mpms.mufg.com",
+        "address": "C-101, Embassy 247, L.B.S. Marg, Vikhroli (West) Mumbai 400 083 Maharashtra, India"
+      }
+    ],
+    "note": "NOT THIS DOCUMENT'S FIELD (mirrors example decisions D1/D6, spec §1.10): registrars is reference data on its own cadence. [pages = PDF page index, 1-based; printed page = pdf-0 (printed numbers match PDF index)]"
+  }
+]
