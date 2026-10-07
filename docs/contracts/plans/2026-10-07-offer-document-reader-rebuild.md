@@ -162,3 +162,17 @@ if the value is printed on that page and passes step 4.
   entity heading; proofs: table test of every line shape, corpus check name/address paths disagree 0 of 113, mutation
   per normalisation step, then blind GI set 3 (Deepa, Jio, Runwal, A-One). A third failure of this class -> stop and
   escalate to the owner with the review and both briefs (owner rule).
+- Round 3 result (2026-10-07): own proofs pass (name/address paths disagree 0 of 117 blocks, was 17; tuning 243/0/19;
+  every guard mutation-tested), but the USED hold-outs still show 2 wrong company addresses (a trailing "For details in
+  relation to the changes in the registered office ... see page N" sentence read as address - the prose test is still a
+  phrase list) and SRIT registrar phone/e-mail saved although the cover prints different ones (stricter cover-cell rule
+  found no matching cell, so no copy to compare).
+- DECISION (supervisor, under owner delegation 2026-10-07 "based on that plan, you take a call"; per plan rules wrong = 0,
+  prove-before-build, and run-discipline A1 park after two failed rounds): SPLIT the section.
+  (1) Blind set 3 (Deepa, Jio, Runwal, A-One) is run cold, no tuning; (2) only field families with 0 wrong on ALL blind
+  sets go into the product: BRLM names, SEBI no., contact person, phone, e-mail, grievance e-mail; registrar name, SEBI
+  no., contact person; compliance officer name, phone, e-mail (a family with a wrong on set 3 drops out too);
+  (3) PARKED: company address and registrar phone / e-mail - the reader keeps today's behaviour for them. Next approach
+  recorded for the parked item: an address ends at the line holding the PIN / state / country (structural, nothing after
+  it can be address) instead of a prose phrase list; registrar contacts read from General Information only, cover copies
+  compared only by the same e-mail domain / same entity cell. (4) Then the cover section.
