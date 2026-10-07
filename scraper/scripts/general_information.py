@@ -36,6 +36,13 @@ COVER_CELLS = True          # a cover copy counts only from the same cell under 
 CLEAN_INPUT = True          # page furniture (running heads / footers / page numbers) removed before anything else
 ALIAS_ONLY_LINE = True      # a line that is only "(formerly known as ...)" is alias_continuation, never address / name
 CONTACT_SPLIT = True        # a person-name line under "Contact person:" is a separate person (joined " / ") or refused
+# review round 1 (2026-10-07)
+JOIN_NEEDS_PRINT = True     # two contact lines are joined only on a printed separator / hyphen / one-token surname
+PAGE_BREAK_CLOSES = True    # a page change in a multi-column band closes the open block; carried lines are unattributed
+REFUSAL_UNRESOLVES = True   # any refusal inside a BRLM block (or a firm printed twice) leaves the BRLM list unresolved
+BARE_VALUE = re.compile(r'^(?:[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|(?:https?://|www\.)\S+|'
+                        r'[+\d][\d\s()/-]{7,})\.?$', re.I)
+CONTD = re.compile(r'\(\s*cont(?:d|inued)\.?\s*\)', re.I)
 
 SECTION_PAGES = 15          # at most this many pages of the located section are read
 COVER_PAGES = 6             # cover pages: page 1 up to the contents page, at most this many
@@ -44,12 +51,30 @@ TOC = re.compile(r'table\s+of\s+contents?|^\s*contents\s*$', re.I | re.M)
 
 
 def contact_join(prev, line):
-    """'Contact person: A B' + next line: -> (joined value, None) or (None, reason). A line after a printed separator
-    or after a complete name is a NEW person (joined ' / '); a line after a one-word fragment completes that name;
-    anything else is unsure -> refused."""
+    """'Contact person: A B' + next line: -> (joined value, None) or (None, reason). Only what the print proves:
+    two people are joined (' / ') ONLY when a separator ('/', ',', '&', 'and') is printed between them and the new
+    line opens with a name of 2+ words; a split name is completed ONLY when the first line ends with a hyphen, or the
+    first line's last person is a single word (honorific aside) and the new line's first person is a single token.
+    Anything else ('Mr. Venkata Sai' + 'Krishna Prasad', 'Rahul' + 'Priya Mehta') is unsure -> refused."""
     p, t = prev.rstrip(), line.strip()
-    nw = len(re.split(r'/|,|&|\band\b', t)[0].split())       # words of the first person on the new line
-    last = re.split(r'/|,|&|\band\b', p)[-1].strip()
+    sep = r'/|,|&|\band\b'
+    if JOIN_NEEDS_PRINT:
+        lead = re.match(r'^(?:/|,|&|and\b)\s*', t, re.I)
+        if lead:                                              # the separator printed at the start of the new line
+            p, t = p + ' /', t[lead.end():]
+        nw = len(re.split(sep, t)[0].split())                 # words of the first person on the new line
+        last = HONORIFIC.sub('', re.split(sep, p)[-1].strip())
+        if re.search(r'(?:/|,|&|\band)$', p):
+            if nw >= 2:
+                return re.sub(r'\s*(?:/|,|&|\band)$', '', p) + ' / ' + t, None
+            return None, 'contact_split_unsure'
+        if p.endswith('-') and nw >= 1:
+            return p + t, None
+        if len(last.split()) == 1 and nw == 1:
+            return p + ' ' + t, None
+        return None, 'contact_split_unsure'
+    nw = len(re.split(sep, t)[0].split())       # attempt-4 behaviour (the mutation): joins without printed proof
+    last = re.split(sep, p)[-1].strip()
     if re.search(r'(?:/|,|&|\band)$', p):
         if nw >= 2:
             return re.sub(r'\s*(?:/|,|&|\band)$', '', p) + ' / ' + t, None
@@ -203,7 +228,8 @@ def classify(t, ctx=None):
         n2, aopen2 = normalise(t + ' ' + nxt)
         if is_entity(n2) and not re.search(r'\d{3}', t):
             return 'entity_name', {'name': n2, 'alias_open': aopen2, 'join_next': True}
-    if ctx.get('last_label') == 'contact' and PERSON.match(t) and not CORP.search(t) and len(t) < 40:
+    if ctx.get('last_label') == 'contact' and PERSON.match(re.sub(r'^(?:/|,|&)\s*', '', t)) and not CORP.search(t) \
+            and len(t) < 40:
         return 'contact', {'continues_label': True}
     if PERSON.match(n) and not CORP.search(n) and len(n.split()) <= 5 and \
             (HONORIFIC.match(n) or ctx.get('expect_person')):
@@ -329,16 +355,35 @@ GRAMMAR = {  # block shape over line classes: p prose/footnote, c person, e enti
 CODE = {'prose': 'p', 'footnote_or_link_continuation': 'p', 'contact': 'c', 'entity_name': 'e', 'address': 'a'}
 
 
-def blocks(stream, band_kind='firm'):
-    """one grammar for every block: [prose] [person] entity name (+ alias / wrapped tail) -> address -> labels."""
+def blocks(stream, band_kind='firm', single_column=False):
+    """one grammar for every block: [prose] [person] entity name (+ alias / wrapped tail) -> address -> labels.
+    A page change in a multi-column band closes the open block: the first line of the new page in this column
+    belongs to the open firm only when it prints that firm's own name again (or '(contd.)'); any other carried line
+    starts an UNATTRIBUTED block (no entity of its own -> refused by every reader). In a one-column band the
+    reading order is the printed order, so the block runs on across the page."""
     out, cur, pending, last_label, alias_open, force = [], None, None, None, False, None
+    carry, closed = False, None
 
-    def new(ln):
-        b = dict(lines=[], labels=[], page=ln['page'])
+    def new(ln, entity=False):
+        b = dict(lines=[], labels=[], page=ln['page'], unattributed=carry and not entity,
+                 carried_from=closed if carry and not entity else None)
+        if b['unattributed']:
+            t0 = ln['text'].strip()
+            b['lead'] = ('label' if label_of(t0)[0] else
+                         'value' if BARE_VALUE.match(t0) else 'address', t0)
         out.append(b)
         return b
     for idx, ln in enumerate(stream):
         t = ln['text'].strip()
+        if PAGE_BREAK_CLOSES and not single_column and idx and ln['page'] != stream[idx - 1]['page']                 and cur is not None:
+            own = entity_of(cur)
+            again = classify(CONTD.sub('', t))
+            if own and (CONTD.search(t) and (again[0] != 'entity_name' or name_key(again[1]['name']) == name_key(own))
+                        or again[0] == 'entity_name' and name_key(again[1]['name']) == name_key(own)):
+                continue                         # the same firm printed again at the top of the page: carry on
+            closed = cur
+            cur, pending, last_label, alias_open, force = None, None, None, False, None
+            carry = True
         if pending is not None and not label_of(t)[0]:
             pending['value'] = t
             pending['overrun'] |= ln['overrun']
@@ -366,6 +411,7 @@ def blocks(stream, band_kind='firm'):
         if cls == 'label':
             if cur is None:
                 cur = new(ln)
+                carry = False
             v = info['value']
             m = INLINE_LABEL.search(' ' + v)
             if m and info['kind'] != 'website':
@@ -394,16 +440,18 @@ def blocks(stream, band_kind='firm'):
                 cur = None                       # a sentence after the address / contacts ends the block
             if cur is None:
                 cur = new(ln)
+                carry = False
             cur['lines'].append(dict(text=t, cls=cls, overrun=ln['overrun']))
             continue
         seq = ''.join(CODE[x['cls']] for x in cur['lines'] if x['cls'] in CODE) if cur else ''
         if cls == 'entity_name':
-            starts_new = cur is None or cur['labels'] or 'a' in seq or (
+            starts_new = cur is None or cur['labels'] or 'a' in seq or cur.get('unattributed') or (
                 'e' in seq and not (band_kind == 'cs' and seq.endswith('c')))
         else:
             starts_new = cur is None or bool(cur['labels'])
         if starts_new:
-            cur = new(ln)
+            cur = new(ln, entity=cls == 'entity_name')
+            carry = False
         cur['lines'].append(dict(text=t, cls=cls, overrun=ln['overrun'],
                                  **{k: v for k, v in info.items() if k in ('name', 'person')}))
         if cls == 'entity_name':
@@ -413,6 +461,93 @@ def blocks(stream, band_kind='firm'):
     for b in out:
         b['seq'] = ''.join(CODE[x['cls']] for x in b['lines'] if x['cls'] in CODE)
     return out
+
+
+def _label_kinds(b):
+    return {lab['kind'] for lab in b['labels'] if lab['kind'] not in ('fax', 'ignored')}
+
+
+def _open_block(col, page, before):
+    """the last attributed firm block (one with an entity name) of a column that started on `page` or earlier (before=True: earlier only)."""
+    return next((b for b in reversed(col) if not b.get('unattributed') and entity_of(b)
+                 and (b['page'] < page if before else b['page'] <= page)), None)
+
+
+def resolve_carries(cols, log):
+    """UNATTRIBUTED blocks (lines carried to the top of a new page in a multi-column band) go back to the block their
+    own column had open ONLY when the print proves it. Each carried chunk has two possible homes: its column's block
+    open on the previous page (grid layout), or the block reading order would continue (the previous column's block
+    open at the bottom of the same page; for the first column, the last column's block open on the previous page).
+    A chunk must continue exactly where its home stopped: a chunk opening with a bare value needs a home whose last
+    label is still empty; one opening with address lines needs a home with no labels yet; and no block may print a
+    label kind twice. All chunks of the band are assigned jointly; they go home only when 'every chunk to its own
+    column' is the ONE valid joint assignment. Otherwise they stay unattributed and every reader refuses them."""
+    ncol = len(cols)
+    items = []
+    for k, c in enumerate(cols):
+        for u in c:
+            if u.get('unattributed') and u['labels']:
+                page = u['page']
+                home = u.get('carried_from')
+                if k:
+                    # the previous column's block open at the bottom of this page; when that column's last lines
+                    # on this page are itself a carried chunk, it is whichever block that chunk is given to
+                    last = next((b for b in reversed(cols[k - 1]) if b['page'] <= page and (
+                        entity_of(b) or (b.get('unattributed') and b['labels']))), None)
+                    flow = ('chunk', last) if last is not None and last.get('unattributed') and                         last['page'] == page else _open_block(cols[k - 1], page, False)
+                else:
+                    flow = _open_block(cols[ncol - 1], page, True)
+                items.append((k, u, home, [x for x in (home, flow) if x is not None]))
+    if not items:
+        return
+    items.sort(key=lambda it: (it[1]['page'], it[0]))
+    valid = []
+
+    def state(c, got):
+        labs = [(lab['kind'], not lab['value'].strip()) for lab in c['labels']]
+        for (_k, u, _h, _c), c2 in zip(items, got):
+            if c2 is c:
+                if u['lead'][0] == 'value' and labs:
+                    labs[-1] = (labs[-1][0], False)
+                labs += [(lab['kind'], not lab['value'].strip()) for lab in u['labels']]
+        return labs
+
+    def walk(n, got):
+        if len(valid) > 1:
+            return
+        if n == len(items):
+            valid.append(list(got))
+            return
+        _k, u, _home, raw = items[n]
+        lead = u['lead'][0]
+        kinds = _label_kinds(u)
+        cands = []
+        for x in raw:
+            if isinstance(x, tuple):             # resolved through the earlier chunk's assignment
+                x = next((c2 for (_k2, u2, _h2, _r2), c2 in zip(items, got) if u2 is x[1]), None)
+            if x is not None and all(x is not d for d in cands):
+                cands.append(x)
+        for c in cands:
+            labs = state(c, got)
+            pending = bool(labs) and labs[-1][1]
+            if (lead == 'value') != pending or (lead == 'address' and labs):
+                continue
+            if kinds & {kd for kd, _e in labs if kd not in ('fax', 'ignored')}:
+                continue
+            walk(n + 1, got + [c])
+    walk(0, [])
+    if len(valid) == 1 and all(c is home for (_k, _u, home, _c), c in zip(items, valid[0])):
+        for k, u, home, _c in items:
+            if u['lead'][0] == 'value':
+                home['labels'][-1]['value'] = u['lead'][1]
+            home['labels'] += u['labels']
+            cols[k].remove(u)
+    else:
+        for _k, u, home, _c in items:
+            if home is not None:                 # the open firm lost these printed labels: refused, not missed
+                home.setdefault('carry_refused', set()).update(_label_kinds(u))
+        log.append('pages %s: carried label lines left unattributed (%s valid joint assignments)' % (
+            sorted({it[1]['page'] for it in items}), len(valid) if len(valid) < 2 else '2+'))
 
 
 def block_shape(b, kind):
@@ -442,8 +577,37 @@ def address_of(b):
 
 
 # ---------------- per-block values with format checks ----------------
+MISS_REASONS = ('label_not_found', 'label_without_value')
+ROW_FIELDS = (('sebi_reg_no', 'sebi'), ('contact_person', 'contact'), ('phone', 'phone'), ('email', 'email'),
+              ('grievance_email', 'grievance'))
+
+
+def field_reasons(b, vals, fields=ROW_FIELDS):
+    """{field: reason} for every field of the block that has no value: the reader's refusal (phone_format,
+    contact_split_unsure, two_values_in_block, ..., page_break_unattributed) or a plain miss (label_not_found;
+    label_without_value when the label is printed with nothing after it)."""
+    out = {}
+    for fld, kind in fields:
+        if vals.get(kind):
+            continue
+        if kind in (b.get('refusals') or {}):
+            out[fld] = b['refusals'][kind]
+        elif kind in (b.get('carry_refused') or ()):
+            out[fld] = 'page_break_unattributed'
+        elif any(lab['kind'] == kind for lab in b['labels']):
+            out[fld] = 'label_without_value'
+        else:
+            out[fld] = 'label_not_found'
+    return out
+
+
+def _refusal_word(line):
+    """'brlm[X] phone: refused phone_format (...)' -> 'phone_format'."""
+    return line.split(': refused ', 1)[1].split(' ', 1)[0]
+
+
 def block_values(b, log, where):
-    vals, bad = {}, set()
+    vals, bad, why = {}, set(), {}
     for lab in b['labels']:
         k, v = lab['kind'], lab['value'].strip()
         if k in ('fax', 'ignored') or not v:
@@ -451,22 +615,26 @@ def block_values(b, log, where):
         if lab.get('refused'):
             log.append("%s %s: refused %s (%s)" % (where, k, lab['refused'], v[:40]))
             bad.add(k)
+            why.setdefault(k, _refusal_word(log[-1]))
             continue
         if lab['overrun']:
             log.append('%s %s: refused column_overrun (%s)' % (where, k, v[:40]))
             bad.add(k)
+            why.setdefault(k, _refusal_word(log[-1]))
             continue
         if k in ('email', 'grievance'):
             e = clean_email(v.split()[0] if v.split() else v)
             if not e or len(v.split()) > 1:
                 log.append('%s %s: refused not_one_email (%s)' % (where, k, v[:50]))
                 bad.add(k)
+                why.setdefault(k, _refusal_word(log[-1]))
                 continue
             v = e
         elif k == 'phone':
             if not phone_ok(v):
                 log.append('%s phone: refused phone_format (%s)' % (where, v[:40]))
                 bad.add(k)
+                why.setdefault(k, _refusal_word(log[-1]))
                 continue
             v = v.rstrip('.,;')
         elif k == 'sebi':
@@ -474,6 +642,7 @@ def block_values(b, log, where):
             if len(m) != 1:
                 log.append('%s sebi: refused sebi_format (%s)' % (where, v[:40]))
                 bad.add(k)
+                why.setdefault(k, _refusal_word(log[-1]))
                 continue
             v = m[0]
         elif k == 'contact':
@@ -481,20 +650,25 @@ def block_values(b, log, where):
             if not PERSON.match(v) or CORP.search(v):
                 log.append('%s contact: refused person_format (%s)' % (where, v[:50]))
                 bad.add(k)
+                why.setdefault(k, _refusal_word(log[-1]))
                 continue
         elif k == 'website':
             v = v.rstrip(',;').strip()
             if ' ' in v or not re.match(r'^(?:https?://)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?$', v, re.I):
                 log.append('%s website: refused url_format (%s)' % (where, v[:50]))
                 bad.add(k)
+                why.setdefault(k, _refusal_word(log[-1]))
                 continue
         if k in vals and vals[k] != v and not (k == 'phone' and phone_numbers(vals[k])[:1] == phone_numbers(v)[:1]):
             log.append('%s %s: refused two_values_in_block (%s vs %s)' % (where, k, vals[k], v))
             bad.add(k)
+            why.setdefault(k, _refusal_word(log[-1]))
             continue
         vals[k] = v
     for k in bad:
         vals.pop(k, None)
+    b['refused_kinds'] = sorted(bad)
+    b['refusals'] = why
     return vals
 
 
@@ -579,6 +753,81 @@ def _pages(indices, grid_words_for_page, model, log, what):
     return out
 
 
+def brlm_answer(brlm_blocks, cover_names, cover_key, cover_toks, log):
+    """the BRLM band's blocks -> (lead_managers or None, one row per firm block read with its per-field reasons).
+    The list is returned only when every block was read, named on the cover, refused nothing and no firm is
+    printed twice."""
+    lm, rows = [], []
+    lm_ok = bool(brlm_blocks)
+    for bl in brlm_blocks:
+        name = entity_of(bl)
+        bad = block_shape(bl, 'firm')
+        if not bl['labels'] and (bad or not name):
+            continue                                     # prose / footnote / split fragments with no contact values
+        if bad or not name:
+            log.append("brlm block p%d: refused %s" % (bl['page'], bad or (
+                'unattributed_page_carry' if bl.get('unattributed') else 'no_entity_name')))
+            lm_ok = False
+            continue
+        if any(x['overrun'] for x in bl['lines'] if x['cls'] == 'entity_name'):
+            log.append("brlm[%s]: refused heading_column_overrun" % name[:30])
+            lm_ok = False
+            continue
+        v = block_values(bl, log, 'brlm[%s]' % name[:30])
+        if REFUSAL_UNRESOLVES and bl['refused_kinds']:
+            log.append('brlm[%s]: list unresolved, a value in the block was refused %s' % (name[:30],
+                                                                                         bl['refused_kinds']))
+            lm_ok = False
+        if v.get('sebi', '').startswith('INR'):
+            log.append('brlm[%s]: not a BRLM (INR registration under the BRLM heading)' % name[:30])
+            continue
+        toks = [w for w in re.findall(r'[a-z0-9&]+', re.sub(r'\([^)]*\)', ' ', name.lower()))
+                if not CORP_WORDS.fullmatch(w)]
+        on_cover = name_key(name) in cover_names or name_key(name) in cover_key or \
+            (v.get('sebi', '').startswith('INM') and bool(toks) and all(t in cover_toks for t in toks))
+        if not (v.get('sebi', '').startswith('INM') or on_cover):
+            log.append('brlm[%s]: refused not_a_named_brlm' % name[:30])
+            lm_ok = False
+            continue
+        if not on_cover:
+            log.append('brlm[%s]: cover copy not found' % name[:30])
+            lm_ok = False
+        if bl.get('carry_refused'):
+            log.append('brlm[%s]: list unresolved, printed labels %s could not be attributed across the page' % (
+                name[:30], sorted(bl['carry_refused'])))
+            lm_ok = False
+        lm.append(name)
+        row = dict(name=name, page=bl['page'])
+        for fld, kind in ROW_FIELDS:
+            row[fld] = v.get(kind)
+        row['reasons'] = field_reasons(bl, v)
+        rows.append(row)
+    out_lm = None
+    seen = {}
+    for r in rows:
+        seen[name_key(r['name'])] = seen.get(name_key(r['name']), 0) + 1
+    twice = {k for k, n in seen.items() if n > 1}
+    if twice:                                            # one firm, two blocks: neither block is that firm's answer
+        log.append('brlm: refused duplicate_firm_blocks %s' % sorted(r['name'] for r in rows
+                                                                      if name_key(r['name']) in twice))
+        kept = []
+        for r in rows:                                   # ONE row per such firm, every field refused
+            if name_key(r['name']) not in twice:
+                kept.append(r)
+            elif all(name_key(x['name']) != name_key(r['name']) for x in kept):
+                kept.append(dict(name=r['name'], page=r['page'], **{fld: None for fld, _k in ROW_FIELDS},
+                                 reasons={fld: 'duplicate_firm_blocks' for fld, _k in ROW_FIELDS}))
+        rows = kept
+        lm_ok = False
+    if lm and lm_ok and len({name_key(n) for n in lm}) == len(lm):
+        out_lm = lm
+    elif brlm_blocks:
+        log.append('lead_managers: refused (a BRLM block unread or not confirmed by the cover)')
+    # every firm block read keeps its row (refused fields null WITH the reason); with the list unresolved the
+    # persister attaches none of them (it files BRLM rows only under the document's own resolved list)
+    return out_lm, rows
+
+
 def read_general_information(page_texts, grid_words_for_page, ocr_pages=()):
     """-> {section, fields, log, reason}. `fields` holds lead_managers (only when every BRLM block was read and named
     on the cover), brlm_rows (one per BRLM block read) and registrar (its grievance e-mail checked against the cover
@@ -608,8 +857,10 @@ def read_general_information(page_texts, grid_words_for_page, ocr_pages=()):
     bs = bands(words)
     for b in bs:
         kind = {'cs': 'cs', 'regoff': 'office', 'corpoff': 'office'}.get(b['kind'], 'firm')
-        _starts, streams = column_streams(b)
-        b['blocks'] = [bl for s in streams for bl in blocks(s, kind)]
+        starts, streams = column_streams(b)
+        cols = [blocks(s, kind, single_column=len(starts) == 1) for s in streams]
+        resolve_carries(cols, log)
+        b['blocks'] = [bl for c in cols for bl in c]
     cells = cover_cells(cover)
     cover_names = {name_key(c['name']) for c in cells if c['name'] and c['shape_ok']}
     by = dict(page_texts)
@@ -618,45 +869,10 @@ def read_general_information(page_texts, grid_words_for_page, ocr_pages=()):
     cover_toks = set(re.findall(r'[a-z0-9&]+', ct))
 
     # ---- lead managers ----
-    lm, rows = [], []
     brlm_blocks = [bl for b in bs if b['kind'] == 'brlm' for bl in b['blocks']]
-    lm_ok = bool(brlm_blocks)
-    for bl in brlm_blocks:
-        name = entity_of(bl)
-        bad = block_shape(bl, 'firm')
-        if not bl['labels'] and (bad or not name):
-            continue                                     # prose / footnote / split fragments with no contact values
-        if bad or not name:
-            log.append("brlm block p%d: refused %s" % (bl['page'], bad or 'no_entity_name'))
-            lm_ok = False
-            continue
-        if any(x['overrun'] for x in bl['lines'] if x['cls'] == 'entity_name'):
-            log.append("brlm[%s]: refused heading_column_overrun" % name[:30])
-            lm_ok = False
-            continue
-        v = block_values(bl, log, 'brlm[%s]' % name[:30])
-        if v.get('sebi', '').startswith('INR'):
-            log.append('brlm[%s]: not a BRLM (INR registration under the BRLM heading)' % name[:30])
-            continue
-        toks = [w for w in re.findall(r'[a-z0-9&]+', re.sub(r'\([^)]*\)', ' ', name.lower()))
-                if not CORP_WORDS.fullmatch(w)]
-        on_cover = name_key(name) in cover_names or name_key(name) in cover_key or \
-            (v.get('sebi', '').startswith('INM') and bool(toks) and all(t in cover_toks for t in toks))
-        if not (v.get('sebi', '').startswith('INM') or on_cover):
-            log.append('brlm[%s]: refused not_a_named_brlm' % name[:30])
-            lm_ok = False
-            continue
-        if not on_cover:
-            log.append('brlm[%s]: cover copy not found' % name[:30])
-            lm_ok = False
-        lm.append(name)
-        rows.append(dict(name=name, sebi_reg_no=v.get('sebi'), contact_person=v.get('contact'),
-                         phone=v.get('phone'), email=v.get('email'), grievance_email=v.get('grievance'),
-                         page=bl['page']))
-    if lm and lm_ok and len({name_key(n) for n in lm}) == len(lm):
+    lm, rows = brlm_answer(brlm_blocks, cover_names, cover_key, cover_toks, log)
+    if lm:
         f['lead_managers'] = lm
-    elif brlm_blocks:
-        log.append('lead_managers: refused (a BRLM block unread or not confirmed by the cover)')
     f['brlm_rows'] = rows
 
     # ---- registrar (only its grievance e-mail is read from here; the rest stays on today's reader) ----
@@ -666,14 +882,23 @@ def read_general_information(page_texts, grid_words_for_page, ocr_pages=()):
         name = entity_of(bl)
         v = block_values(bl, log, 'registrar')
         if v.get('sebi', 'INR').startswith('INR'):
-            reg = dict(name=name, grievance_email=v.get('grievance'), page=bl['page'])
+            reg = dict(name=name, grievance_email=v.get('grievance'), page=bl['page'],
+                       reasons=field_reasons(bl, v, (('grievance_email', 'grievance'),)))
             if reg['grievance_email']:
+                read = reg['grievance_email']
                 reg['grievance_email'] = compare_copies(
-                    'registrar.grievance_email', reg['grievance_email'], cover_copies(cells, name, 'grievance'),
+                    'registrar.grievance_email', read, cover_copies(cells, name, 'grievance'),
                     lambda e: bool(EMAIL.match(e)), same_mail, log)
+                if reg['grievance_email'] is None:
+                    reg['reasons'] = {'grievance_email': 'copies_disagree'}
+                    reg['refused_value'] = read
             f['registrar'] = reg
         else:
             log.append('registrar: refused (%s sebi=%s)' % (name[:40], v.get('sebi')))
+            f['registrar'] = dict(name=name, grievance_email=None, page=bl['page'],
+                                  reasons={'grievance_email': 'registrar_block_not_inr'})
     elif reg_blocks:
         log.append('registrar: refused blocks=%s' % [(entity_of(b), b['seq']) for b in reg_blocks])
+        f['registrar'] = dict(name=None, grievance_email=None, page=reg_blocks[0]['page'],
+                              reasons={'grievance_email': 'registrar_block_unresolved'})
     return out

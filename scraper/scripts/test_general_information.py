@@ -103,13 +103,64 @@ PIN_ROWS = [  # (doc, printed line prefix, expected PIN)
     ("orient-cables-india-ltd", "Maharashtra, India 400 070", "400070"),
     ("orient-cables-india-ltd", "Gurugram, Haryana – 1220 03, India", "122003"),
 ]
-CONTACT_ROWS = [  # real pairs: A-One p86/p88, Jio cover, NSE cover, Karamtara GI
-    ("Ashwinikumar Chavan", "Purva Kanabar", "Ashwinikumar Chavan / Purva Kanabar"),
+CONTACT_ROWS = [  # real pairs: A-One p86/p88, Jio cover, NSE cover, Karamtara GI; review round 1 probes
+    ("Ashwinikumar Chavan", "Purva Kanabar", None),      # no printed separator: two people or one? refused
     ("Vidit Jain /", "Rishank Chheda", "Vidit Jain / Rishank Chheda"),
+    ("Vidit Jain", "/ Rishank Chheda", "Vidit Jain / Rishank Chheda"),
     ("Gaurav", "Khandelwal / Souradeep Ghosh", "Gaurav Khandelwal / Souradeep Ghosh"),
     ("Harsh Thakkar/", "Tayal", None),
     ("Ashwani Kumar", "Sharma", None),
+    ("Mr. Venkata Sai", "Krishna Prasad", None),
+    ("Rahul", "Priya Mehta", None),
+    ("Rajesh Kumar-", "Singh", "Rajesh Kumar-Singh"),
 ]
+
+
+# ---------- synthetic bands (review round 1): columns of printed lines over two pages ----------
+def _firm(name, n, grievance=True, contact=True):
+    key = name.split()[0].lower()
+    out = [name, "%d Road, Mumbai 40000%d" % (n, n), "Tel: +91 22 %d%d%d%d %d%d%d%d" % ((n,) * 8),
+           "E-mail: ipo@%s.com" % key, "Website: www.%s.com" % key]
+    if grievance:
+        out.append("Investor grievance e-mail: grievance@%s.com" % key)
+    if contact:
+        out.append("Contact person: Ravi Kumar")
+    return out + ["SEBI Registration No.: INM00000000%d" % n]
+
+
+def _col(*pages):
+    return [dict(page=p, text=t, overrun=False) for p, lines in pages for t in lines]
+
+
+# Alpha (left) prints no grievance / contact; Gamma (right) runs onto the TOP-LEFT of the next page.
+ALPHA_GAMMA = [
+    _col((1, _firm("Alpha Capital Limited", 1, grievance=False, contact=False)),
+         (2, ["Investor grievance e-mail: grievance@gamma.com", "Contact person: Mohan Das"]
+          + _firm("Delta Securities Limited", 4))),
+    _col((1, _firm("Gamma Securities Limited", 3, grievance=False, contact=False))),
+]
+# A grid: every column's firm continues at the top of its own column; only "each to its own" is consistent.
+GRID = [
+    _col((1, _firm("Alpha Capital Limited", 1, grievance=False, contact=False)),
+         (2, ["Investor grievance e-mail: grievance@alpha.com", "Contact person: Ravi Kumar"]
+          + _firm("Delta Securities Limited", 4))),
+    _col((1, _firm("Gamma Securities Limited", 3, grievance=False, contact=False)),
+         (2, ["Investor grievance e-mail: grievance@gamma.com", "Contact person: Mohan Das"])),
+]
+TWO_EMAILS = [_col((1, _firm("Alpha Capital Limited", 1) + ["E-mail: other@beta.com"]
+                    + _firm("Beta Capital Limited", 2, grievance=False)))]
+DUPLICATE = [_col((1, _firm("Alpha Capital Limited", 1) + _firm("Beta Capital Limited", 2)
+                   + _firm("Alpha Capital Limited", 5)))]
+
+
+def synthetic(streams):
+    cols = [gi.blocks(s, "firm", single_column=len(streams) == 1) for s in streams]
+    log = []
+    gi.resolve_carries(cols, log)
+    bls = [bl for c in cols for bl in c]
+    names = {gi.name_key(gi.entity_of(b)) for b in bls if gi.entity_of(b)}
+    lm, rows = gi.brlm_answer(bls, names, "", set(), log)
+    return lm, rows, log
 
 
 def table_failures():
@@ -161,6 +212,16 @@ def table_failures():
                 if x["name"].startswith("Nomura")), {})
     if not (nom.get("contact_person") and nom.get("sebi_reg_no")):
         fails.append("[link tail] Symbiotec Nomura lost contact / SEBI no.: %s" % nom)
+    lm, rows, _ = synthetic(ALPHA_GAMMA)
+    alpha = next(r for r in rows if r["name"].startswith("Alpha"))
+    if lm or alpha["grievance_email"] or alpha["reasons"].get("grievance_email") != "page_break_unattributed":
+        fails.append("[page break] Gamma's carried lines filed under Alpha: %s %s" % (lm, alpha))
+    lm, rows, _ = synthetic(GRID)
+    if not lm or {r["name"][:5]: r["grievance_email"] for r in rows}.get("Gamma") != "grievance@gamma.com":
+        fails.append("[page break] provable grid carry not taken home: %s %s" % (lm, rows))
+    lm, rows, _ = synthetic(TWO_EMAILS)
+    if lm:
+        fails.append("[refusal] a refused value left the BRLM list resolved: %s" % lm)
     return fails
 
 
@@ -169,7 +230,8 @@ def test_every_line_shape_block_and_page_row_passes():
 
 
 FLAGS = ["STRIP_ALIAS", "STRIP_MARKS", "STRIP_LABEL_PREFIX", "ENTITY_DIGITS", "JOIN_WRAPPED_NAME", "SKIP_PROSE",
-         "PIN_TOLERANT", "LINK_CONTINUATION", "COVER_CELLS", "CLEAN_INPUT", "ALIAS_ONLY_LINE", "CONTACT_SPLIT"]
+         "PIN_TOLERANT", "LINK_CONTINUATION", "COVER_CELLS", "CLEAN_INPUT", "ALIAS_ONLY_LINE", "CONTACT_SPLIT",
+         "JOIN_NEEDS_PRINT", "PAGE_BREAK_CLOSES", "REFUSAL_UNRESOLVES"]
 
 
 @pytest.mark.parametrize("flag", FLAGS)
@@ -259,11 +321,22 @@ def test_extractor_emits_the_rebuilt_brlm_fields():
     assert "lead_manager_sebi_reg" not in f      # four BRLMs: no single registration number
 
 
-def test_extractor_one_brlm_carries_its_own_registration_number():
+def test_extractor_one_brlm_with_a_refused_value_leaves_the_list_unresolved():
+    # SRIT prints the BRLM phone "+91 22 6706 9999 (7919)": refused -> the list is unresolved (review round 1),
+    # the firm's row still answers per field
     f = run_doc("srit-india-ltd")
-    assert f["lead_managers"]["value"] == ["Choice Capital Advisors Private Limited"]
-    reg = f["lead_manager_sebi_reg"]["value"]
-    assert reg == f["brlm_contacts"]["value"][0]["sebi_reg_no"] and re.fullmatch(r"INM\d{9}", reg)
+    assert f["lead_managers"]["value"] is None and "lead_manager_sebi_reg" not in f
+    row = f["brlm_contacts"]["value"][0]
+    assert row["name"] == "Choice Capital Advisors Private Limited" and re.fullmatch(r"INM\d{9}", row["sebi_reg_no"])
+    assert row["reasons"]["phone"] == "phone_format"
+
+
+def test_extractor_one_brlm_carries_its_own_registration_number(monkeypatch):
+    row = dict(name="Alpha Capital Limited", page=4, sebi_reg_no="INM000000001", contact_person=None, phone=None,
+               email=None, grievance_email=None, reasons={})
+    f = _wire(monkeypatch, dict(lead_managers=["Alpha Capital Limited"], brlm_rows=[row]))
+    assert f["lead_managers"]["value"] == ["Alpha Capital Limited"]
+    assert f["lead_manager_sebi_reg"]["value"] == "INM000000001"
 
 
 def test_extractor_without_word_positions_answers_null_never_today_s_reader():
@@ -277,3 +350,82 @@ def test_extractor_keeps_today_s_registrar_and_officer_fields():
     for n in ("registrar_name", "registrar_sebi_reg", "registrar_contact_person", "registrar_website",
               "registrar_phone", "registrar_email", "compliance_officer", "company_phone", "company_address"):
         assert with_words.get(n) == without.get(n), n
+
+
+# ---------- review round 1 ----------
+def test_a_firm_running_onto_the_next_page_top_left_is_never_filed_under_the_left_firm():
+    lm, rows, log = synthetic(ALPHA_GAMMA)
+    alpha = next(r for r in rows if r["name"] == "Alpha Capital Limited")
+    gamma = next(r for r in rows if r["name"] == "Gamma Securities Limited")
+    assert lm is None
+    assert alpha["grievance_email"] is None and alpha["contact_person"] is None
+    assert alpha["reasons"]["grievance_email"] == "page_break_unattributed"
+    assert gamma["grievance_email"] is None
+    assert any("left unattributed" in x for x in log)
+
+
+def test_a_grid_carry_with_one_consistent_home_goes_home():
+    lm, rows, _ = synthetic(GRID)
+    by = {r["name"]: r for r in rows}
+    assert lm == ["Alpha Capital Limited", "Delta Securities Limited", "Gamma Securities Limited"]
+    assert by["Alpha Capital Limited"]["grievance_email"] == "grievance@alpha.com"
+    assert by["Gamma Securities Limited"]["contact_person"] == "Mohan Das"
+
+
+def test_nse_real_blocks_crossing_pages_89_to_91_are_attributed_by_the_print():
+    r = read("national-stock-exchange-of-india-ltd")
+    rows = {x["name"]: x for x in r["fields"]["brlm_rows"]}
+    assert rows["Avendus Capital Private Limited"]["grievance_email"] == "investorgrievance@avendus.com"
+    assert rows["Axis Capital Limited"]["sebi_reg_no"] == "INM000012029"
+    assert rows["360 ONE WAM Limited"]["email"] == "nse.ipo@360.one"
+
+
+def test_a_refusal_inside_a_brlm_block_leaves_the_list_unresolved_and_names_its_reason():
+    lm, rows, _ = synthetic(TWO_EMAILS)
+    by = {r["name"]: r for r in rows}
+    assert lm is None
+    assert by["Alpha Capital Limited"]["email"] is None
+    assert by["Alpha Capital Limited"]["reasons"]["email"] == "two_values_in_block"
+    assert by["Beta Capital Limited"]["email"] == "ipo@beta.com"            # its own row stays, under no list
+
+
+def test_a_firm_printed_in_two_blocks_is_refused_whole():
+    lm, rows, _ = synthetic(DUPLICATE)
+    alpha = [r for r in rows if r["name"] == "Alpha Capital Limited"]
+    assert lm is None and len(alpha) == 1
+    assert all(alpha[0][f] is None for f, _k in gi.ROW_FIELDS)
+    assert set(alpha[0]["reasons"].values()) == {"duplicate_firm_blocks"}
+
+
+def test_a_refused_phone_carries_its_reason_and_an_unprinted_field_is_a_miss():
+    srit = read("srit-india-ltd")["fields"]["brlm_rows"][0]           # printed "+91 22 6706 9999 (7919)"
+    assert srit["phone"] is None and srit["reasons"]["phone"] == "phone_format"
+    _lm, rows, _ = synthetic(TWO_EMAILS)
+    beta = next(r for r in rows if r["name"] == "Beta Capital Limited")
+    assert beta["reasons"] == {"grievance_email": "label_not_found"}
+
+
+def _wire(monkeypatch, fields):
+    monkeypatch.setattr(gi, "read_general_information",
+                        lambda *a, **k: dict(section={}, fields=fields, log=[], reason=None))
+    emit = ef.Emitter("x.pdf")
+    ef._read_general_information([], emit, lambda i: None, ())
+    return emit.fields
+
+
+def test_extractor_refuses_both_blocks_of_a_firm_name_seen_twice(monkeypatch):
+    row = dict(name="Alpha Capital Limited", page=1, sebi_reg_no="INM000000001", contact_person=None, phone=None,
+               email=None, grievance_email="a@alpha.com", reasons={})
+    f = _wire(monkeypatch, dict(brlm_rows=[row, dict(row, grievance_email="b@alpha.com")]))
+    assert f["brlm_grievance_emails"]["value"] is None and f["brlm_contacts"]["value"] is None
+    assert f["brlm_contacts"]["check"]["detail"].startswith("brlm_firm_in_two_blocks")
+
+
+def test_extractor_registrar_grievance_refusal_is_told_from_a_miss(monkeypatch):
+    reg = dict(name="R", grievance_email=None, page=3, refused_value="x@r.com",
+               reasons={"grievance_email": "copies_disagree"})
+    rec = _wire(monkeypatch, dict(brlm_rows=[], registrar=reg))["registrar_grievance_email"]
+    assert rec["state"] == "REFUSED" and rec["check"]["detail"] == "copies_disagree"
+    reg = dict(name="R", grievance_email=None, page=3, reasons={"grievance_email": "label_not_found"})
+    rec = _wire(monkeypatch, dict(brlm_rows=[], registrar=reg))["registrar_grievance_email"]
+    assert rec["state"] == "MISSED" and rec["check"]["detail"] == "label_not_found"

@@ -3182,23 +3182,37 @@ def _read_general_information(page_texts, emit, grid_words_for_page, ocr_pages):
         else:
             emit.put("lead_manager_sebi_reg", reg, rows[0]["page"], "sebi_reg_inm_form",
                      cover_block.check_sebi_reg(reg, "INM"))
+    # The registrar's grievance e-mail answers like any scalar field: a value, the reader's refusal (state
+    # REFUSED, its reason as the detail) or a plain miss (label_not_found / no registrar block).
+    reg = f.get("registrar") or {}
+    why = (reg.get("reasons") or {}).get("grievance_email")
+    if reg.get("grievance_email"):
+        emit.put("registrar_grievance_email", reg["grievance_email"], reg["page"], "email_form",
+                 cover_block.check_email(reg["grievance_email"]))
+    elif why and why not in general_information.MISS_REASONS:
+        emit.refuse("registrar_grievance_email", reg.get("refused_value"), reg.get("page"), "email_form", why)
+    else:
+        emit.null("registrar_grievance_email", why or "registrar_block_not_found")
+    names = [r["name"] for r in rows]
+    if len(set(names)) != len(names):
+        # one firm printed in two blocks: a name-keyed map would keep whichever came last (review round 1, item 4)
+        for n in ("brlm_grievance_emails", "brlm_contacts"):
+            emit.null(n, "brlm_firm_in_two_blocks: %s" % sorted({x for x in names if names.count(x) > 1}))
+        return
+    # general_information withholds every BRLM row while the list is unresolved (fail closed for the document)
+    why_none = ("brlm_list_unresolved: %s" if not lm else "brlm_blocks_unread: %s") % (log or "no_brlm_block")
     grievance = {r["name"]: r["grievance_email"] for r in rows if r.get("grievance_email")}
     if grievance:
         emit.put("brlm_grievance_emails", grievance, None, "grievance_email_in_firm_block",
                  (True, "%d of %d BRLM blocks" % (len(grievance), len(rows))))
     else:
-        emit.null("brlm_grievance_emails", "brlm_grievance_emails_unread: %s" % (log or "no_grievance_label"))
+        emit.null("brlm_grievance_emails", why_none if not rows else
+                  "brlm_grievance_emails_unread: %s" % (log or "no_grievance_label"))
     if rows:
         emit.put("brlm_contacts", [dict(r) for r in rows], rows[0]["page"], "brlm_block_values_format_checked",
                  (True, "%d BRLM block(s)%s" % (len(rows), "; refused: %s" % log if log else "")))
     else:
-        emit.null("brlm_contacts", "brlm_blocks_unread: %s" % (log or "no_brlm_block"))
-    reg = f.get("registrar") or {}
-    if reg.get("grievance_email"):
-        emit.put("registrar_grievance_email", reg["grievance_email"], reg["page"], "email_form",
-                 cover_block.check_email(reg["grievance_email"]))
-    else:
-        emit.null("registrar_grievance_email", "registrar_grievance_email_unread: %s" % (log or "no_registrar_block"))
+        emit.null("brlm_contacts", why_none)
 
 
 def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
