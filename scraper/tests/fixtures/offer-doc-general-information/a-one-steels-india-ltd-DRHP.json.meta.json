@@ -1,0 +1,8 @@
+{
+ "sourceUrl": "stored copy D:/Abhay/Ventures/IPODhan-doc-cache/a-one-steels-india-ltd/DRHP-0e249693.pdf",
+ "capturedAt": "2026-10-07",
+ "company": "A-ONE STEELS INDIA LIMITED",
+ "source": "pdfplumber page texts and grid_words (statement_grid.grid_words) of the stored PDF DRHP-0e249693.pdf",
+ "kept": "full text of cover pages, contents pages and the located General Information section; every other page as its first 3 + last 3 non-empty lines (what the page-furniture learner and the page-number offset read); grid words of the section and cover pages only",
+ "built_by": "make_gi_fixture.py from the 2026-10-07 GI cache; fixture read == whole-document read (asserted)"
+}

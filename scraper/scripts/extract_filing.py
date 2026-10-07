@@ -91,6 +91,7 @@ try:
     import offer_doc_statements  # rows 66/69 (D10), 75, 92, 102 and rent expense, offer documents
     import offer_doc_financials  # OD-173: located sections -> grids -> one dictionary -> copies validation
     import promoter_tables  # OD-173 section 2: capital-structure promoter tables, OD-174 / OD-175
+    import general_information  # OD-173 section 3: BRLM blocks + registrar grievance e-mail (GI attempt 4)
     import statement_grid
 except BaseException as _import_exc:  # noqa: BLE001
     _emit_memory_ceiling_and_exit(_import_exc)
@@ -3149,6 +3150,57 @@ def _read_offer_doc_tables(page_texts, emit, words_for_page):
                   if problems else "no_grievance_label_on_a_brlm_page")
 
 
+_GI_FIELDS = ("lead_managers", "lead_manager_sebi_reg", "brlm_grievance_emails", "brlm_contacts",
+              "registrar_grievance_email")
+
+
+def _read_general_information(page_texts, emit, grid_words_for_page, ocr_pages):
+    """OD-173 section 3. Replaces today's lead_managers / lead_manager_sebi_reg / brlm_grievance_emails with the
+    rebuilt reader's answer (never mixed with today's), and adds brlm_contacts (one row per BRLM block read:
+    name, sebi_reg_no, contact_person, phone, email, grievance_email, page) and registrar_grievance_email."""
+    gi = general_information.read_general_information(page_texts, grid_words_for_page, ocr_pages)
+    for n in _GI_FIELDS:
+        emit.fields.pop(n, None)
+    why = gi["reason"]
+    f = gi["fields"]
+    rows = f.get("brlm_rows") or []
+    log = "; ".join(gi["log"][:6])
+    lm = f.get("lead_managers")
+    if why:
+        for n in _GI_FIELDS:
+            emit.null(n, why)
+        return
+    if lm:
+        emit.put("lead_managers", lm, rows[0]["page"] if rows else None, "lead_manager_names_are_companies",
+                 cover_block.check_firm_names(lm))
+    else:
+        emit.null("lead_managers", "lead_managers_general_information_unread: %s" % (log or "no_brlm_block"))
+    if lm and len(lm) == 1:
+        reg = rows[0].get("sebi_reg_no") if rows else None
+        if reg is None:
+            emit.null("lead_manager_sebi_reg", "lead_manager_sebi_reg_not_found")
+        else:
+            emit.put("lead_manager_sebi_reg", reg, rows[0]["page"], "sebi_reg_inm_form",
+                     cover_block.check_sebi_reg(reg, "INM"))
+    grievance = {r["name"]: r["grievance_email"] for r in rows if r.get("grievance_email")}
+    if grievance:
+        emit.put("brlm_grievance_emails", grievance, None, "grievance_email_in_firm_block",
+                 (True, "%d of %d BRLM blocks" % (len(grievance), len(rows))))
+    else:
+        emit.null("brlm_grievance_emails", "brlm_grievance_emails_unread: %s" % (log or "no_grievance_label"))
+    if rows:
+        emit.put("brlm_contacts", [dict(r) for r in rows], rows[0]["page"], "brlm_block_values_format_checked",
+                 (True, "%d BRLM block(s)%s" % (len(rows), "; refused: %s" % log if log else "")))
+    else:
+        emit.null("brlm_contacts", "brlm_blocks_unread: %s" % (log or "no_brlm_block"))
+    reg = f.get("registrar") or {}
+    if reg.get("grievance_email"):
+        emit.put("registrar_grievance_email", reg["grievance_email"], reg["page"], "email_form",
+                 cover_block.check_email(reg["grievance_email"]))
+    else:
+        emit.null("registrar_grievance_email", "registrar_grievance_email_unread: %s" % (log or "no_registrar_block"))
+
+
 def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
                 doc_type=None, tables_for_page=None, words_for_page=None,
                 grid_words_for_page=None, ocr_pages=()):
@@ -3295,6 +3347,12 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # Spec rows 148-151, 158 and 161-165: the BRLM track record tables, each BRLM's grievance
     # e-mail and the WACA period table, read off the offer document's own layouts.
     _read_offer_doc_tables(page_texts, emit, words_for_page)
+    # OD-173 section 3 (plan 2026-10-07, GI attempt 4 DECISION): the book running lead managers, each BRLM's
+    # SEBI no. / contact person / phone / e-mail / grievance e-mail, and the registrar's grievance e-mail come from
+    # the rebuilt General Information reader. Run AFTER the readers above, so every other field (the registrar's
+    # name / SEBI no. / contact / website, the compliance officer, the company contacts, the BRLM track record)
+    # keeps today's code path and today's input unchanged.
+    _read_general_information(page_texts, emit, grid_words_for_page, ocr_pages)
     # W-133 MAJOR-3: `pnl["status"]` (shared core's own OK/PARTIAL verdict —
     # every headline P&L metric present for >= 2 fiscal years) can be PARTIAL
     # even when every per-field check above passed, e.g. a single-fiscal-year

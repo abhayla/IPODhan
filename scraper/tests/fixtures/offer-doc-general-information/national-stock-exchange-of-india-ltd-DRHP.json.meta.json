@@ -1,0 +1,8 @@
+{
+ "sourceUrl": "stored copy D:/Abhay/Ventures/IPODhan-doc-cache/national-stock-exchange-of-india-ltd/DRHP-d88fad44-75ce-4d90-aec7-2bb9f97aa734.pdf",
+ "capturedAt": "2026-10-07",
+ "company": "NATIONAL STOCK EXCHANGE OF INDIA LIMITED",
+ "source": "pdfplumber page texts and grid_words (statement_grid.grid_words) of the stored PDF DRHP-d88fad44-75ce-4d90-aec7-2bb9f97aa734.pdf",
+ "kept": "full text of cover pages, contents pages and the located General Information section; every other page as its first 3 + last 3 non-empty lines (what the page-furniture learner and the page-number offset read); grid words of the section and cover pages only",
+ "built_by": "make_gi_fixture.py from the 2026-10-07 GI cache; fixture read == whole-document read (asserted)"
+}

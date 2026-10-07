@@ -162,8 +162,10 @@ class RunWiring(unittest.TestCase):
         names = [r["brlm"] for r in f["brlm_track_record"]["value"]]
         self.assertIn("DAM Capital Advisors Limited", names)
         self.assertNotIn("Kotak Mahindra Capital Company Limited", names)
+        # OD-173 section 3: the BRLM grievance e-mails come from the rebuilt General Information reader,
+        # which reads word positions; these text-only pages have none.
         self.assertEqual(f["brlm_grievance_emails"]["check"]["detail"],
-                         "brlm_grievance_emails_unread: ['no_document_brlm_list']")
+                         "general_information_no_word_positions")
 
 
 # ------------------------------------------------- step-3b review fixes (B1-B4)

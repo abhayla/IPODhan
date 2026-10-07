@@ -214,7 +214,11 @@ def test_refused_phone_reaches_the_envelope_as_refused():
 def test_run_carries_the_fields_for_an_rhp_and_for_a_price_band_ad():
     env = run(load("rkfal-sme-rhp"), "RHP", "rkfal.pdf", segment="SME")
     assert env["fields"]["registrar_name"]["value"] == "Cameo Corporate Services Limited"
-    assert env["fields"]["lead_managers"]["value"] == ["Affinity Global Capital Market Private Limited"]
+    # OD-173 section 3: an offer document's BRLM list comes from the rebuilt General Information reader, which
+    # reads word positions; this text-only fixture has none, so the run answers null with that reason (never
+    # today's cover reader). The cover reader's own BRLM read is tested on read_cover_block above.
+    assert env["fields"]["lead_managers"]["value"] is None
+    assert env["fields"]["lead_managers"]["check"]["detail"] == "general_information_no_word_positions"
     # Item 39 round 2 (spec 2.5.6 item 2, "the price band advert ... where printed"): the advert
     # carries the cover reader's answers too. They are RHP-family fields, so the persister never
     # writes them from an advert (OD-96, filing-persister documentMayWriteField).
