@@ -221,8 +221,10 @@ describe('s7a — flag ON routes each table through the consolidator', () => {
     const promoterRows = consolidate.mock.calls.find((c) => c[1] === 'promoters')?.[2] as {
       data: Record<string, unknown>;
     }[];
+    // isPromoterGroup is offered only when the document states it (promoter_rows); this fixture
+    // carries no promoter_rows, so an unstated default is not provenanced as a fact.
     expect(Object.keys(promoterRows[0].data).sort()).toEqual(
-      ['isPromoterGroup', 'name', 'sharesHeld', 'waca', 'wacaLastYear'].sort()
+      ['name', 'sharesHeld', 'waca', 'wacaLastYear'].sort()
     );
 
     const peerRows = consolidate.mock.calls.find((c) => c[1] === 'peer_companies')?.[2] as {

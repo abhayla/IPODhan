@@ -136,7 +136,10 @@ export const COLUMN_EXTRACTOR_FIELDS: Readonly<Record<string, Readonly<Record<st
   },
   promoters: {
     name: ['promoter_names', 'promoter_name'],
-    waca: ['promoter_selling_shareholders', 'promoter_waca'],
+    waca: ['promoter_rows', 'promoter_selling_shareholders', 'promoter_waca'],
+    sharesHeld: ['promoter_rows'],
+    wacaLastYear: ['promoter_rows'],
+    isPromoterGroup: ['promoter_rows'],
   },
   ipo_risk_factors: { seq: ['risk_factors'], heading: ['risk_factors'], body: ['risk_factors'], kpis: ['risk_factors'] },
   peer_companies: Object.fromEntries(

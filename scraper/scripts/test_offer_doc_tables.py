@@ -189,15 +189,29 @@ class WacaGroupGate(unittest.TestCase):
         self.assertEqual(got["page"], 105)
 
     def test_a_promoter_caption_is_read(self):
-        # Minimal edits: no no-promoter sentence, and the caption names the Promoters.
+        # Minimal edits: no no-promoter sentence, and the caption names the Promoters only.
+        def edit(i, t):
+            if i != 105:
+                return t
+            return (t.replace(_NO_PROMOTER, "Our Company has a promoter")
+                    .replace("transacted by the Selling Shareholders and",
+                             "transacted by our Promoters in three years and"))
+        got = odt.read_acquisition_ranges(_nse_pages(edit))
+        self.assertEqual(got["rows"]["1Y"]["waca"], 1909.02)
+        self.assertIn("Promoters", got["group"])
+
+    def test_od174_promoters_with_special_rights_holders_is_not_the_promoters_table(self):
+        # OD-174 (owner, 2026-10-07): the caption names the Promoters TOGETHER with the shareholders
+        # entitled to special rights -> rows 161-165 null, caption_mixes_groups. (Before OD-174 this
+        # caption was read as the promoters' table.)
         def edit(i, t):
             if i != 105:
                 return t
             return (t.replace(_NO_PROMOTER, "Our Company has a promoter")
                     .replace("transacted by the Selling Shareholders and", "transacted by our Promoters and"))
         got = odt.read_acquisition_ranges(_nse_pages(edit))
-        self.assertEqual(got["rows"]["1Y"]["waca"], 1909.02)
-        self.assertIn("Promoters", got["group"])
+        self.assertIsNone(got["rows"])
+        self.assertTrue(got["reason"].startswith("caption_mixes_groups"), got["reason"])
 
     def test_never_the_first_caption_a_later_promoter_caption_wins(self):
         # Minimal edits: no no-promoter sentence; a promoter table (p107, 1Y WACA 1,111.11) after

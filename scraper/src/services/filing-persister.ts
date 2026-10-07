@@ -69,7 +69,7 @@ import {
   CROSS_DOC_TOLERANCE,
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
-import { clearRereadAnswers, type RereadClearResult, type RereadExecutor } from './reread-answer-clear.js';
+import { clearRereadAnswers, NOT_PRINTED_REASON, REREAD_RULE_ID, type RereadClearResult, type RereadExecutor } from './reread-answer-clear.js';
 import { mappedField } from './filing-clearable-columns.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -1422,28 +1422,38 @@ export async function persistFilingExtraction(
   // its provenance is a document source with a known document type that this document outranks.
   // Everything else is kept: no provenance, a website or ADMIN source, an unknown document type, the
   // same document, an equal rank without both filing dates, or a provenance read that fails.
+  // This document against the offer document a stored provenance row names, in the post-issue
+  // order (OD-30 filing date within a type, OD-154). `outranks` true: this document outranks it;
+  // false: it outranks this one; null: they cannot be told apart. Throws on a read failure.
+  const compareWithStoredDocument = async (lin: {
+    docType?: string | null;
+    documentId?: string | null;
+  }): Promise<{ outranks: boolean | null; reason: string }> => {
+    let storedType = lin.docType ?? null;
+    let storedFiling: string | Date | null = null;
+    let selfFiling: string | Date | null = null;
+    if (deps.listingPrecedence) {
+      const { selfFilingDate, others } = await deps.listingPrecedence.listingDocuments(ipoId, options.documentId ?? null);
+      selfFiling = selfFilingDate;
+      const doc = lin.documentId ? others.find((o) => o.id === lin.documentId) : undefined;
+      if (doc) {
+        storedType ??= doc.docType;
+        storedFiling = doc.filingDate;
+      }
+    }
+    if (!storedType) return { outranks: null, reason: 'stored document type unknown' };
+    return compareDocumentsForField(
+      { docType: storedType, documentId: lin.documentId ?? null, filingDate: storedFiling },
+      { docType: options.docType, documentId: options.documentId ?? null, filingDate: selfFiling },
+      'POST_ISSUE'
+    );
+  };
   const laterDocumentSupersedes = async (tableName: string, column: string): Promise<string | null> => {
     try {
       const prior = await deps.fieldSources.findByField(ipoId, tableName, column);
       if (!prior || !DOCUMENT_PATH_SOURCES.has(String(prior.source))) return null;
-      const lin = (prior.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null };
-      let storedType = lin.docType ?? null;
-      let storedFiling: string | Date | null = null;
-      let selfFiling: string | Date | null = null;
-      if (deps.listingPrecedence) {
-        const { selfFilingDate, others } = await deps.listingPrecedence.listingDocuments(ipoId, options.documentId ?? null);
-        selfFiling = selfFilingDate;
-        const doc = lin.documentId ? others.find((o) => o.id === lin.documentId) : undefined;
-        if (doc) {
-          storedType ??= doc.docType;
-          storedFiling = doc.filingDate;
-        }
-      }
-      if (!storedType) return null;
-      const { outranks, reason } = compareDocumentsForField(
-        { docType: storedType, documentId: lin.documentId ?? null, filingDate: storedFiling },
-        { docType: options.docType, documentId: options.documentId ?? null, filingDate: selfFiling },
-        'POST_ISSUE'
+      const { outranks, reason } = await compareWithStoredDocument(
+        (prior.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null }
       );
       return outranks === true ? reason : null;
     } catch {
@@ -3086,28 +3096,272 @@ export async function persistFilingExtraction(
       return true;
     });
 
+  // OD-173 section 2 (rows 110-112, 152-153; OD-175 for the one-year cost): `promoter_rows` is one
+  // row per promoter the document declares, read from its capital-structure tables. Each row's
+  // figures attach to the declared promoter whose row key equals the row's own key. Fail closed: two
+  // rows that normalise to one key attach nothing for that key, a row naming a promoter the document
+  // does not declare attaches nothing, a cost that is not a positive number is null (row 111: a nil
+  // cost is null, never 0) and a share count that is not a whole non-negative number is null.
+  type PromoterTableRow = {
+    name?: unknown;
+    is_promoter_group?: unknown;
+    shares_held?: unknown;
+    waca?: unknown;
+    waca_last_year?: unknown;
+    reasons?: Record<string, unknown> | null;
+  };
+  const tableRowsByKey = new Map<string, PromoterTableRow>();
+  const ambiguousTableKeys = new Set<string>();
+  for (const r of list<PromoterTableRow>(extraction, 'promoter_rows')) {
+    const k = r && typeof r.name === 'string' ? rowKeyForName(r.name) : null;
+    if (k === null) continue;
+    if (tableRowsByKey.has(k) || ambiguousTableKeys.has(k)) {
+      tableRowsByKey.delete(k);
+      ambiguousTableKeys.add(k);
+      continue;
+    }
+    tableRowsByKey.set(k, r);
+  }
+  for (const k of ambiguousTableKeys) {
+    skippedFailedCheck.push(`promoters ${k} (promoter_rows: two rows normalise to this promoter; no figure attached)`);
+  }
+  const positiveCost = (v: unknown): string | null =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v.toString() : null;
+  const wholeShares = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null;
+  // is_promoter_group is a stated fact only when the reader says so. promoter_tables.py emitted
+  // False for every row (it is not read from a table), so `false` counts only with the reader's own
+  // reason for it; `true` is never a default. Unstated: no receipt and no write of its own (the
+  // column is NOT NULL: a stored row keeps its value, a new row takes the schema default).
+  const statedGroup = (t: PromoterTableRow | undefined): boolean | undefined => {
+    if (!t) return undefined;
+    if (t.is_promoter_group === true) return true;
+    const why = t.reasons?.is_promoter_group;
+    if (t.is_promoter_group === false && typeof why === 'string' && why.trim() !== '') return false;
+    return undefined;
+  };
+
+  // Spec §6 rule 4, "Answer states for a re-read of the same document (OD-153, OD-158)":
+  //   | Newer reader's answer for the field                             | V                                        |
+  //   | reads a value and the READER refuses it ... (OD-153, OD-160)    | cleared, reason = the refusal            |
+  //   | STATES the document does not print the field (OD-158)           | cleared, reason "current reader: not printed" |
+  //   | misses the label (pattern found nothing)                        | kept                                     |
+  //   | the field is absent from the newer output, or ... no answer state | kept                                   |
+  //   | V is admin-held (any answer)                                    | kept                                     |
+  //   "A row whose lineage records no extractor version is treated as unknown and is never cleared."
+  // That table is for V stored FROM THIS SAME DOCUMENT. A V another document stored is never cleared
+  // by this document's refusal or miss; a stated absence clears it only when this document outranks
+  // that one (OD-30, OD-154; equal or unknown rank keeps). Admin-held: the whole replace is refused
+  // below (replaceAllowed) and an admin-owned list is never replaced (OD-107), so V is kept.
+  // The reader's answer per column is promoter_rows[].reasons. Refusals are the reasons
+  // promoter_tables.py emits after reading a value and rejecting it (copies disagree, a single copy
+  // its check refused, an OD-175 check). Everything else that is not on the stated-absence list
+  // (stated-absence-reasons.json, e.g. bonus_nil) is a miss or unknown, and keeps. Deliberately kept:
+  // `shares_held_not_validated` and `single_copy_shares_cell_unvalidated`, which the reader also
+  // emits when only the shares figure was missed, so they cannot tell a refusal from a miss.
+  const PROMOTER_REFUSAL_REASONS: readonly RegExp[] = [
+    /^copies_disagree\b/,
+    /^single_copy_unconfirmed$/,
+    /^single_copy_expected$/,
+    /^holding_table_total_identity$/,
+    /^shares_held_not_a_number$/,
+    /^one_year_heading_not_printed$/,
+    /^unit_not_rupees_per_share$/,
+    /^row_not_a_declared_promoter$/,
+    /^shares_acquired_exceed_shares_held\b/,
+  ];
+  type PromoterAnswer = { state: 'REFUSED' | 'STATED_NOT_PRINTED'; reason: string; extractorReason: string } | null;
+  const promoterAnswer = (t: PromoterTableRow | undefined, reasonKey: string): PromoterAnswer => {
+    const why = t?.reasons?.[reasonKey];
+    if (typeof why !== 'string') return null;
+    if (isStatedAbsenceReason(why)) return { state: 'STATED_NOT_PRINTED', reason: NOT_PRINTED_REASON, extractorReason: why };
+    if (PROMOTER_REFUSAL_REASONS.some((re) => re.test(why))) {
+      return { state: 'REFUSED', reason: `current reader refused: ${why}`, extractorReason: why };
+    }
+    return null;
+  };
+  const PROMOTER_ROW_COLUMNS = [
+    ['sharesHeld', 'shares_held'],
+    ['waca', 'waca'],
+    ['wacaLastYear', 'waca_last_year'],
+  ] as const;
+
   if (namesWithKeys.length > 0) {
-    const rows: PromoterInsert[] = namesWithKeys.map(({ name, key }) => ({
-      ipoId,
-      name,
-      // Item 1 slice s1 (row-key prep, F-74): the future row key
-      // (docs/design/build-cards/item-01-child-table-consolidated-writer.md).
-      normalizedName: key as string,
-      // promoter_shares_held is the AGGREGATE promoter holding; assigning it to
-      // one named promoter would invent a per-person figure the ad never
-      // printed. Left null; the aggregate goes to ipo_details.promoter_shares_held
-      // (W-88, migration 0049).
-      sharesHeld: null,
-      waca:
-        (wacaByName.get(name) ?? (names.length === 1 ? soloWaca : null))?.toString() ?? null,
-      wacaLastYear: null,
-      isPromoterGroup: false,
-    }));
-    // isPromoterGroup is this module's default and sharesHeld is never per-person: not printed.
-    rows.forEach((row, i) =>
-      childReceipts('promoters', namesWithKeys[i].key, row as unknown as Record<string, unknown>, ['name', 'waca'])
-    );
-    if (await replaceAllowed('promoters', { name: null, sharesHeld: null, waca: null })) {
+    const fromTable: Array<PromoterTableRow | undefined> = [];
+    // The columns whose value THIS document produced, per row: they get receipts and keyed provenance.
+    const produced: Array<Set<string>> = [];
+    // isPromoterGroup is optional here: unstated, it is not written (see statedGroup).
+    type PromoterWrite = Omit<PromoterInsert, 'isPromoterGroup'> & { isPromoterGroup?: boolean };
+    const rows: PromoterWrite[] = namesWithKeys.map(({ name, key }, i) => {
+      const t = tableRowsByKey.get(key as string);
+      fromTable[i] = t;
+      const legacyWaca = (wacaByName.get(name) ?? (names.length === 1 ? soloWaca : null))?.toString() ?? null;
+      const row: PromoterWrite = {
+        ipoId,
+        name,
+        // Item 1 slice s1 (row-key prep, F-74): the future row key
+        // (docs/design/build-cards/item-01-child-table-consolidated-writer.md).
+        normalizedName: key as string,
+        // Per promoter, only from the promoter's own row of the holding table (promoter_rows).
+        // The AGGREGATE promoter_shares_held still goes to ipo_details.promoter_shares_held (W-88).
+        sharesHeld: t ? wholeShares(t.shares_held) : null,
+        waca: (t ? positiveCost(t.waca) : null) ?? legacyWaca,
+        wacaLastYear: t ? positiveCost(t.waca_last_year) : null,
+      };
+      const group = statedGroup(t);
+      if (group !== undefined) row.isPromoterGroup = group;
+      produced[i] = new Set(
+        (['sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup'] as const).filter(
+          (c) => (row as Record<string, unknown>)[c] !== null && (row as Record<string, unknown>)[c] !== undefined
+        )
+      );
+      return row;
+    });
+    // Receipts before any kept value is filled in, so a stored value is never credited to this
+    // document. A column from promoter_rows names promoter_rows as its source text.
+    rows.forEach((row, i) => {
+      const key = namesWithKeys[i].key;
+      const r = row as unknown as Record<string, unknown>;
+      const t = fromTable[i];
+      const tableWacaUsed = t !== undefined && positiveCost(t.waca) !== null;
+      childReceipts('promoters', key, r, tableWacaUsed ? ['name'] : ['name', 'waca']);
+      if (t) {
+        const cols = ['sharesHeld', 'wacaLastYear', ...(tableWacaUsed ? ['waca'] : [])];
+        if (produced[i].has('isPromoterGroup')) cols.push('isPromoterGroup');
+        childReceipts('promoters', key, r, cols, ['promoter_rows']);
+      }
+    });
+
+    // OD-30 / OD-154: the stored list is replaced only by a document that does not rank below the
+    // one that wrote it. A DRHP never replaces another document's list (drhpOutranked, F-244); any
+    // other document whose stored list's document outranks it keeps that list. A provenance read
+    // that fails keeps the stored list.
+    const promotersOutranked = async (): Promise<boolean> => {
+      if (await drhpOutranked('promoters', 'rows')) return true;
+      try {
+        const prior = await deps.fieldSources.findByField(ipoId, 'promoters', 'rows');
+        if (!prior || !DOCUMENT_PATH_SOURCES.has(String(prior.source))) return false;
+        const { outranks, reason } = await compareWithStoredDocument(
+          (prior.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null }
+        );
+        if (outranks !== false) return false;
+        skippedLowerPriority.push(`promoters (the stored list's document outranks this one: ${reason}; OD-30, OD-154)`);
+        return true;
+      } catch {
+        skippedLowerPriority.push('promoters (provenance unreadable; kept the stored list)');
+        return true;
+      }
+    };
+
+    // The replace deletes every promoter row before inserting, so a per-promoter column this run has
+    // no value for would be rewritten to null. Such a column keeps the stored value of the same
+    // promoter (row key), unless the answer-state table above clears it. A promoter the stored rows
+    // do not hold gets nothing; a stored read that fails refuses the replace (fail closed). A stored
+    // promoter this document no longer declares is not carried over: the later document's list
+    // replaces the earlier one (OD-30, OD-154), unless an admin owns the list (OD-107, enforced
+    // inside replacePromoters).
+    const clearedColumns: Array<{ key: string; column: string; answer: NonNullable<PromoterAnswer> }> = [];
+    const decideStoredColumn = async (key: string, column: string, answer: PromoterAnswer): Promise<boolean> => {
+      if (answer === null) return false;
+      try {
+        const origin = await deps.fieldSources.findByField(ipoId, 'promoters', column, key);
+        if (!origin || !DOCUMENT_PATH_SOURCES.has(String(origin.source))) return false;
+        const lin = (origin.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null; extractorVersion?: string | null };
+        if (!lin.extractorVersion) return false;
+        if (lin.documentId && options.documentId && lin.documentId === options.documentId) return true;
+        if (answer.state !== 'STATED_NOT_PRINTED') return false;
+        return (await compareWithStoredDocument(lin)).outranks === true;
+      } catch {
+        return false;
+      }
+    };
+    const keepStoredPromoterColumns = async (target: PromoterWrite[]): Promise<boolean> => {
+      if (typeof deps.promoters.listPromotersByIpo !== 'function') return true;
+      const storedByKey = new Map<string, PromoterInsert>();
+      try {
+        for (const stored of await deps.promoters.listPromotersByIpo(ipoId)) {
+          const k = rowKeyForName(stored.name);
+          if (k !== null) storedByKey.set(k, stored as unknown as PromoterInsert);
+        }
+      } catch (error) {
+        logger.error({ ipoId, error: (error as Error)?.message }, '[FilingPersister] stored promoters rows unreadable');
+        skippedNoColumn.push(
+          `promoters (stored rows unreadable: ${(error as Error)?.message ?? 'unknown'}; replace refused so stored per-promoter columns are not wiped)`
+        );
+        return false;
+      }
+      for (let i = 0; i < target.length; i++) {
+        const row = target[i] as Record<string, unknown>;
+        const key = row.normalizedName as string;
+        const stored = storedByKey.get(key) as Record<string, unknown> | undefined;
+        if (!stored) continue;
+        if (row.isPromoterGroup === undefined && typeof stored.isPromoterGroup === 'boolean') {
+          row.isPromoterGroup = stored.isPromoterGroup;
+        }
+        for (const [col, reasonKey] of PROMOTER_ROW_COLUMNS) {
+          if ((row[col] !== null && row[col] !== undefined) || stored[col] == null) continue;
+          const answer = promoterAnswer(fromTable[i], reasonKey);
+          if (await decideStoredColumn(key, col, answer)) {
+            clearedColumns.push({ key, column: col, answer: answer as NonNullable<PromoterAnswer> });
+            continue;
+          }
+          row[col] = stored[col];
+        }
+      }
+      return true;
+    };
+    const recordClears = async (): Promise<void> => {
+      for (const { key, column, answer } of clearedColumns) {
+        skippedFailedCheck.push(`promoters ${key}.${column} cleared (${answer.reason})`);
+        logger.info({ ipoId, rowKey: key, column, reason: answer.reason }, '[FilingPersister] promoter column cleared by the reader answer (OD-153, OD-158)');
+        if (!deps.fieldExtractionFailures) continue;
+        try {
+          await deps.fieldExtractionFailures.recordFailure({
+            ipoId,
+            tableName: 'promoters',
+            fieldName: column,
+            rowKey: key,
+            documentId: options.documentId ?? null,
+            ruleId: answer.state === 'REFUSED' ? REREAD_RULE_ID.REFUSED : REREAD_RULE_ID.STATED_NOT_PRINTED,
+            rankAttempted: source,
+            extractedValue: null,
+            cause: `${options.docType} promoter_rows: ${answer.reason} (${answer.extractorReason})`,
+          });
+        } catch (error) {
+          logger.error({ ipoId, rowKey: key, column, error: (error as Error)?.message }, '[FilingPersister] promoter clear reason not recorded');
+        }
+      }
+    };
+    // Keyed provenance names the document that produced each per-promoter value, so a later read of
+    // the same document can tell its own value from another document's (the answer-state table).
+    // Best-effort, like trackField: a provenance failure never costs the written row.
+    const trackProducedColumns = async (): Promise<void> => {
+      for (let i = 0; i < rows.length; i++) {
+        for (const col of produced[i]) {
+          try {
+            await deps.fieldSources.trackFieldUpdate({
+              ipoId,
+              tableName: 'promoters',
+              rowKey: namesWithKeys[i].key as string,
+              fieldName: col,
+              source,
+              confidence: 100,
+              dataLineage: lineage,
+              updatedBy: 'FILING_PERSISTER',
+            });
+          } catch (error) {
+            logger.error({ ipoId, column: col, error: (error as Error)?.message }, '[FilingPersister] promoter column provenance not written');
+          }
+        }
+      }
+    };
+
+    let promotersRefused = false;
+    if (await promotersOutranked()) {
+      promotersRefused = true;
+    } else if (
+      await replaceAllowed('promoters', { name: null, sharesHeld: null, waca: null, wacaLastYear: null, isPromoterGroup: null })
+    ) {
       if (apply) {
         // Item 1 slice s7a. Row key = `rowKeyForName(name)`, matching
         // `unique_promoters_ipo_id_normalized_name` on (ipo_id, normalized_name).
@@ -3121,11 +3375,21 @@ export async function persistFilingExtraction(
           ['name', 'sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup'],
           ['sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup']
         );
-        await deps.promoters.replacePromoters(ipoId, rows);
-        await trackField('promoters', 'rows');
-        await resolveEmptySection('promoters');
+        if (await keepStoredPromoterColumns(rows)) {
+          await deps.promoters.replacePromoters(ipoId, rows as PromoterInsert[]);
+          await trackField('promoters', 'rows');
+          await trackProducedColumns();
+          await recordClears();
+          await resolveEmptySection('promoters');
+        } else {
+          promotersRefused = true;
+          for (const { key } of namesWithKeys) {
+            unresolvedChildRows.push(`promoters ${key as string} (stored-rows-unreadable; replace refused)`);
+          }
+          await markChildRowsUnresolved('promoters', 'stored-rows-unreadable');
+        }
       }
-      bump(written, 'promoters', rows.length);
+      if (!promotersRefused) bump(written, 'promoters', rows.length);
     }
   } else {
     await recordEmptySection('promoters', ['promoter_names', 'promoter_name']);

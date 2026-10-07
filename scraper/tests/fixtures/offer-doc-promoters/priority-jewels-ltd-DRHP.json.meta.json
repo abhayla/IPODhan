@@ -1,0 +1,5 @@
+{
+ "source": "pdfplumber page texts and grid_words (statement_grid.grid_words) of the stored PDF DRHP-6a9906a2.pdf",
+ "kept": "cover pages 0-3, contents pages, located section first pages, every page the promoter reader plans, every page with the period-table caption or a no-identifiable-promoter statement; other pages are absent",
+ "built_by": "make_prom_fixture.py from the 2026-10-07 capital-structure cache; fixture read == whole-document read (asserted)"
+}
