@@ -1,0 +1,1 @@
+{"date": "2026-10-04", "type": "decision", "summary": "Owner moved the fix loop to the laptop (real read+save code into ipodhan_test); staging confirms batches. Added run-one-document.ts and seed-test-db.mjs; measure script reads ipodhan_test.", "evidence": "owner answer 'Laptop -> ipodhan_test'; parity: 213/213 staging receipts reproduced, 0 value differences"}
