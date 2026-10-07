@@ -69,8 +69,26 @@ def test_continuation_page_with_other_years_is_not_read():
     assert "eps" not in r["metrics"]
 
 
+# OD-173: the envelope's EPS fields come from the rebuilt reader, which needs word boxes. These two tests run
+# the REAL NSE DRHP fixture with word boxes (scraper/tests/fixtures/offer-doc-financials/), not the text-only
+# pages above (no word boxes -> nothing read, by design).
+OD_FIX = os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures", "offer-doc-financials",
+                      "national-stock-exchange-of-india-ltd-DRHP.json")
+
+
+def _load_boxed_nse_drhp():
+    import json
+    import statement_grid
+    with io.open(OD_FIX, encoding="utf-8") as handle:
+        fx = json.load(handle)
+    gw = {int(k): {"width": v["width"], "words": [dict(zip(statement_grid.WORD_KEYS, w)) for w in v["words"]]}
+          for k, v in fx["grid_words"].items()}
+    return fx, gw
+
+
 def test_rhp_envelope_gives_basic_and_diluted_from_a_combined_row():
-    f = run(pages(), "DRHP", "fixture")["fields"]
+    fx, gw = _load_boxed_nse_drhp()
+    f = run([tuple(p) for p in fx["page_texts"]], "DRHP", fx["source_doc"], grid_words_for_page=gw.get)["fields"]
     assert f["eps_basic_by_fy"]["state"] == "VALUE"
     assert {int(k): v for k, v in f["eps_basic_by_fy"]["value"].items()} == NSE_EPS
     assert f["eps_diluted_by_fy"]["state"] == "VALUE"
@@ -78,8 +96,13 @@ def test_rhp_envelope_gives_basic_and_diluted_from_a_combined_row():
 
 
 def test_a_basic_only_row_gives_no_diluted():
-    texts = dict(pages())
-    basic_only = texts[79].replace("Basic & Diluted (₹) 41.62", "Basic (₹) 41.62")
-    f = run([(78, texts[78]), (79, basic_only)], "DRHP", "fixture")["fields"]
+    # Minimal edit of the real fixture: the restated P&L's (p287) "Basic & Diluted" labels, in the page text and
+    # in the word boxes, read "Basic & Basic": no row is labelled Diluted on the statement.
+    fx, gw = _load_boxed_nse_drhp()
+    for w in gw[287]["words"]:
+        if w["text"] == "Diluted":
+            w["text"] = "Basic"
+    texts = [(i, t.replace("Basic & Diluted", "Basic & Basic") if i == 287 else t) for i, t in fx["page_texts"]]
+    f = run(texts, "DRHP", fx["source_doc"], grid_words_for_page=gw.get)["fields"]
     assert {int(k): v for k, v in f["eps_basic_by_fy"]["value"].items()} == NSE_EPS
-    assert f.get("eps_diluted_by_fy", {}).get("value") is None
+    assert f["eps_diluted_by_fy"]["state"] == "MISSED" and f["eps_diluted_by_fy"]["value"] is None

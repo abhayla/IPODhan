@@ -155,11 +155,26 @@ def test_blank_borrowings_cell_is_not_zero():
 
 
 # ---------------------------------------------------------------- wiring through extract_rhp
+def _nse_drhp_envelope_fields():
+    # OD-173: RoNW year rows, operating cash flow, rent and total borrowing are the rebuilt reader's (it needs
+    # word boxes), so they are read from the REAL NSE DRHP fixture with word boxes; the weighted RoNW and the
+    # debt-to-equity ratio stay _read_offer_doc_statements' and are asserted in the same envelope.
+    import statement_grid
+    path = os.path.join(FIX, "..", "offer-doc-financials", "national-stock-exchange-of-india-ltd-DRHP.json")
+    with open(path, encoding="utf-8") as fh:
+        fx = json.load(fh)
+    gw = {int(k): {"width": v["width"], "words": [dict(zip(statement_grid.WORD_KEYS, w)) for w in v["words"]]}
+          for k, v in fx["grid_words"].items()}
+    out = EF.run([tuple(p) for p in fx["page_texts"]], "DRHP", fx["source_doc"], grid_words_for_page=gw.get)
+    assert out["unit"] == "millions"
+    return out["fields"]
+
+
 def test_extract_rhp_emits_the_six_fields_for_the_nse_drhp():
-    emit = EF.Emitter("DRHP-d88fad44.pdf")
-    EF._read_offer_doc_statements(pages("nse-drhp-pages"), emit, NSE_FY, 78, "millions")
-    v = {k: emit.fields[k]["value"] for k in ("ronw_by_fy", "weighted_average_ronw", "op_cash_flow_by_fy",
-                                               "rent_by_fy", "total_borrowing", "debt_to_equity")}
+    f = _nse_drhp_envelope_fields()
+    keys = ("ronw_by_fy", "weighted_average_ronw", "op_cash_flow_by_fy", "rent_by_fy", "total_borrowing",
+            "debt_to_equity")
+    v = {k: f[k]["value"] for k in keys}
     assert v == {
         "ronw_by_fy": {"2026": 33.21, "2025": 45.14, "2024": 37.6},
         "weighted_average_ronw": 37.92,
@@ -168,7 +183,15 @@ def test_extract_rhp_emits_the_six_fields_for_the_nse_drhp():
         "total_borrowing": 0.0,
         "debt_to_equity": 0.0,
     }
-    assert all(emit.fields[k]["check"]["passed"] for k in v)
+    assert all(f[k]["check"]["passed"] for k in keys)
+
+
+def test_the_statements_reader_no_longer_emits_the_rebuilt_readers_fields():
+    emit = EF.Emitter("DRHP-d88fad44.pdf")
+    EF._read_offer_doc_statements(pages("nse-drhp-pages"), emit, NSE_FY, 78, "millions")
+    assert emit.fields["weighted_average_ronw"]["value"] == 37.92
+    for k in ("ronw_by_fy", "op_cash_flow_by_fy", "rent_by_fy", "total_borrowing"):
+        assert k not in emit.fields, k
 
 
 def test_extract_rhp_path_calls_the_offer_doc_readers():
@@ -276,10 +299,14 @@ def test_a5_unit_line_of_an_earlier_table_on_the_page_is_not_this_tables():
 
 
 def test_a5_debt_to_equity_is_null_whenever_total_borrowing_is_null():
+    # Step-3a review A5, same exact assertion on the new source: the stored total borrowing is the rebuilt
+    # reader's. With it absent (as when the unit is unknown) the statement's ratio is nulled with its reason.
     emit = EF.Emitter("DRHP-d88fad44.pdf")
+    emit.null("total_borrowing", "unit_unknown")
     EF._read_offer_doc_statements(pages("nse-drhp-pages"), emit, NSE_FY, 78, None)
     assert emit.fields["total_borrowing"]["value"] is None
     assert emit.fields["debt_to_equity"]["value"] is None
+    assert emit.fields["debt_to_equity"]["check"]["detail"] == "debt_to_equity_without_total_borrowing"
 
 
 def test_a5_d13_consolidated_capitalisation_statement_wins():

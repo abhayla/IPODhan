@@ -36,20 +36,16 @@ def field(envelope, name):
 
 def _with_statement(monkeypatch, years, pnl_text=None):
     """#771 round 3: the ratio column is chosen by the statement period the
-    stored net worth / EPS belong to, which the shared P&L core reports. The
-    fixture carries only the ratio note, so the core's answer is pinned."""
+    stored net worth / EPS belong to. Since OD-173 that period comes from the
+    rebuilt financial reader (offer_doc_financials via
+    extract_filing._read_rebuilt_financials); the fixture carries only the
+    ratio note, so the reader's answer is pinned at that seam. When a basis
+    header text is given, the revenue copy's source page points at it."""
     import extract_filing
 
-    real = extract_filing.extract_pnl_from_texts
-
-    def fake(page_texts, **kwargs):
-        out = real(page_texts, **kwargs)
-        out["annualYears"] = list(years)
-        if pnl_text is not None:
-            out["pnlPage"] = 9999
-        return out
-
-    monkeypatch.setattr(extract_filing, "extract_pnl_from_texts", fake)
+    revenue = {"source": {"FY%d" % max(years): "p9999"}} if pnl_text is not None and years else {}
+    fin = {"fiscal_years": sorted(years, reverse=True), "fields": {"revenue": revenue}, "single": {}}
+    monkeypatch.setattr(extract_filing, "_read_rebuilt_financials", lambda *a, **k: fin)
     extra = [(9999, pnl_text)] if pnl_text is not None else []
     return pages() + extra
 
@@ -131,3 +127,13 @@ def test_a_single_year_statement_header_is_not_a_statement_period(monkeypatch):
     got = field(envelope, "current_ratio")
     assert got["value"] is None, got
     assert got["check"]["detail"] == "ratio_statement_period_unknown", got
+
+
+def test_a_reader_with_no_fiscal_years_leaves_both_ratios_null_with_a_reason(monkeypatch):
+    """OD-173 deliberate behaviour: when the rebuilt reader reads NO fiscal years the
+    statement period is unknown, so the ratios are null with a reason, never a guessed period."""
+    envelope = run(_with_statement(monkeypatch, []), "RHP", "prasol.txt")
+    for name in ("current_ratio", "inventory_turnover"):
+        got = field(envelope, name)
+        assert got["value"] is None, got
+        assert got["check"]["detail"] == "ratio_statement_period_unknown", got

@@ -45,19 +45,13 @@ def json_pages(name):
 
 
 def _statement_years(monkeypatch, years, basis_header=None):
-    """The ratio fixtures carry only the ratio note, so the P&L core's fiscal
-    years (and, when given, its basis header) are pinned - the same device
+    """The ratio fixtures carry only the ratio note, so the fiscal years (and,
+    when given, the basis header's page) are pinned at the OD-173 seam
+    (extract_filing._read_rebuilt_financials) - the same device
     test_extract_filing_ratio_wiring.py uses."""
-    real = extract_filing.extract_pnl_from_texts
-
-    def fake(page_texts, **kwargs):
-        out = real(page_texts, **kwargs)
-        out["annualYears"] = list(years)
-        if basis_header is not None:
-            out["pnlPage"] = 9999
-        return out
-
-    monkeypatch.setattr(extract_filing, "extract_pnl_from_texts", fake)
+    revenue = {"source": {"FY%d" % max(years): "p9999"}} if basis_header is not None and years else {}
+    fin = {"fiscal_years": sorted(years, reverse=True), "fields": {"revenue": revenue}, "single": {}}
+    monkeypatch.setattr(extract_filing, "_read_rebuilt_financials", lambda *a, **k: fin)
     return [(9999, basis_header)] if basis_header is not None else []
 
 
