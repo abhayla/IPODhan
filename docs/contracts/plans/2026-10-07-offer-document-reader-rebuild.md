@@ -196,3 +196,11 @@ if the value is printed on that page and passes step 4.
 - GI attempt 4 (reopened because its blocking core is now proven): furniture removal as input + the two other set-3
   classes (contact persons wrapped on separate lines; an alias-only line) through the shared classifier; scored on a
   NEW blind set of 4 DRHPs fetched from staging (blind sets 1-3 are used).
+- GI attempt 4 RESULT: 0 wrong on all five sets - tuning 224/0/38 (today 102/3/157), used sets 1-3 86/0/21, 84/0/28,
+  147/0/36, and blind set 4 (Manika, Annu, Lumino, Steamhouse; scored cold) 62/0/27 (today 48/1/40).
+- DECISION (supervisor, plan rule: a family moves to the new reader only with 0 wrong AND found >= today):
+  NEW READER for BRLM names (lead_managers) and each BRLM's SEBI no., contact person, phone, e-mail, grievance e-mail;
+  registrar grievance e-mail. KEEP TODAY'S reader for registrar name / SEBI / contact / website, compliance officer
+  fields, and company phone / e-mail / website (today finds more there; today's wrong company phone / website recorded
+  as F-249). PARKED: company address, registrar phone / e-mail.
+- Next: product build of the NEW-READER families (same pattern as sections 1-2), Tier A review, test-DB proof.

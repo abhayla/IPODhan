@@ -2374,6 +2374,14 @@
       "area": "offer documents (data finding, not code)",
       "title": "One offer document can print two different values for the same financial field in different sections; a reader that takes the first one saves an arbitrary value",
       "detail": "Measured 2026-10-07 (OD-173 rebuild step 3b, section-located grids): Asset Reconstruction Company DRHP net worth 2,663.14 crore in the Offer Document Summary vs 2,767.80 in a Basis for Offer Price table (the standalone figure - today's reader stores it); ARC RoNW 12.95 vs 12.15; Jindal Supreme DRHP RoNW 38.85 (Basis for Offer Price) vs 32.52 (Other Financial Information); Orient Cables DRHP total borrowings 1,152.69 (Offer Document Summary) vs 1,134.50 (Capitalisation Statement). The rebuild refuses such a field (stores nothing) instead of choosing. Open for owner decision only if a section precedence rule is wanted (e.g. consolidated Offer Document Summary first); a finding never changes a decision by itself."
+    },
+    {
+      "id": "F-249",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "scraper/scripts/extract_filing.py (today's General Information / cover contact readers)",
+      "title": "Today's offer-document reader saves wrong company and compliance-officer contacts: another entity's phone or website, or a malformed copy",
+      "detail": "Measured 2026-10-07 against blind answer keys built from the PDFs (OD-173 General Information work, 23 DRHPs over five key sets): today's reader saved a wrong company phone on 2 sets (AceVector +91 0124473980, the PDF's own malformed copy; Manika +91 22 4223 4300 where the key is +91 260 297 7910), a wrong company website on 1 set (German Green saved the registrar's www.bigshareonline.com), a wrong compliance-officer phone on the tuning set (Jindal saved the company landline 016 6223 6500; the General Information section prints +91 9996970561), and wrong lead-manager lists on 2 sets (Symbiotec 1 of 4 firms; Tempsens only JM Financial). The rebuilt General Information reader had 0 wrong on all five sets; it now owns BRLM names and contacts and the registrar grievance e-mail, while company phone / e-mail / website stay on today's reader because the new one finds fewer - so these wrong values remain possible until the company-contact family is rebuilt."
     }
   ],
   "false_assertions": [
