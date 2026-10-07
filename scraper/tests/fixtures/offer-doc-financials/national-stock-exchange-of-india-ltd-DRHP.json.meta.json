@@ -1,0 +1,5 @@
+{
+ "source": "pdfplumber page texts (post-OCR, as the reader receives them) and grid_words (statement_grid.grid_words) of the stored PDF DRHP-d88fad44-75ce-4d90-aec7-2bb9f97aa734.pdf",
+ "kept": "contents pages, located section first pages, every page the OD-173 reader plans or reads, and the page after each statement page; other pages are absent (read as blank)",
+ "built_by": "make_fixture.py from the 2026-10-07 step-5 cache; fixture read == whole-document read"
+}

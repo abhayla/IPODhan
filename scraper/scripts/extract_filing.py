@@ -91,6 +91,8 @@ try:
     )
     import issuer_balance_rows  # OD-165 item 46: reuses the financials module's column helpers
     import offer_doc_statements  # rows 66/69 (D10), 75, 92, 102 and rent expense, offer documents
+    import offer_doc_financials  # OD-173: located sections -> grids -> one dictionary -> copies validation
+    import statement_grid
 except BaseException as _import_exc:  # noqa: BLE001
     _emit_memory_ceiling_and_exit(_import_exc)
 
@@ -2930,49 +2932,101 @@ def _fill_price_independent_counts(blob, cover_page, emit, doc_type):
             emit.fields[name] = got
 
 
-def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):
-    """RoNW (year rows + weighted average), operating cash flow, rent expense, and the
-    capitalisation statement's total borrowing / debt-to-equity. Each a value or a named reason."""
-    ronw = offer_doc_statements.read_ronw_block(cleaned)
-    series, page, why = ronw["ronw_by_fy"]
-    if series is None:
-        emit.null("ronw_by_fy", why, page)
+# OD-173 rebuild: output field <- interpreted field, value kind. Shapes are the pre-rebuild ones
+# ({"2025": value} in the document unit; per-share and percent values as printed).
+REBUILT_SERIES = (
+    ("revenue_by_fy", "revenue", "money"), ("total_income_by_fy", "total_income", "money"),
+    ("pat_by_fy", "profit", "money"), ("ebitda_by_fy", "ebitda", "money"),
+    ("net_worth_by_fy", "net_worth", "money"), ("total_assets_by_fy", "total_assets", "money"),
+    ("reserves_by_fy", "reserves_and_surplus", "money"), ("op_cash_flow_by_fy", "op_cash_flow", "money"),
+    ("rent_by_fy", "rent_expense", "money"), ("eps_basic_by_fy", "eps_basic", "per_share"),
+    ("eps_diluted_by_fy", "eps_diluted", "per_share"), ("ronw_by_fy", "ronw", "percent"),
+)
+REBUILT_HEADLINE = ("revenue", "total_income", "profit", "eps_basic")
+
+
+def _read_rebuilt_financials(page_texts, grid_words_for_page, ocr_pages):
+    """The OD-173 reader's interpreted fields, or None when no word boxes can be had (text-only callers)."""
+    if grid_words_for_page is None:
+        return None
+    return offer_doc_financials.read_financials(page_texts, grid_words_for_page, ocr_pages)
+
+
+def _emit_rebuilt_financials(fin, emit, unit):
+    """Every financial field the rebuilt reader owns: a value read from agreeing printed copies, or null with the
+    reader's reason (a refusal names the disagreeing copies, F-248). Never a value from another reader."""
+    for name, key, kind in REBUILT_SERIES:
+        if fin is None:
+            emit.null(name, "word_boxes_unavailable: the financial reader needs PDF word positions")
+            continue
+        rec = fin["fields"].get(key) or {}
+        if kind == "money" and unit is None and rec.get("values"):
+            emit.null(name, "unit_unknown", offer_doc_financials.source_page(rec))
+            continue
+        series = offer_doc_financials.fy_series(rec, kind, unit)
+        if not series:
+            why = rec.get("missed") or ("only stub periods printed (D11): %s" % sorted(rec.get("values") or {}))
+            emit.null(name, "rebuilt_reader: %s" % why, offer_doc_financials.source_page(rec))
+            continue
+        copies = rec.get("copies") or {}
+        detail = "OD-173 reader, %d fiscal years %s; printed copies per year %s; latest from %s" % (
+            len(series), sorted(series), {k[2:]: n for k, n in sorted(copies.items()) if k.startswith("FY")},
+            (rec.get("source") or {}).get("FY%s" % max(series)))
+        put = emit.put_c_money if kind == "money" else (lambda u, *a: emit.put(*a))
+        put(unit, name, series, offer_doc_financials.source_page(rec), "%s_printed_copies_agree" % name,
+            (True, detail))
+    if fin is None:
+        emit.null("total_borrowing", "word_boxes_unavailable: the financial reader needs PDF word positions")
+        return
+    single = fin["single"].get("total_borrowing") or {}
+    if single.get("value") is None:
+        emit.null("total_borrowing", "rebuilt_reader: %s" % single.get("missed", "not read"))
     else:
-        emit.put("ronw_by_fy", series, page, "ronw_block_rows",
-                 (True, "%d fiscal years %s" % (len(series), sorted(series))))
+        rec = fin["fields"].get("total_borrowing") or {}
+        emit.put_c_money(unit, "total_borrowing",
+                         offer_doc_financials.to_doc_unit(single["value"], "money", unit) if unit else None,
+                         offer_doc_financials.source_page(rec, "FY%s" % single["fy"]),
+                         "total_borrowing_printed_total",
+                         (True, "OD-173 reader: printed total borrowings as at March 31, %s (%s)" % (
+                             single["fy"], single.get("source"))))
+
+
+def _rebuilt_financial_status(fin):
+    """OK when every headline P&L field was read for >= 2 fiscal years (the pre-rebuild status rule), else PARTIAL."""
+    if fin is None:
+        return "PARTIAL"
+    ok = all(sum(1 for k in (fin["fields"].get(f, {}).get("values") or {}) if k.startswith("FY")) >= 2
+             for f in REBUILT_HEADLINE)
+    return "OK" if ok else "PARTIAL"
+
+
+def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):
+    """The weighted average RoNW and the capitalisation statement's debt-to-equity, each a value or a named reason.
+    RoNW year rows, operating cash flow, rent expense and total borrowing are the OD-173 reader's
+    (_emit_rebuilt_financials); the readers below are not run for them."""
+    ronw = offer_doc_statements.read_ronw_block(cleaned)
     value, page, why = ronw["weighted_average_ronw"]
     if value is None:
         emit.null("weighted_average_ronw", why, page)
     else:
         emit.put("weighted_average_ronw", value, page, "weighted_ronw_matches_year_rows",
                  (True, "printed %s reproduced from the year rows and weights" % value))
-    for name, reader in (("op_cash_flow_by_fy", offer_doc_statements.read_op_cash_flow),
-                         ("rent_by_fy", offer_doc_statements.read_rent_expense)):
-        if unit is None:
-            emit.null(name, "unit_unknown")
-            continue
-        series, page, why = reader(cleaned, fiscal_years, pnl_page, unit)
-        if series is None:
-            emit.null(name, why, page)
-        else:
-            emit.put_c_money(unit, name, series, page, "%s_year_series" % name,
-                             check_fy_series(series, fiscal_years))
     assets = (emit.fields.get("total_assets_by_fy") or {}).get("value") or {}
     latest = str(max(fiscal_years)) if fiscal_years else None
     cap = offer_doc_statements.read_capitalisation(
         cleaned, fiscal_years, unit, total_assets_latest=assets.get(latest) if latest else None)
-    value, page, why = cap["total_borrowing"]
-    if value is None:
-        emit.null("total_borrowing", why, page)
-    else:
-        emit.put_c_money(unit, "total_borrowing", value, page,
-                         "total_borrowing_capitalisation_statement",
-                         (True, "pre-offer total borrowings as at March 31, %s" % latest))
+    cap_total = cap["total_borrowing"][0]
+    stored_total = (emit.fields.get("total_borrowing") or {}).get("value")
     value, page, why = cap["debt_to_equity"]
-    if (emit.fields.get("total_borrowing") or {}).get("value") is None and value is not None:
+    if stored_total is None and value is not None:
         # Step-3a review A5: debt_to_equity never stands without the total borrowing it was read
         # with (D10's 0 is defined by it); a total nulled here (unit unknown) nulls the ratio too.
         emit.null("debt_to_equity", "debt_to_equity_without_total_borrowing", page)
+    elif value is not None and (cap_total is None or abs(cap_total - stored_total) > 0.01):
+        # OD-173: the ratio is read beside the capitalisation statement's total; it stands only when
+        # that total is the one the rebuilt reader stored.
+        emit.null("debt_to_equity", "debt_to_equity_total_differs_from_stored_total: %s vs %s"
+                  % (cap_total, stored_total), page)
     elif value is None:
         emit.null("debt_to_equity", why, page)
     else:
@@ -3033,28 +3087,19 @@ def _read_offer_doc_tables(page_texts, emit, words_for_page):
 
 
 def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
-                doc_type=None, tables_for_page=None, words_for_page=None):
-    # Strip the rupee glyphs before the shared core: prospectuses write
+                doc_type=None, tables_for_page=None, words_for_page=None,
+                grid_words_for_page=None, ocr_pages=()):
+    # Strip the rupee glyphs before the text readers: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
-    # match across the glyph, so it would silently fall back to the SME default.
-    # Money parsing is unaffected (the glyph is never part of a number token).
+    # match across the glyph. Money parsing is unaffected (the glyph is never part of a number token).
     cleaned = [(i, re.sub(r"[`₹]", " ", t or "")) for i, t in page_texts]
-    # W-129: issue_size_rupees (from the caller's --issue-size / the IPO's known
-    # issue size) backs the shared core's net_worth_vs_issue_size and
-    # unit_matches_magnitude checks. None when not supplied — those checks then
-    # report passed=None (not evaluated), never a false rejection.
-    # W-148: the segment decides the year-on-year plausibility band — an SME
-    # issuer legitimately grows far faster than the mainboard band allows.
-    # D11 wrapped header: the word boxes of a titled P&L page no text-only reading reads.
-    pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees,
-                                 segment=segment, words_for_page=words_for_page)
-    fiscal_years = pnl.get("annualYears") or []
-    metrics = pnl.get("metrics") or {}
-    # MAJOR-1 (C7): do NOT trust `pnl["unit"]` — the shared module's own detector
-    # silently defaults to "lakhs" when no "in <unit>" line is found (that default
-    # exists only so numeric column alignment never crashes; it is not a claim the
-    # unit is known). This extractor does its own presence check, over every page
-    # including the cover, and writes null when no explicit unit line exists.
+    # OD-173: the financial fields come from ONE reader - the located sections' tables read from word
+    # positions, one label dictionary, every printed copy checked (offer_doc_financials.py). OCR pages
+    # carry no word positions of their own and are refused there, never read from OCR text.
+    fin = _read_rebuilt_financials(page_texts, grid_words_for_page, ocr_pages)
+    fiscal_years = fin["fiscal_years"] if fin else []
+    # MAJOR-1 (C7): the document unit is an explicit unit line, over every page including the cover;
+    # null when none exists (never a default).
     unit, unit_page = _find_unit(cleaned)
 
     emit.put("fiscal_years", fiscal_years, None, "fiscal_years_consecutive",
@@ -3099,18 +3144,9 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
         emit.null("promoter_name", "our_promoters_statement_not_on_cover")
         emit.null("promoter_names", "our_promoters_statement_not_on_cover")
 
-    for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
-                      ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
-                      ("ebitda", "ebitda_by_fy"), ("netWorth", "net_worth_by_fy")):
-        series = {str(k): v for k, v in (metrics.get(key) or {}).items()}
-        emit.put_c_money(unit, name, series or None, None, "%s_year_series" % name,
-                          check_fy_series(series, fiscal_years))
-    # Rows 118-119 (C6): a "Basic & Diluted" EPS row prints ONE figure for both, so the diluted series is
-    # that same series. A plain "Basic" row says nothing about diluted EPS, so nothing is emitted for it.
-    eps_series = {str(k): v for k, v in (metrics.get("eps") or {}).items()}
-    if eps_series and pnl.get("epsCombined"):
-        emit.put_c_money(unit, "eps_diluted_by_fy", eps_series, None, "eps_diluted_by_fy_year_series",
-                          check_fy_series(eps_series, fiscal_years))
+    # OD-173: revenue, total income, PAT, EBITDA, net worth, EPS (basic, diluted), total assets, reserves,
+    # operating cash flow, rent, RoNW and total borrowing - all from the rebuilt reader.
+    _emit_rebuilt_financials(fin, emit, unit)
 
     # The RHP cover states its own date: "RED HERRING PROSPECTUS / Dated: August 25, 2026".
     rhp_date = None
@@ -3125,39 +3161,11 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     emit.put("rhp_filing_date", rhp_date, rhp_page, "rhp_filing_date_on_cover",
              (rhp_date is not None, "%s" % rhp_date))
 
-    # W-33: surface the shared core's named plausibility checks, and the metric it
-    # rejected, instead of silently emitting a number that failed one.
-    # W-129: a check can report passed=None ("not evaluated" — e.g.
-    # net_worth_vs_issue_size / unit_matches_magnitude with no --issue-size
-    # supplied). Emitter.put's bool(passed) would coerce that to a false/failed
-    # field; skip emitting it instead, so "not evaluated" never reads as a pass
-    # OR a fail.
-    for chk in pnl.get("checks") or []:
-        if chk["passed"] is None:
-            continue
-        emit.put("financial_plausibility_%s" % chk["name"], chk["passed"] or None, None,
-                 chk["name"], (chk["passed"], chk["detail"]))
-    # When no unit line exists at all, put_c_money has already nulled every money
-    # field with the C7 reason `unit_unknown`; do not overwrite that clearer
-    # classification with the same finding worded as a plausibility failure.
-    for key, reason in ((pnl.get("rejected") or {}) if unit is not None else {}).items():
-        name = {"revenue": "revenue_by_fy", "totalIncome": "total_income_by_fy",
-                "profit": "pat_by_fy", "eps": "eps_basic_by_fy",
-                "ebitda": "ebitda_by_fy", "netWorth": "net_worth_by_fy"}.get(key)
-        if name:
-            emit.put(name, None, None, "plausibility_rejected", (False, reason))
-
-    # OD-165 (item 46), spec §1.4 rows 65/67/68: the statement's TOTAL ASSETS and reserves
-    # ("Other equity" under Ind AS) rows, and the issuer's Return on Equity KPI row.
-    for name, (series, page, why) in issuer_balance_rows.read_balance_totals(
-            cleaned, pnl.get("pnlPage")).items():
-        if series is None:
-            emit.null(name, why, page)
-        else:
-            emit.put_c_money(unit, name, series, page, "%s_year_series" % name,
-                             (True, "%d years %s" % (len(series), sorted(series))))
+    # OD-165 (item 46), spec §1.4 row 68: the issuer's Return on Equity KPI row (total assets and
+    # reserves are the OD-173 reader's). Its PAT cross-check takes the PAT the rebuilt reader stored.
+    pat = (emit.fields.get("pat_by_fy") or {}).get("value") or {}
     roe, roe_page, roe_why = issuer_balance_rows.read_roe(cleaned, fiscal_years,
-                                                          metrics.get("profit"))
+                                                          {int(k): v for k, v in pat.items()} or None)
     if roe is None:
         emit.null("roe_by_fy", roe_why, roe_page)
     else:
@@ -3166,7 +3174,8 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
 
     # Spec rows 66/69 (D10), 75, 92, 102 and the rent-expense row: offer-document readers
     # (offer_doc_statements.py), never the price band advertisement's flat-row readers.
-    _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl.get("pnlPage"), unit)
+    pnl_page = offer_doc_financials.source_page((fin or {}).get("fields", {}).get("revenue") or {})
+    _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit)
 
     # E5: objects of the offer — the price band advertisement has no objects
     # section at all, so this is an RHP-only field.
@@ -3273,7 +3282,6 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # at least two fiscal years, check_min_two_fiscal_years): the period is unknown
     # and the ratio is a named miss, never a stale year's value.
     latest_period = (max(fiscal_years), 3, 31) if len(fiscal_years) >= 2 else None
-    pnl_page = pnl.get("pnlPage")
     stored_basis = financial_ratios.statement_basis(
         next((t for i, t in page_texts if i == pnl_page), "")) if pnl_page is not None else None
     for name in ("current_ratio", "inventory_turnover"):
@@ -3313,7 +3321,7 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
               "current_assets,inventories,current_liabilities")
 
     return {"unit": unit, "fiscal_years": fiscal_years,
-            "financial_status": pnl.get("status")}
+            "financial_status": _rebuilt_financial_status(fin)}
 
 
 # --------------------------------------------------------------------------- #
@@ -3486,8 +3494,11 @@ def read_offer_doc_bid_windows(page_texts, emit):
 
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
         issue_size_rupees=None, tables_for_page=None, unread_pages=None,
-        ocr_render=None, words_for_page=None):
-    """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
+        ocr_render=None, words_for_page=None, grid_words_for_page=None):
+    """`grid_words_for_page(i)` (OD-173): {'width', 'words'} of page i (statement_grid.grid_words), the word
+    positions the financial reader builds its grids from; None -> the financial fields are null with that reason.
+
+    `ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
     came from OCR rather than from the PDF's own text layer. `issue_size_rupees`
     (W-129) backs the net_worth_vs_issue_size / unit_matches_magnitude checks —
     None when the caller has no issue size to pass.
@@ -3510,7 +3521,9 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     else:
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
                            segment=segment, doc_type=doc_type,
-                           tables_for_page=tables_for_page, words_for_page=words_for_page)
+                           tables_for_page=tables_for_page, words_for_page=words_for_page,
+                           grid_words_for_page=grid_words_for_page,
+                           ocr_pages={int(p) for p in (ocr_confidence or {})})
         # F-242 / OD-164: an offer document prints the offer terms the advert reader reads
         # (designated exchange, book-building regulation, UPI mandate end time, allocation
         # portions), and those fields' manifest family includes it. Read with the offer
@@ -3740,9 +3753,20 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
             finally:
                 page.close()
 
+    def grid_words_for_page(index):
+        """OD-173: the word positions (and page width) the financial grids are built from, ONE page at a
+        time on the same memory footing as tables_for_page."""
+        with pdfplumber.open(pdf_path) as one:
+            page = one.pages[index]
+            try:
+                return statement_grid.grid_words(page)
+            finally:
+                page.close()
+
     return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
                ocr_confidence or None, issue_size_rupees=issue_size_rupees,
                tables_for_page=tables_for_page, words_for_page=words_for_page,
+               grid_words_for_page=grid_words_for_page,
                unread_pages=unread_pages or None,
                ocr_render=ocr_render or None)
 
