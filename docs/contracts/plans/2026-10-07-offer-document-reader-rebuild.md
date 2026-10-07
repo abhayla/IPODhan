@@ -189,3 +189,10 @@ if the value is printed on that page and passes step 4.
   footers and page numbers (incl. spaced "P a g e", "Page N of M", company-name running heads) identified on every page
   of the 24 DRHPs and removed before any block reading. Proof: per document, furniture lines found; 0 furniture text in
   any extracted entity name / value; a sample of pages checked by eye. Only then a new GI attempt on a NEW blind set.
+- Page-furniture core PROVEN 2026-10-07 (spike session-2026-10-07/rebuild-furniture/): one generic rule (repetition across
+  pages + position, page numbers incl. "85 | P a g e", running heads printed on the cover / contents page), 24 DRHPs,
+  12,732 pages, 13,777 lines removed; all 478 A-One footers removed; 0 furniture in GI values (was 2) and in grid row
+  labels (was 11); 20 random pages read line by line: 0 content lines removed.
+- GI attempt 4 (reopened because its blocking core is now proven): furniture removal as input + the two other set-3
+  classes (contact persons wrapped on separate lines; an alias-only line) through the shared classifier; scored on a
+  NEW blind set of 4 DRHPs fetched from staging (blind sets 1-3 are used).
