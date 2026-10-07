@@ -47,9 +47,11 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
 
 ## Steps (each ends with a measured proof; a failed proof stops the build around it)
 
-1. **Core proof - section locator** (IN PROGRESS 2026-10-07): locate the restated-financials sections on all 24
-   DRHPs from the contents page. Bar: >= 23 of 24 located and verified (page opens with the section title).
-   Spike: `%TEMP%/claude-doc/rebuild/locate_spike.py`.
+1. **Core proof - section locator** -- PROVEN 2026-10-07: 24 of 24 DRHPs (incl. NSE DRHP + RHP) located and verified
+   (the located PDF page opens with the section title). Handles "TABLE OF CONTENT", "…" leaders, wrapped titles,
+   "98 | Page" footers, "SECTION V – FINANCIAL INFORMATION" without a "restated" line. Page offset = majority of
+   (pdf index - printed page number), 300-650 votes per document (Jindal weakest: 37). Also finds the summary
+   financials section where printed (6 documents). Spike: `session-2026-10-07/locate_spike.py`; results spike2.json.
 2. Table grid for the located statement pages (P&L, balance sheet, cash flow) on the 24 documents; bar: every
    statement page yields a grid whose header resolves or is refused, never guessed.
 3. Shared interpreter + label dictionary; bar: on the answer-key set, wrong = 0 and found >= today's baseline.
