@@ -406,6 +406,17 @@ def matched_rows(seg, declared):
     return out
 
 
+def cost_column_count(seg):
+    """how many value columns of the table are headed as an acquisition cost / price (not a count or a %)."""
+    width = max((len(r['cells']) for r in seg['rows'] if r['cells'] and r.get('cx1')), default=0)
+    n = 0
+    for j in range(1, width + 1):
+        h = column_header(seg, -j)
+        if WACA_COL.search(h) and not NOT_WACA_COL.search(h):
+            n += 1
+    return n
+
+
 def cost_table_refusal(seg):
     """None when the cost table's columns read as (shares, rupees per share), else the reason."""
     hdr, hsh = column_header(seg, -1), column_header(seg, -2)
@@ -494,6 +505,18 @@ def stated_group(seg, i):
     return None
 
 
+def group_flag(stated):
+    """(is_promoter_group, reason code) from every table heading's statement about one holder: one agreeing
+    statement -> (True, 'promoter_group_stated') / (False, 'not_promoter_group_stated'); none or conflicting
+    -> (None, None). The persister (filing-persister.ts statedGroup) saves False only with its code present
+    and never writes an unstated flag."""
+    s = set(stated)
+    if len(s) != 1:
+        return None, None
+    g = s.pop()
+    return g, ('promoter_group_stated' if g else 'not_promoter_group_stated')
+
+
 def collect(segs, declared):
     copies = {'shares': {}, 'waca': {}, 'waca_1y': {}, 'group': {}}
     holding, log = [], []
@@ -531,7 +554,8 @@ def collect(segs, declared):
                 else:
                     copies['waca_1y'].setdefault(who, []).append(
                         dict(v=wa, page=r['page'], acquired=sh, hdr=column_header(s, -1),
-                             hdr_acquired=column_header(s, -2)))
+                             hdr_acquired=column_header(s, -2), caption=s['ctx'],
+                             cost_columns=cost_column_count(s)))
         elif k == 'hold':
             why = holding_refusal(s)
             if why:
@@ -581,11 +605,14 @@ def one_year_checks(copy, who, held):
     """OD-175: a single printed one-year cost is saved only when (1) its heading states a one-year
     period, (2) the unit is rupees per share, (3) the row names a declared promoter (the caller matched
     it), (4) the shares acquired in that year do not exceed the shares held now. -> (ok, reason)."""
-    # (1) and (2) are read from the table's COLUMN HEADINGS (the cost column, and for the period also the
-    # shares-acquired column beside it), never from the caption or prose above the table.
+    # (1) the period is read from the COLUMN HEADINGS (the cost column, or the shares-acquired column beside
+    # it); OD-176: or from the table's caption when the table has exactly ONE acquisition-cost column (a
+    # caption cannot say which of two cost columns is the one-year one). (2) is read from the cost column's
+    # own heading.
     hdr = copy.get('hdr') or ''
     if not ONE_YEAR.search(hdr + ' ' + (copy.get('hdr_acquired') or '')):
-        return False, 'one_year_heading_not_printed'
+        if not (copy.get('cost_columns') == 1 and ONE_YEAR.search(copy.get('caption') or '')):
+            return False, 'one_year_heading_not_printed'
     if not (RUPEE.search(hdr) and PER_SHARE.search(hdr)):
         return False, 'unit_not_rupees_per_share'
     if not who:
@@ -622,7 +649,7 @@ def read_promoter_tables(page_texts, grid_words_for_page, declared):
         out['holding_why'] = 'capital_structure_section_not_located'
         for n in declared:
             out['rows'].append(dict(name=n, is_promoter_group=None, shares_held=None, waca=None, waca_last_year=None,
-                                    reasons=dict.fromkeys(('shares_held', 'waca', 'waca_last_year', 'is_promoter_group'),
+                                    reasons=dict.fromkeys(('shares_held', 'waca', 'waca_last_year'),
                                                           'capital_structure_section_not_located')))
         return out
     words = {}
@@ -664,13 +691,12 @@ def read_promoter_tables(page_texts, grid_words_for_page, declared):
                 return False, 'single_copy_expected'
             return one_year_checks(c[0], who, sh)
         yv, ywhy = _nil_to_null(*decide(copies['waca_1y'].get(who, []), conf_1))
-        stated = set(copies['group'].get(who, []))
-        grp = stated.pop() if len(stated) == 1 else None
-        gwhy = ('table_heading' if grp is not None
-                else 'heading_states_both' if stated else 'not_stated_by_a_table_heading')
+        grp, gcode = group_flag(copies['group'].get(who, []))
+        reasons = dict(shares_held=held[who][1], waca=wwhy, waca_last_year=ywhy)
+        if gcode:
+            reasons['is_promoter_group'] = gcode
         out['rows'].append(dict(name=who, is_promoter_group=grp, shares_held=sh, waca=wv, waca_last_year=yv,
-                                reasons=dict(shares_held=held[who][1], waca=wwhy, waca_last_year=ywhy,
-                                             is_promoter_group=gwhy)))
+                                reasons=reasons))
     pcts = {h['pct'] for h in holding}
     if len(pcts) == 1:
         out['holding'] = holding[0]

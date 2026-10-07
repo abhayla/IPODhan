@@ -158,6 +158,49 @@ def test_holding_table_unit_and_pre_offer_column():
     assert pt.holding_refusal(unstated) == "pct_column_not_shown_pre_offer"
 
 
+def test_group_flag_reason_codes_for_the_persister():
+    assert pt.group_flag([False, False]) == (False, "not_promoter_group_stated")
+    assert pt.group_flag([True]) == (True, "promoter_group_stated")
+    assert pt.group_flag([]) == (None, None)
+    assert pt.group_flag([True, False]) == (None, None)
+
+
+def test_unstated_group_row_carries_no_code():
+    # Symbiotec rows the headings never classify keep is_promoter_group None and no reason code
+    _names, got = read("symbiotec-pharmalab-ltd")
+    for r in got["rows"]:
+        if r["is_promoter_group"] is None:
+            assert "is_promoter_group" not in r["reasons"]
+        else:
+            assert r["reasons"]["is_promoter_group"] in ("promoter_group_stated", "not_promoter_group_stated")
+
+
+def test_od176_caption_states_the_period_for_a_one_cost_column_table():
+    # AceVector p38: caption "... acquired in the one year ..."; headings: shares acquired | ONE cost column.
+    names, got = read("acevector-ltd")
+    rows = rows_by_name(got)
+    assert rows["Kunal Bahl"]["waca_last_year"] == 1.84
+    assert rows["Rohit Kumar Bansal"]["waca_last_year"] == 1.88
+
+
+def test_od176_two_cost_columns_need_the_period_in_the_column_heading():
+    copy = dict(hdr="Average cost of acquisition per Equity Share (in ₹)",
+                hdr_acquired="Number of Equity Shares acquired", acquired=10.0,
+                caption="Average cost of acquisition of shares acquired in the one year preceding the DRHP")
+    assert pt.one_year_checks(dict(copy, cost_columns=1), "A", 20.0) == (True, "od175_one_year_single_copy")
+    assert pt.one_year_checks(dict(copy, cost_columns=2), "A", 20.0)[1] == "one_year_heading_not_printed"
+
+
+def test_od176_cost_columns_counted_from_headings():
+    seg = _seg([[(140, "Number of shares acquired"), (240, "Average cost per share (in ₹)")]],
+               [("Raj Kumar", ["10", "5.00"])])
+    assert pt.cost_column_count(seg) == 1
+    two = dict(seg, rows=[dict(label="Raj Kumar", ext="Raj Kumar", cells=["10", "5.00", "6.00"], lab_x1=100.0,
+                               cx1=[200.0, 300.0, 400.0])],
+               hdr=seg["hdr"] + [[dict(text="Weighted average price (in ₹)", x0=340, x1=400, top=0, bottom=1)]])
+    assert pt.cost_column_count(two) == 2
+
+
 def test_is_promoter_group_only_as_the_table_states_it():
     seg = _seg([[(0, "Promoters")]], [("Raj Kumar", ["10", "1"])])
     seg["rows"] += [dict(label="Promoter Group", ext="Promoter Group", cells=[], head=True),
@@ -172,7 +215,7 @@ def test_is_promoter_group_only_as_the_table_states_it():
 
 def test_orient_promoter_rows_are_stated_promoters():
     _names, got = read("orient-cables-india-ltd")
-    assert all(r["is_promoter_group"] is False and r["reasons"]["is_promoter_group"] == "table_heading"
+    assert all(r["is_promoter_group"] is False and r["reasons"]["is_promoter_group"] == "not_promoter_group_stated"
                for r in got["rows"])
 
 
