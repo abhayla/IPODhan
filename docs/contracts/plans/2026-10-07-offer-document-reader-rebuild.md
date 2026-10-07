@@ -61,6 +61,16 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
    12,252.67). Open for step 3: classify mis-titled pages by row labels (LCC), garbled-font pages (Priority BS/CF),
    OCR word positions for scanned pages. Spike: `session-2026-10-07/rebuild/grid_spike.py`, report grid-report.md.
 3. Shared interpreter + label dictionary; bar: on the answer-key set, wrong = 0 and found >= today's baseline.
+   -- MET for statement fields 2026-10-07 (8 keyed documents, 382 keyed values): new 247 correct / 0 wrong / 135 missed
+   vs today's reader 164 / 30 / 188. Revenue 46/0/0 (today 23/9/14), total income 46/0/0, PAT 46/0/0, EPS 72/0/4,
+   total assets 8/0/0, reserves 6/0/2, op cash flow 23/0/7. Mutation tests: first-row-wins without the EPS
+   continuing/discontinued guard writes 16 wrong (NSE 41.13 vs 41.62); net worth from equity rows writes 14 wrong
+   (so net worth is NOT read from statements). NOT met for EBITDA, net worth, RoNW, total borrowing, rent: these are
+   printed outside the three statements -> step 3b.
+3b. Same locator + grid + dictionary for the other mandated sections that print them: "Other Financial Information"
+   (accounting ratios: net worth, RoNW, EBITDA), KPI tables in "Basis for Offer Price", the capitalisation statement
+   (total borrowings), notes (rent). Bar: those 5 families wrong = 0, found >= today's (EBITDA 23, net worth 20,
+   borrowing 3, RoNW 6, rent 6).
 4. Validation (copies + identities) wired; bar: the 3 wrong-value classes from 2026-10-07 are rejected by
    construction (tests), wrong = 0, found >= baseline.
 5. Swap the new financial reader in behind the existing output shape; NSE DRHP 89/90 and RHP 88/90 in the test DB
