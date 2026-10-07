@@ -69,7 +69,7 @@ import {
   CROSS_DOC_TOLERANCE,
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
-import { clearRereadAnswers, NOT_PRINTED_REASON, REREAD_RULE_ID, type RereadClearResult, type RereadExecutor } from './reread-answer-clear.js';
+import { clearRereadAnswers, decideRereadAnswer, NOT_PRINTED_REASON, REREAD_RULE_ID, type RereadClearResult, type RereadExecutor } from './reread-answer-clear.js';
 import { mappedField } from './filing-clearable-columns.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -514,6 +514,48 @@ function brlmGrievanceEmails(extraction: FilingExtraction): Record<string, strin
   const out: Record<string, string> = {};
   for (const [name, email] of Object.entries(v as Record<string, unknown>)) {
     if (typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email)) out[name] = email;
+  }
+  return out;
+}
+
+/** One BRLM block of the General Information section (OD-173 section 3, rows 154-158). */
+export interface BrlmContact {
+  name: string;
+  sebiRegNo: string | null;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  grievanceEmail: string | null;
+}
+
+const EMAIL_FORM = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+function brlmContactMail(x: unknown): string | null {
+  return typeof x === 'string' && EMAIL_FORM.test(x.trim()) ? x.trim() : null;
+}
+/**
+ * Rows 154-158: the extractor's `brlm_contacts` (one row per BRLM block read), only from a passing
+ * VALUE. Each value is kept only in its own form (an INM number, an e-mail, a non-empty text); any
+ * other value of a row is null, which the persister treats as "no answer" for that column (kept).
+ */
+export function brlmContacts(extraction: FilingExtraction): BrlmContact[] {
+  const v = trusted(extraction, 'brlm_contacts');
+  if (!Array.isArray(v)) return [];
+  const text = (x: unknown): string | null => (typeof x === 'string' && x.trim() !== '' ? x.trim() : null);
+  const mail = brlmContactMail;
+  const out: BrlmContact[] = [];
+  for (const row of v) {
+    const r = row as Record<string, unknown> | null;
+    const name = r ? text(r.name) : null;
+    if (!r || name === null) continue;
+    const reg = text(r.sebi_reg_no);
+    out.push({
+      name,
+      sebiRegNo: reg !== null && /^INM\d{9}$/.test(reg) ? reg : null,
+      contactPerson: text(r.contact_person),
+      phone: text(r.phone),
+      email: mail(r.email),
+      grievanceEmail: mail(r.grievance_email),
+    });
   }
   return out;
 }
@@ -3702,26 +3744,52 @@ export async function persistFilingExtraction(
       grievanceByKey.set(k, grievanceByKey.has(k) && grievanceByKey.get(k) !== email ? null : email);
     }
   }
+  // OD-173 section 3 (rows 154-158): each BRLM block's SEBI no., contact person, phone, e-mail and
+  // grievance e-mail (extractor `brlm_contacts`). Filed under the same gate as row 158 above: only
+  // when the held BRLM list IS the document's, and on the held firm whose row key equals the block's
+  // own key - never by position. A block naming a firm outside the held list attaches nothing; two
+  // blocks that normalise to one firm attach nothing for that firm (fail closed).
+  const contactsByKey = new Map<string, BrlmContact>();
+  if (docBrlmsHeld) {
+    const ambiguous = new Set<string>();
+    for (const c of brlmContacts(extraction)) {
+      const k = rowKeyForName(c.name);
+      if (k === null || !heldBrlmKeys?.has(k)) continue;
+      if (contactsByKey.has(k) || ambiguous.has(k)) {
+        contactsByKey.delete(k);
+        ambiguous.add(k);
+        continue;
+      }
+      contactsByKey.set(k, c);
+    }
+    for (const k of ambiguous) {
+      skippedFailedCheck.push(`ipo_intermediaries BRLM:${k} (brlm_contacts: two blocks normalise to this firm; no value attached)`);
+    }
+  }
   // Item 1 slice s1 (row-key prep, F-74): built without `normalizedName`
   // here — every entry (the initial map, and each subsequent push below)
   // carries only a bare `name`; `normalizedName` is derived once, uniformly,
   // right before the write (see the map() at the replaceForIpo call site
   // below) so a future push site can never forget to set it by hand.
-  const intermediaries: Omit<IpoIntermediaryInsert, 'normalizedName'>[] = brlmNames.map((name) => ({
-    ipoId,
-    role: 'BRLM',
-    name,
-    // The extractor emits SEBI registration numbers as a bare LIST with no
-    // name->reg mapping. Pairing them positionally against a differently
-    // sourced BRLM name list would publish a registration number against the
-    // wrong firm - left null, and the list is reported as skipped. One BRLM read
-    // from the document with its own INM number is unambiguous (item 39).
-    sebiRegNo: soleBrlmReg,
-    contactPerson: null,
-    phone: null,
-    email: null,
-    grievanceEmail: grievanceByKey.get(rowKeyForName(name) ?? '') ?? null,
-  }));
+  const intermediaries: Omit<IpoIntermediaryInsert, 'normalizedName'>[] = brlmNames.map((name) => {
+    const c = contactsByKey.get(rowKeyForName(name) ?? '');
+    return {
+      ipoId,
+      role: 'BRLM',
+      name,
+      // The extractor emits SEBI registration numbers as a bare LIST with no
+      // name->reg mapping. Pairing them positionally against a differently
+      // sourced BRLM name list would publish a registration number against the
+      // wrong firm - left null, and the list is reported as skipped. One BRLM read
+      // from the document with its own INM number is unambiguous (item 39), and so
+      // is the INM number printed in the firm's own block (brlm_contacts).
+      sebiRegNo: c?.sebiRegNo ?? soleBrlmReg,
+      contactPerson: c?.contactPerson ?? null,
+      phone: c?.phone ?? null,
+      email: c?.email ?? null,
+      grievanceEmail: c?.grievanceEmail ?? grievanceByKey.get(rowKeyForName(name) ?? '') ?? null,
+    };
+  });
   const registrarReg = str(extraction, 'registrar_sebi_reg');
   const docRegistrarName = coverRegistrar(extraction);
   const registrarName = (iposWritable.registrar as string | undefined) ?? existing.registrar;
@@ -3738,7 +3806,8 @@ export async function persistFilingExtraction(
       contactPerson: own ? str(extraction, 'registrar_contact_person') : null,
       phone: own ? str(extraction, 'registrar_phone') : null,
       email: own ? str(extraction, 'registrar_email') : null,
-      grievanceEmail: null,
+      // OD-173 section 3: the registrar's grievance e-mail from its General Information block.
+      grievanceEmail: own ? (brlmContactMail(str(extraction, 'registrar_grievance_email'))) : null,
     });
   }
   if (list<string>(extraction, 'brlm_sebi_regs').length > 0) {
@@ -3816,6 +3885,71 @@ export async function persistFilingExtraction(
     ], INTERMEDIARY_ROLE_FIELDS[row.role as string] ?? []);
   }
   const INTERMEDIARY_FIRM_COLUMNS = ['sebiRegNo', 'contactPerson', 'phone', 'email', 'grievanceEmail'] as const;
+  // OD-173 section 3: the columns the General Information reader answers - every per-firm column of a
+  // BRLM row, and the REGISTRAR row's grievance e-mail (its other contact lines stay on the cover
+  // reader, unchanged). Only these follow the answer-state table and document rank below.
+  const giColumnsFor = (role: string): readonly string[] =>
+    role === 'BRLM' ? INTERMEDIARY_FIRM_COLUMNS : role === 'REGISTRAR' ? ['grievanceEmail'] : [];
+  const giProduced = new Map<string, Set<string>>();
+  for (const { row, key } of intermediariesWithKeys) {
+    if (row.role === 'BRLM' && !docBrlmsHeld) continue;
+    if (row.role === 'REGISTRAR' && !registrarReadIsHeld) continue;
+    const cols = giColumnsFor(row.role as string).filter(
+      (c) => (row as Record<string, unknown>)[c] !== null && (row as Record<string, unknown>)[c] !== undefined
+    );
+    if (cols.length > 0) giProduced.set(`${row.role}:${key as string}`, new Set(cols));
+  }
+  // Spec §6 rule 4, "Answer states for a re-read of the same document (OD-153, OD-158)", the same
+  // table the promoter rows follow: a null this run produced clears a stored value only on the
+  // reader's own refusal or a stated absence on the shared list; a miss, an absent field, or no
+  // answer state keeps it. The GI reader answers per FIELD (`brlm_contacts`, `registrar_grievance_email`
+  // carry the envelope `state`); a single column left empty inside a read BRLM block has no state of
+  // its own and is kept. A value stored FROM THIS SAME DOCUMENT is cleared by either clearing answer;
+  // another document's value only by a stated absence from a document that outranks it (OD-30,
+  // OD-154). Admin-held: the whole replace is refused (replaceAllowed below), so V is kept.
+  type GiAnswer = { state: 'REFUSED' | 'STATED_NOT_PRINTED'; reason: string; extractorReason: string; field: string } | null;
+  const giFieldAnswer = (field: string): GiAnswer => {
+    const d = decideRereadAnswer(extraction.fields?.[field] as Parameters<typeof decideRereadAnswer>[0]);
+    if (d.action !== 'CLEAR') return null;
+    return { state: d.state, reason: d.reason, extractorReason: d.extractorReason ?? d.reason, field };
+  };
+  const brlmContactsAnswer = giFieldAnswer('brlm_contacts');
+  const registrarGrievanceAnswer = giFieldAnswer('registrar_grievance_email');
+  const giAnswer = (role: string, col: string): GiAnswer => {
+    if (role === 'BRLM' && docBrlmsHeld) return brlmContactsAnswer;
+    if (role === 'REGISTRAR' && registrarReadIsHeld && col === 'grievanceEmail') return registrarGrievanceAnswer;
+    return null;
+  };
+  const clearedIntermediaryColumns: Array<{ rowKey: string; column: string; answer: NonNullable<GiAnswer> }> = [];
+  const decideStoredIntermediaryColumn = async (rowKey: string, column: string, answer: GiAnswer): Promise<boolean> => {
+    if (answer === null) return false;
+    try {
+      const origin = await deps.fieldSources.findByField(ipoId, 'ipo_intermediaries', column, rowKey);
+      if (!origin || !DOCUMENT_PATH_SOURCES.has(String(origin.source))) return false;
+      const lin = (origin.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null; extractorVersion?: string | null };
+      if (!lin.extractorVersion) return false;
+      if (lin.documentId && options.documentId && lin.documentId === options.documentId) return true;
+      if (answer.state !== 'STATED_NOT_PRINTED') return false;
+      return (await compareWithStoredDocument(lin)).outranks === true;
+    } catch {
+      return false;
+    }
+  };
+  const storedIntermediaryOutranks = async (rowKey: string, column: string): Promise<boolean> => {
+    try {
+      const origin = await deps.fieldSources.findByField(ipoId, 'ipo_intermediaries', column, rowKey);
+      if (!origin || !DOCUMENT_PATH_SOURCES.has(String(origin.source))) return false;
+      const { outranks, reason } = await compareWithStoredDocument(
+        (origin.dataLineage ?? {}) as { docType?: string | null; documentId?: string | null }
+      );
+      if (outranks !== false) return false;
+      skippedLowerPriority.push(`ipo_intermediaries ${rowKey}.${column} (the stored value's document outranks this one: ${reason}; OD-30, OD-154)`);
+      return true;
+    } catch {
+      skippedLowerPriority.push(`ipo_intermediaries ${rowKey}.${column} (provenance unreadable; kept the stored value)`);
+      return true;
+    }
+  };
   const keepStoredIntermediaryColumns = async (rows: IpoIntermediaryInsert[]): Promise<boolean> => {
     // A repository without the read (a test double) keeps the pre-existing write.
     if (typeof deps.intermediaries.listByIpoAndRole !== 'function') return true;
@@ -3835,18 +3969,89 @@ export async function persistFilingExtraction(
       return false;
     }
     for (const row of rows) {
-      const stored = storedByKey.get(`${row.role}:${row.normalizedName}`);
+      const rowKey = `${row.role}:${row.normalizedName}`;
+      const stored = storedByKey.get(rowKey);
       if (!stored) continue;
+      const gi = giProduced.get(rowKey);
       for (const col of INTERMEDIARY_FIRM_COLUMNS) {
-        if ((row[col] === null || row[col] === undefined) && stored[col] != null) row[col] = stored[col];
+        if (stored[col] == null) continue;
+        const isGi = giColumnsFor(row.role).includes(col);
+        if (row[col] === null || row[col] === undefined) {
+          if (isGi) {
+            const answer = giAnswer(row.role, col);
+            if (await decideStoredIntermediaryColumn(rowKey, col, answer)) {
+              clearedIntermediaryColumns.push({ rowKey, column: col, answer: answer as NonNullable<GiAnswer> });
+              continue;
+            }
+          }
+          row[col] = stored[col];
+          continue;
+        }
+        // This document's value differs from a stored value another document wrote: the stored one
+        // is kept when its document outranks this one (OD-30, OD-154; a DRHP ranks last).
+        if (gi?.has(col) && normalizeReceiptValue(row[col]) !== normalizeReceiptValue(stored[col])) {
+          if (await storedIntermediaryOutranks(rowKey, col)) {
+            row[col] = stored[col];
+            gi.delete(col);
+          }
+        }
       }
     }
     return true;
   };
+  const recordIntermediaryClears = async (): Promise<void> => {
+    for (const { rowKey, column, answer } of clearedIntermediaryColumns) {
+      skippedFailedCheck.push(`ipo_intermediaries ${rowKey}.${column} cleared (${answer.reason})`);
+      logger.info({ ipoId, rowKey, column, reason: answer.reason }, '[FilingPersister] intermediary column cleared by the reader answer (OD-153, OD-158)');
+      if (!deps.fieldExtractionFailures) continue;
+      try {
+        await deps.fieldExtractionFailures.recordFailure({
+          ipoId,
+          tableName: 'ipo_intermediaries',
+          fieldName: column,
+          rowKey,
+          documentId: options.documentId ?? null,
+          ruleId: answer.state === 'REFUSED' ? REREAD_RULE_ID.REFUSED : REREAD_RULE_ID.STATED_NOT_PRINTED,
+          rankAttempted: source,
+          extractedValue: null,
+          cause: `${options.docType} ${answer.field}: ${answer.reason} (${answer.extractorReason})`,
+        });
+      } catch (error) {
+        logger.error({ ipoId, rowKey, column, error: (error as Error)?.message }, '[FilingPersister] intermediary clear reason not recorded');
+      }
+    }
+  };
+  // Keyed provenance names the document that produced each General Information value, so a later
+  // read of the same document can tell its own value from another document's (the answer-state
+  // table). Best-effort, like trackField: a provenance failure never costs the written row.
+  const trackGiColumns = async (): Promise<void> => {
+    for (const [rowKey, cols] of giProduced) {
+      for (const col of cols) {
+        try {
+          await deps.fieldSources.trackFieldUpdate({
+            ipoId,
+            tableName: 'ipo_intermediaries',
+            rowKey,
+            fieldName: col,
+            source,
+            confidence: 100,
+            dataLineage: lineage,
+            updatedBy: 'FILING_PERSISTER',
+          });
+        } catch (error) {
+          logger.error({ ipoId, rowKey, column: col, error: (error as Error)?.message }, '[FilingPersister] intermediary column provenance not written');
+        }
+      }
+    }
+  };
   let intermediariesRefused = false;
   if (intermediariesWithKeys.length > 0) {
     if (
-      await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
+      // Every written per-firm column is probed: an admin hold on any of them refuses the whole
+      // replace, so the admin's value is never deleted with its row (OD-107).
+      await replaceAllowed('ipo_intermediaries', {
+        name: null, role: null, sebiRegNo: null, contactPerson: null, phone: null, email: null, grievanceEmail: null,
+      })
     ) {
       if (apply) {
         const intermediariesWithKey: IpoIntermediaryInsert[] = intermediariesWithKeys.map(
@@ -3879,6 +4084,8 @@ export async function persistFilingExtraction(
         if (kept) {
           await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
           await trackField('ipo_intermediaries', 'rows');
+          await trackGiColumns();
+          await recordIntermediaryClears();
         } else {
           // The rows never reached the table: the provenance filed by consolidateChildRows above is
           // marked unresolved with the cause, and each row is named. This document's receipts for

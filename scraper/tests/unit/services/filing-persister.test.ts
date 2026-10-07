@@ -23,7 +23,10 @@ vi.mock('../../../src/services/data-persister.js', () => ({
 const { clearRereadAnswersMock } = vi.hoisted(() => ({
   clearRereadAnswersMock: vi.fn(async () => ({ cleared: [], held: [], notOlderRead: [], keptHoldBack: [], reopenedPlanRowIds: [] })),
 }));
-vi.mock('../../../src/services/reread-answer-clear.js', () => ({ clearRereadAnswers: clearRereadAnswersMock }));
+vi.mock('../../../src/services/reread-answer-clear.js', async (orig) => ({
+  ...((await orig()) as Record<string, unknown>),
+  clearRereadAnswers: clearRereadAnswersMock,
+}));
 vi.mock('../../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
