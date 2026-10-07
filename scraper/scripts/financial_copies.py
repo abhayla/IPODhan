@@ -406,6 +406,13 @@ def _cell(grid, ci, pats):
     return got.pop() if len(got) == 1 else None
 
 
+PBT = [r'(?:restated )?(?:net )?(?:profit|loss|profit / loss|profit / \(loss\)|\(loss\) / profit|profit\s*\(loss\))'
+       r' before tax(?:es|ation)?(?: for the (?:year|period))?']
+TOTAL_TAX = [r'(?:total )?(?:income )?tax expenses?(?: / \(credit\))?', r'total tax(?: / \(credit\))?']
+NONCURRENT_BORROWINGS = [r'(?:total )?non-current borrowings?', r'(?:total )?long[- ]term borrowings?']
+CURRENT_BORROWINGS = [r'(?:total )?current borrowings?', r'(?:total )?short[- ]term borrowings?']
+
+
 def identity(name, c):
     """True / False when a printed identity of the copy's own table checks the value; None when not checkable."""
     g, ci, v, h = c['grid'], c['ci'], c['printed'], 0.5 * 10 ** -decimals(c['shown'], c['printed'])
@@ -420,8 +427,21 @@ def identity(name, c):
             return abs(rv[0] + oi[0] - v) <= h + rv[1] + oi[1] + 1e-9
     elif name == 'profit':
         ti = _cell(g, ci, [r'total income'])
+        if ti and not v <= ti[0] + h + ti[1]:
+            return False
+        # PAT = profit before tax - total tax, only on a P&L with no share of associates / discontinued operations
+        # line between the two (those enter PAT after tax and would fail a correct value)
+        pbt, tax = _cell(g, ci, PBT), _cell(g, ci, TOTAL_TAX)
+        if pbt and tax and not any(re.search(r'share of|discontinued|minority|non-controlling', L.raw_lower(r['label']))
+                                   for r in g.get('rows', []) if any(c is not None for c in r['cells'])):
+            return abs(pbt[0] - tax[0] - v) <= h + pbt[1] + tax[1] + 1e-9
         if ti:
-            return v <= ti[0] + h + ti[1]
+            return True
+    elif name == 'total_borrowing':
+        # the capitalisation / summary table's printed total = its printed non-current + current borrowings
+        nc, cur = _cell(g, ci, NONCURRENT_BORROWINGS), _cell(g, ci, CURRENT_BORROWINGS)
+        if nc and cur:
+            return abs(nc[0] + cur[0] - v) <= h + nc[1] + cur[1] + 1e-9
     elif name == 'total_assets':
         tel = _cell(g, ci, [r'total equity and liabilities', r'total liabilities and equity'])
         if tel:
@@ -498,6 +518,7 @@ def interpret3b(out, sec_doc, pt):
     doc_basis = 'consolidated' if any('consolidated' in b for v in out['basis'].values() for b in v) else 'unstated'
     fy_all = [int(k[2:]) for f in out['fields'].values() for k in (f.get('values') or {}) if k.startswith('FY')]
     latest = max(fy_all) if fy_all else None
+    fy_years = set(fy_all)
     out['step3b'] = {'doc_basis': doc_basis, 'latest_fy': latest}
     for name, spec in L.FIELDS_3B.items():
         stmt = out.get('_stmt_copies', {}).get(name, [])  # set only when the statements read the field
@@ -506,6 +527,13 @@ def interpret3b(out, sec_doc, pt):
             notes.append('OD-172: only a qualified EBITDA was read, but the document prints a plain EBITDA: refused')
             tiers[1] = []
         obs = next((t for t in tiers if t), []) + stmt
+        # A section table's fiscal year that the restated statements themselves did not read is not a year of this
+        # document's restated financials (a peer's year, a quarter mislabelled as a year): its copies are dropped.
+        stray = sorted({c['per'] for c in obs if c['per'].startswith('FY') and int(c['per'][2:]) not in fy_years})
+        if stray:
+            notes.append('copies for %s dropped: not a fiscal year the restated statements read (%s)'
+                         % (stray, sorted(fy_years)))
+            obs = [c for c in obs if c['per'] not in stray]
         rec = {'refusals_seen': notes, 'tier': next((i for i, t in enumerate(tiers) if t), None)}
         vals, src, err, count = decide(obs, name) if obs else ({}, {}, None, {})
         if not err and vals:

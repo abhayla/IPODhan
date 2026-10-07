@@ -86,6 +86,90 @@ def test_stub_periods_are_kept_apart_from_fiscal_years():
         "2024": 24251.5, "2023": 16003.07, "2022": 12448.09}
 
 
+def grids_of(doc):
+    fx, gw = load(doc)
+    pt = F.dense_pages(fx["page_texts"])
+    loc = F.section_locator.locate(pt)
+    st = G.read_statement_grids(pt, F.section_locator.restated_start(loc), gw.get, set())
+    sec = G.read_section_grids(pt, loc["other"], gw.get, set())
+    return st, sec
+
+
+def one_copy(grid, label_field, spec_fields, ci):
+    r = next(r for r in grid["rows"] if FC.L.accept_label(spec_fields[label_field], r["label"]) == (0, None))
+    return FC.copy_of("FY", r["cells"][ci], r["raw"][ci], 1.0, "test", grid, ci, r)
+
+
+def test_single_pat_copy_must_equal_pbt_minus_tax():
+    """Elevate p392 prints PBT 825.39, total tax 298.88, PAT 526.51 (FY2025): the identity holds."""
+    g = grids_of("elevate-campuses-ltd-DRHP")[0]["statements"]["pl"]["grids"][0]
+    c = one_copy(g, "profit", FC.L.FIELDS, 0)
+    assert c["printed"] == 526.51 and FC.identity("profit", c) is True
+    bad = dict(c, printed=625.51, val=625.51, shown="625.51")
+    assert FC.identity("profit", bad) is False
+    vals, _src, err, _n = FC.decide([bad], "profit")
+    assert vals is None and "fails its table identity" in err
+
+
+def test_single_total_borrowing_copy_must_equal_its_printed_parts():
+    """Elevate's capitalisation statement p524: non-current 11,837.29 + current 228.67 = total 12,065.96."""
+    sec = grids_of("elevate-campuses-ltd-DRHP")[1]
+    g = next(g for p in sec["pages"] if p["page"] == 524 for g in p["grids"] if "refused" not in g)
+    c = one_copy(g, "total_borrowing", FC.L.FIELDS_3B, 0)
+    assert c["printed"] == 12065.96 and FC.identity("total_borrowing", c) is True
+    assert FC.identity("total_borrowing", dict(c, printed=12165.96)) is False
+
+
+def test_pat_identity_not_run_beside_a_share_of_associates_line():
+    """NSE's P&L adds its share of associates' profit after tax: PBT - tax != PAT there, so no identity is claimed."""
+    g = grids_of("national-stock-exchange-of-india-ltd-DRHP")[0]["statements"]["pl"]["grids"][0]
+    assert any("share of" in FC.L.raw_lower(r["label"]) for r in g["rows"] if any(v is not None for v in r["cells"]))
+    c = one_copy(g, "profit", FC.L.FIELDS, 0)
+    assert FC.identity("profit", dict(c, printed=1.0)) is True  # only PAT <= total income is checkable here
+
+
+def test_a_section_year_the_statements_did_not_read_is_dropped():
+    """Guard 2: a copy for a fiscal year outside the restated statements' years never becomes a value."""
+    r = read("national-stock-exchange-of-india-ltd-DRHP")
+    years = {"FY%d" % y for y in r["fiscal_years"]}
+    for name in ("ebitda", "net_worth", "ronw", "rent_expense", "total_borrowing"):
+        assert {k for k in r["fields"][name].get("values", {}) if k.startswith("FY")} <= years, name
+    # the same real tables, with the statements reading FY2026 and FY2025 only: NSE's printed FY2024 EBITDA
+    # (a year the statements did not read) is dropped, never stored
+    st, sec = grids_of("national-stock-exchange-of-india-ltd-DRHP")
+    fx, _ = load("national-stock-exchange-of-india-ltd-DRHP")
+    out = FC.interpret(st, sec, dict(F.dense_pages(fx["page_texts"])))
+    for rec in out["fields"].values():
+        (rec.get("values") or {}).pop("FY2024", None)
+    for copies in out["_stmt_copies"].values():
+        copies[:] = [c for c in copies if c["per"] != "FY2024"]
+    ebitda = FC.interpret3b(out, sec, {})["fields"]["ebitda"]
+    assert set(ebitda["values"]) == {"FY2026", "FY2025"}
+    assert any("['FY2024'] dropped" in n for n in ebitda["refusals_seen"])
+
+
+def test_series_short_of_the_statement_years_is_refused(monkeypatch):
+    """Guard 3: extract_filing checks every series against the statement years (check_fy_series)."""
+    fx, gw = load("national-stock-exchange-of-india-ltd-DRHP")
+    real = F.read_financials
+
+    def short_ronw(*a, **k):
+        out = real(*a, **k)
+        out["fields"]["ronw"]["values"].pop("FY2024")
+        return out
+    monkeypatch.setattr(F, "read_financials", short_ronw)
+    f = EF.run([tuple(p) for p in fx["page_texts"]], "DRHP", fx["source_doc"], grid_words_for_page=gw.get)["fields"]
+    assert f["ronw_by_fy"]["value"] is None and f["ronw_by_fy"]["state"] == "REFUSED"
+    assert f["revenue_by_fy"]["value"] is not None
+
+
+def test_locator_failure_names_the_missing_contents_page():
+    fx, gw = load("national-stock-exchange-of-india-ltd-DRHP")
+    pages = [p for p in fx["page_texts"] if p[0] != 5]  # the contents page
+    rec = F.read_financials(pages, gw.get, set())["fields"]["revenue"]
+    assert rec["missed"].startswith("section_locator: no contents page")
+
+
 def test_no_word_boxes_means_null_with_reason():
     fx, _ = load("national-stock-exchange-of-india-ltd-DRHP")
     out = EF.run([tuple(p) for p in fx["page_texts"]], "DRHP", fx["source_doc"])

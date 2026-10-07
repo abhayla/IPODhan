@@ -83,11 +83,9 @@ try:
     from extract_financials_pdf import (
         money_values,
         _normalize_numbers,
-        extract_from_texts as extract_pnl_from_texts,
         check_pat_not_above_revenue,
         check_ebitda_at_least_pat,
         check_yoy_ratio_within_bounds,
-        check_cross_document_agreement,
     )
     import issuer_balance_rows  # OD-165 item 46: reuses the financials module's column helpers
     import offer_doc_statements  # rows 66/69 (D10), 75, 92, 102 and rent expense, offer documents
@@ -2965,7 +2963,9 @@ def _emit_rebuilt_financials(fin, emit, unit):
             continue
         series = offer_doc_financials.fy_series(rec, kind, unit)
         if not series:
-            why = rec.get("missed") or ("only stub periods printed (D11): %s" % sorted(rec.get("values") or {}))
+            dropped = [n for n in rec.get("refusals_seen") or [] if "dropped" in n]
+            why = rec.get("missed") or ("no fiscal-year value kept (D11 stubs %s are not stored)%s" % (
+                sorted(rec.get("values") or {}), "; " + dropped[0] if dropped else ""))
             emit.null(name, "rebuilt_reader: %s" % why, offer_doc_financials.source_page(rec))
             continue
         copies = rec.get("copies") or {}
@@ -2973,8 +2973,11 @@ def _emit_rebuilt_financials(fin, emit, unit):
             len(series), sorted(series), {k[2:]: n for k, n in sorted(copies.items()) if k.startswith("FY")},
             (rec.get("source") or {}).get("FY%s" % max(series)))
         put = emit.put_c_money if kind == "money" else (lambda u, *a: emit.put(*a))
+        # The series must cover exactly the fiscal years the restated statements read (a year the statements did
+        # not read, or a missing one, is not trusted), and no year token may sit in a value slot.
+        chk = check_fy_series(series, fin["fiscal_years"])
         put(unit, name, series, offer_doc_financials.source_page(rec), "%s_printed_copies_agree" % name,
-            (True, detail))
+            (True, "%s; %s" % (detail, chk[1])) if chk[0] else chk)
     if fin is None:
         emit.null("total_borrowing", "word_boxes_unavailable: the financial reader needs PDF word positions")
         return

@@ -104,17 +104,42 @@ P_DMY = re.compile(r'(\d{1,2})(?:st|nd|rd|th)?\s*[-.\s]?\s*' + MON + r'\.?\s*,?\
 P_NUM = re.compile(r'\b(\d{1,2})[./-](\d{1,2})[./-]' + YEAR + r'\b')
 P_MON_YY = re.compile(r'\b' + MON + r"[-'’\s]\s*(\d{2})\b", re.I)
 P_FISCAL = re.compile(r'\b(?:fiscal|financial\s+year|fy)\s*[-\s]?\s*((?:20)?\d{2})\b', re.I)
+# A part of a fiscal year printed in front of its FY / Fiscal token: 'Q1 FY26', "Q1'FY26", 'H1 FY 2024', '9M FY24',
+# 'Nine months ended Fiscal 2024', 'six months Fiscal 2025', 'Q4 Fiscal 2026' (real headers in the 24 documents).
+# Such a column is a STUB of that fiscal year, never the fiscal year itself.
+P_FY_PART = re.compile(r"(?:\b(?P<q>q[1-4])|\b(?P<h>h[12])|\b(?P<m>[369])\s*m(?:onths?)?|"
+                       r"\b(?P<w>three|six|nine)\s+months?(?:\s+(?:period\s+)?ended)?|"
+                       r"\b(?P<u>quarter|half[\s-]+year|ytd|year[\s-]+to[\s-]+date)(?:\s+ended)?)"
+                       r"\s*(?:of\s+)?[-'’]?\s*$", re.I)
+# end month of the part, relative to the fiscal year that ends March 31 of year Y: (month, years before Y)
+FY_PART_END = {'q1': (6, 1), 'q2': (9, 1), 'q3': (12, 1), 'q4': (3, 0), 'h1': (9, 1), 'h2': (3, 0),
+               '3': (6, 1), '6': (9, 1), '9': (12, 1), 'three': (6, 1), 'six': (9, 1), 'nine': (12, 1)}
+
+
+def fiscal_period(text, m):
+    """(year, month, day, kind) of a P_FISCAL match: the full fiscal year, or the stub a Q/H/nM/'n months' prefix makes
+    of it. A part whose end month the prefix does not say ('quarter', 'half year', YTD) is a stub with month 0."""
+    y = int(m.group(1))
+    y = y if y > 100 else 2000 + y
+    part = P_FY_PART.search(text[max(0, m.start() - 40):m.start()])
+    if not part:
+        return y, 3, 31, 'fy'
+    key = (part.group('q') or part.group('h') or part.group('m') or part.group('w') or '').lower()
+    if key not in FY_PART_END:
+        return y, 0, None, 'stub'
+    mo, back = FY_PART_END[key]
+    return y - back, mo, None, 'stub'
 
 
 def periods_in(text):
     """Every period end printed in a header text, as (year, month, day|None, kind). kind fy|stub."""
     found, spans = [], []
 
-    def add(m, y, mo, d):
+    def add(m, y, mo, d, kind=None):
         if any(a < m.end() and m.start() < b for a, b in spans):
             return
         spans.append((m.start(), m.end()))
-        found.append((m.start(), (y, mo, d, 'fy' if mo == 3 else 'stub')))
+        found.append((m.start(), (y, mo, d, kind or ('fy' if mo == 3 else 'stub'))))
 
     for m in P_MDY.finditer(text):
         add(m, int(m.group(3)), MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
@@ -127,12 +152,19 @@ def periods_in(text):
     for m in P_MON_YY.finditer(text):
         add(m, 2000 + int(m.group(2)), MONTHS[m.group(1)[:3].lower()], None)
     for m in P_FISCAL.finditer(text):
-        y = int(m.group(1))
-        add(m, y if y > 100 else 2000 + y, 3, 31)
+        add(m, *fiscal_period(text, m))
     return [p for _, p in sorted(found)]
 
 
-UNIT = re.compile(r'(?:in|amounts?|amount|rs\.?|₹|inr|`)\s*[^\n]{0,25}?\b(millions?|mn|lakhs?|lacs?|crores?|cr)\b', re.I)
+UNIT =re.compile(r'(?:in|amounts?|amount|rs\.?|₹|inr|`)\s*[^\n]{0,25}?\b(millions?|mn|lakhs?|lacs?|crores?|cr)\b', re.I)
+
+
+AMOUNT = re.compile(r'\d[\d,]*\.\d+|\b\d{1,3}(?:,\d{2,3})+\b')
+
+
+def is_unit_declaration(text):
+    """'(Rs in million)', '(₹ in lakhs, except per share data)' - a unit line that states no amount itself."""
+    return bool(UNIT.search(text)) and not AMOUNT.search(text)
 
 
 def unit_of(lines_text):
@@ -303,7 +335,8 @@ def build_grid(words, page_width, title_kind, inherit=None):
         fys = [p[0] for p in periods if p[3] == 'fy']
         if len(set(fys)) != len(fys):
             reasons.append('repeated fiscal year %s' % fys)
-    unit = unit_of([ln['text'] for ln in lines[:first_data + 1]] + [' '.join(t) for t in col_text])
+    unit = unit_of([ln['text'] for ln in lines[:first_data + 1] if is_unit_declaration(ln['text'])] +
+                   [' '.join(t) for t in col_text])
     # rows
     rows = []
     for i, ln in enumerate(lines):
@@ -566,11 +599,11 @@ def periods3(text):
     """periods_in without 'March 31' read as March 2031: a month-year short form needs a - or ' separator."""
     found, spans = [], []
 
-    def add(m, y, mo, d):
+    def add(m, y, mo, d, kind=None):
         if any(a < m.end() and m.start() < b for a, b in spans):
             return
         spans.append((m.start(), m.end()))
-        found.append((m.start(), (y, mo, d, 'fy' if mo == 3 else 'stub')))
+        found.append((m.start(), (y, mo, d, kind or ('fy' if mo == 3 else 'stub'))))
     for m in P_MDY.finditer(text):
         add(m, int(m.group(3)), MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
     for m in P_DMY.finditer(text):
@@ -581,9 +614,13 @@ def periods3(text):
     for m in P_MON_YY3.finditer(text):
         add(m, 2000 + int(m.group(2)), MONTHS[m.group(1)[:3].lower()], None)
     for m in P_FISCAL.finditer(text):
-        y = int(m.group(1))
-        add(m, y if y > 100 else 2000 + y, 3, 31)
+        add(m, *fiscal_period(text, m))
     return [p for _, p in sorted(found)]
+
+
+def fy_span_is_part(header_txt):
+    """True when a bare 'Fiscal' / 'FY' header word is itself a part of a year ('Nine months ended Fiscal')."""
+    return any(P_FY_PART.search(header_txt[max(0, m.start() - 40):m.start()]) for m in SPAN_FY.finditer(header_txt))
 
 
 def resolve_period(col_txt, header_txt):
@@ -603,7 +640,7 @@ def resolve_period(col_txt, header_txt):
     if md:
         mo = MONTHS[md.group(1)[:3].lower()]
         return (y, mo, int(md.group(2)), 'fy' if mo == 3 else 'stub')
-    if SPAN_FY.search(header_txt):
+    if SPAN_FY.search(header_txt) and not fy_span_is_part(header_txt):
         return (y, 3, 31, 'fy')
     return None
 
@@ -719,7 +756,8 @@ def grid_of_segment(hdr, rows, width):
             if st == 'bad':
                 bad.append(k)
         lper = list(ln['label_period'][0]) if len(ln['label_period']) == 1 else None
-        if lper is None and ln.get('label_year') and SPAN_FY.search(header_txt):
+        if lper is None and ln.get('label_year') and SPAN_FY.search(header_txt) and \
+                not fy_span_is_part(header_txt):
             lper = [ln['label_year'], 3, 31, 'fy']
             label = (str(ln['label_year']) + ' ' + label).strip()
         if out_rows and label[:1].islower() and out_rows[-1]['label'] and \
@@ -751,14 +789,17 @@ def grid_of_segment(hdr, rows, width):
     return g
 
 
-def unit_basis(lines, upto, seg_lines):
-    """Unit and basis for a table: its own header/context lines first, then the nearest line above on the page."""
-    own = [ln['text'] for ln in seg_lines]
-    unit, src = unit_of(own), 'table'
+def unit_basis(lines, upto, hdr_lines, ctx_lines=()):
+    """Unit and basis for a table: its own header lines first; then a context line or the nearest line above, each
+    only when it is a unit DECLARATION (a prose line stating an amount in crore is not the table's unit)."""
+    own = [ln['text'] for ln in list(ctx_lines) + list(hdr_lines)]
+    unit, src = unit_of([ln['text'] for ln in hdr_lines]), 'table'
+    if not unit:
+        unit = unit_of([ln['text'] for ln in ctx_lines if is_unit_declaration(ln['text'])])
     if not unit:
         src = None
         for ln in reversed(lines[:upto]):
-            unit = unit_of([ln['text']])
+            unit = unit_of([ln['text']]) if is_unit_declaration(ln['text']) else None
             if unit:
                 src = 'line above: ' + ln['text'][:60]
                 break
@@ -779,7 +820,7 @@ def section_grids(words, page_width):
     for ctx, hdr, rows in segments(lines):
         g = grid_of_segment(hdr, rows, page_width)
         start = lines.index(hdr[0]) if hdr else lines.index(rows[0])
-        g['unit'], g['unit_src'], g['basis'] = unit_basis(lines, start, ctx + hdr)
+        g['unit'], g['unit_src'], g['basis'] = unit_basis(lines, start, hdr, ctx)
         g['context'] = ' '.join(ln['text'] for ln in lines[max(0, start - 4):start])[-300:]
         out.append(g)
     return out

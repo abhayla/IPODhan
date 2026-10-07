@@ -42,6 +42,15 @@ def read_financials(page_texts, grid_words_for_page, unreadable_pages=()):
     years = {int(k[2:]) for f in STATEMENT_FIELDS for k in (out['fields'].get(f, {}).get('values') or {})
              if k.startswith('FY')}
     out['fiscal_years'] = sorted(years, reverse=True)
+    if start is None:
+        why = ('section_locator: no contents page found in the first %d pages' % section_locator.TOC_SCAN_PAGES
+               if not loc['toc_pages'] else
+               'section_locator: the contents page lists no restated financial information section whose page '
+               'opens with its title (offset %s)' % loc['offset'])
+        for f in STATEMENT_FIELDS:
+            rec = out['fields'].get(f)
+            if rec is not None and not rec.get('values'):
+                rec['missed'] = why
     out['locator'] = {'offset': loc['offset'], 'offset_votes': loc['offset_votes'], 'restated_start': start,
                       'sections': {k: (v['idx'], v['end'], v['verified']) for k, v in loc['other'].items()}}
     out['section_problems'] = sec.get('problems', [])
