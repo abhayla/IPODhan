@@ -130,4 +130,16 @@ if the value is printed on that page and passes step 4.
 - Spec-settled corrections for the build: a range end printed Nil is null (`range_end_printed_nil`, never 0); a nil WACA
   is null (`bonus_nil`). Key errors found by the spike (keys contradict the printed page): Orient total promoter holding
   99.99 p20; ARC per-promoter one-year table p35 - fix the keys before scoring the build.
-- Next: build into product modules (same pattern as financials), Tier A review, scores on the keys, test-DB proof.
+- DONE 2026-10-07 (merged into test/drhp-step0-combined, merges c0f13cb4e + feebc26a1): promoter_tables.py reader +
+  filing-persister promoter rows. Two Tier A rounds fixed: exact holder identity (HUF / LLP / trustee / joint "&" never
+  match a promoter), anchored cover names (no "And The Promoter Group"), row-111 nil -> null, OD-175 checks on the column
+  heading + OD-176 caption rule for one-cost-column tables, pre-offer holding unit/column checks, group flag only when
+  stated (reason codes promoter_group_stated / not_promoter_group_stated); persister follows the spec answer-state table
+  (same-document refusal / stated absence clears, miss keeps, other document's value cleared only by a higher-ranked
+  stated absence), document rank (lower-ranked document never replaces the promoter list), full admin hold.
+  Scores (corrected keys keys-cap, 7 DRHPs, 107 values): 105 / 0 wrong / 2 missed vs today's reader 23 / 2.
+  Test DB (reset): NSE DRHP 89/90, RHP 88/90 unchanged; AceVector 58 -> 64; Jindal 61 -> 66; promoters rows saved
+  (AceVector Kunal Bahl 56,967,520 shares, WACA 3.26, 1-year 1.84).
+  Open: OD-174 refusals do not clear an older reader's stored mixed-caption value (needs an answer-state rule);
+  'shares_not_validated' codes cannot tell refusal from miss (treated as keep); Priority Jewels promoter tables unread.
+- Next section per plan: General Information (lead managers, registrar, compliance officer), then the cover.
