@@ -1263,6 +1263,37 @@ def _fill_missing_from_pnl_page(kpi_metrics, best, candidates):
                     "no overlapping revenue/PAT to cross-check", [])
 
 
+WORD_FILL_KEYS = ("revenue", "totalIncome", "profit", "eps")
+
+
+def _fill_from_word_pages(metrics, best, word_candidates):
+    """Fill the chosen page's missing P&L rows from a page read on its word boxes (D11 wrapped
+    header), only when that page names the same fiscal years in the same stated unit and agrees
+    with every row both pages carry (within 0.5%). Any disagreement fills nothing (fail closed)."""
+    missing = [k for k in WORD_FILL_KEYS if k not in metrics]
+    if not missing or not best["unitStated"]:
+        return metrics
+    same = [c for c in word_candidates
+            if c["years"] == best["years"] and c["unitStated"] and c["unit"] == best["unit"]
+            and any(k in c["metrics"] for k in missing)]
+    if not same:
+        return metrics
+    other = max(same, key=lambda c: c["score"])
+    for key in WORD_FILL_KEYS:
+        if key in metrics and key in other["metrics"]:
+            a, b = metrics[key], other["metrics"][key]
+            if set(a) != set(b):
+                return metrics
+            for year in a:
+                if abs(a[year] - b[year]) > 0.005 * max(abs(a[year]), abs(b[year]), 1e-9):
+                    return metrics
+    merged = dict(metrics)
+    for key in missing:
+        if key in other["metrics"]:
+            merged[key] = other["metrics"][key]
+    return merged
+
+
 def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc B"):
     """Agreement between the same metric series read from two documents (the
     price band advertisement's KPI table and the RHP's restated summary). Both
@@ -1369,6 +1400,7 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", 
     #    annual columns). This skips summary/index pages that carry the title but no
     #    data rows, and reads the unit from the chosen DATA page (issue #67).
     candidates = []
+    word_candidates = []
     for idx, text in page_texts:
         parsed = _parse_pnl_page(text)
         if parsed is None and words_for_page is not None and _geometry_worth_trying(text):
@@ -1381,10 +1413,19 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", 
             except Exception:  # noqa: BLE001 - fail closed: the page is simply not read
                 words = None
             if words:
-                parsed = _parse_pnl_page_by_geometry(text, words)
+                by_words = _parse_pnl_page_by_geometry(text, words)
+                if by_words:
+                    by_words["page"] = idx
+                    word_candidates.append(by_words)
+            continue
         if parsed:
             parsed["page"] = idx
             candidates.append(parsed)
+    # D11 wrapped header: a page read on its word boxes is chosen only when no page is read from its
+    # text, so a document read today keeps its page, its column map and every read made on them;
+    # otherwise such a page only fills the chosen page's missing rows (see _fill_from_word_pages).
+    if not candidates:
+        candidates, word_candidates = word_candidates, []
     if not candidates:
         return result
     # A page that states its own unit and carries more annual columns is a better
@@ -1465,6 +1506,7 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD", 
             result["epsPage"] = page
     result["metrics"], pnl_fill_check = _fill_missing_from_pnl_page(
         result["metrics"], best, candidates)
+    result["metrics"] = _fill_from_word_pages(result["metrics"], best, word_candidates)
     if result["epsPage"] is None and "eps" in result["metrics"]:
         # Filled from another candidate page: read as basic only (never emitted as diluted).
         result["epsCombined"] = False

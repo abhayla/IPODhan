@@ -121,6 +121,40 @@ def test_rows_elsewhere_are_not_read_on_a_word_box_column_map():
         assert not {2811.57, 18424.80, 12724.01} & set(series.values())
 
 
+def _deepa_pages(p266=None):
+    entry = PAGES["deepa-jewellers-ltd"]
+    text266 = entry["other_pages"]["266"] if p266 is None else p266
+    return entry, [(266, text266), (entry["page"], entry["text"])]
+
+
+def test_a_page_read_from_its_text_stays_chosen_and_word_box_page_fills_only_its_gaps():
+    # Deepa p266 is read today from its text (EPS, total income, PAT; no revenue row it can map).
+    # p80 is read on its word boxes. p266 stays the chosen page; p80 adds revenue because the two
+    # agree on total income and name the same fiscal years.
+    entry, pages = _deepa_pages()
+    before = extract_from_texts(pages)
+    assert before["pnlPage"] == 266 and "revenue" not in before["metrics"]
+    out = extract_from_texts(pages, words_for_page=lambda i: entry["words"] if i == entry["page"] else [])
+    assert out["pnlPage"] == 266
+    assert out["annualYears"] == before["annualYears"]
+    assert out["metrics"]["revenue"] == EXPECTED["deepa-jewellers-ltd"]["revenue"]
+    assert out["metrics"]["totalIncome"] == before["metrics"]["totalIncome"]
+    for key in before["metrics"]:
+        assert out["metrics"][key] == before["metrics"][key]
+
+
+def test_a_word_box_page_that_disagrees_with_the_chosen_page_fills_nothing():
+    entry, _p = _deepa_pages()
+    original = entry["other_pages"]["266"]
+    changed = original.replace("Total income 8 ,122.51 14,001.00 10,257.29 9,217.13",
+                               "Total income 8 ,122.51 14,901.00 10,257.29 9,217.13")
+    assert changed != original, "mutation did not apply"
+    _e, pages = _deepa_pages(changed)
+    out = extract_from_texts(pages, words_for_page=lambda i: entry["words"] if i == entry["page"] else [])
+    assert out["pnlPage"] == 266
+    assert "revenue" not in out["metrics"]
+
+
 # Fail closed: a header the word boxes cannot pair column for column resolves nothing.
 def _drop(words, text, top_near=None):
     out = [w for w in words if not (w["text"] == text and (top_near is None or abs(w["top"] - top_near) < 2))]
