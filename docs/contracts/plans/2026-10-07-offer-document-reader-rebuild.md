@@ -176,3 +176,16 @@ if the value is printed on that page and passes step 4.
   recorded for the parked item: an address ends at the line holding the PIN / state / country (structural, nothing after
   it can be address) instead of a prose phrase list; registrar contacts read from General Information only, cover copies
   compared only by the same e-mail domain / same entity cell. (4) Then the cover section.
+- Blind GI set 3 (cold, round-3 spike unchanged): 152 / 7 wrong / 29 vs today's reader 44 / 1 / 138. All 7 wrongs in
+  A-One: page footer "85 | P a g e" (spaced letters) joined onto the next firm name -> 5 BRLM values filed under
+  '85 | P a g e Khambatta Securities Limited'; two contact persons on separate lines merged ("Ashwinikumar Chavan Purva
+  Kanabar"); an alias-only line "(formerly known as ...)" kept as address line 1 (parked family).
+- DECISION (supervisor, under owner delegation; plan rules): the split's own rule drops every BRLM contact family; what
+  remains (registrar name / SEBI / contact, compliance officer) gains nothing over today's reader (set 3: compliance
+  officer new 2 right vs today 3). The WHOLE General Information section is PARKED; today's reader stays.
+  The cover section is NOT started: it is the same free-text contact-block layout, and the plan's prove-the-core-first
+  rule forbids building on the unproven block-reading core.
+- NEXT (new core proof, shared by General Information and the cover): page furniture removal - running headers,
+  footers and page numbers (incl. spaced "P a g e", "Page N of M", company-name running heads) identified on every page
+  of the 24 DRHPs and removed before any block reading. Proof: per document, furniture lines found; 0 furniture text in
+  any extracted entity name / value; a sample of pages checked by eye. Only then a new GI attempt on a NEW blind set.
