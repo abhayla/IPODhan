@@ -53,7 +53,13 @@ Rules kept: D11 (stub columns dropped; an unpairable header is not read), OD-172
    (pdf index - printed page number), 300-650 votes per document (Jindal weakest: 37). Also finds the summary
    financials section where printed (6 documents). Spike: `session-2026-10-07/locate_spike.py`; results spike2.json.
 2. Table grid for the located statement pages (P&L, balance sheet, cash flow) on the 24 documents; bar: every
-   statement page yields a grid whose header resolves or is refused, never guessed.
+   statement page yields a grid whose header resolves or is refused, never guessed. -- PROVEN 2026-10-07: 93
+   statement pages found, 72 grids resolved, 21 refused with a reason (debt-reconciliation tables, scanned/OCR-only
+   pages of Sonaselection and Swastika, Jindal spaced header letters, Orient two value columns per period, Runwal
+   split brackets); keyed values 52 of 52 correct, 0 wrong; identities 40 hold, 0 fail, 8 not checkable. The OLD
+   reader is wrong on 14 compared values (F-247: ARC standalone read instead of consolidated; LCC revenue 99.05 vs
+   12,252.67). Open for step 3: classify mis-titled pages by row labels (LCC), garbled-font pages (Priority BS/CF),
+   OCR word positions for scanned pages. Spike: `session-2026-10-07/rebuild/grid_spike.py`, report grid-report.md.
 3. Shared interpreter + label dictionary; bar: on the answer-key set, wrong = 0 and found >= today's baseline.
 4. Validation (copies + identities) wired; bar: the 3 wrong-value classes from 2026-10-07 are rejected by
    construction (tests), wrong = 0, found >= baseline.

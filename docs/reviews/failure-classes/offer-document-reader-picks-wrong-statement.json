@@ -1,0 +1,10 @@
+{
+  "class_id": "the offer-document financial reader picks the wrong statement and saves its figures as the IPO's restated financials",
+  "feature": "offer-document (DRHP/RHP/PROSPECTUS) financial extraction: scraper/scripts/extract_financials_pdf.py page selection by keyword scoring",
+  "symptom": "a document prints more than one statement-shaped table (standalone and consolidated restated statements, or a statement-like table before the restated statements); the reader takes the first page that scores, so a standalone figure or an unrelated table's figure is saved as revenue / PAT / total assets with no error. Wider shape: any reader that chooses its source page by keyword score instead of by the document's own section structure.",
+  "first_seen": "2026-10-07, F-247: ARC DRHP revenue FY2024 saved 5,701.41 (standalone) vs consolidated 6,058.24 million; LCC Projects DRHP revenue FY2023 99.05 vs 12,252.67 million. Measured by the OD-173 step-2 grid spike against answer keys (52/52 grid values correct; reader wrong on 14 of 167 compared values).",
+  "fix_prs": "none yet - fix is the OD-173 rebuild (docs/contracts/plans/2026-10-07-offer-document-reader-rebuild.md), local branch test/drhp-step0-combined",
+  "detection_check": "none - unguarded; the rebuild's answer-key scoring (wrong must be 0) is the planned detection",
+  "status": "unguarded",
+  "spec_ref": ["§0.0.1"]
+}

@@ -2358,6 +2358,14 @@
       "area": "extract_filing.py / filing-persister.ts (no reader)",
       "title": "20 printed DRHP fields have no reader anywhere (issuer address, city, state, pincode; maximum retail and employee bid; bid hours; RoE, total assets, reserves, borrowings, debt-to-equity; BRLM contact details; registrar address; offering type), and the issuer phone, email, name and exchanges map only to other columns",
       "detail": "Measured 2026-10-03 (owner offer-document test session, skill offer-document-staging-test): NSE DRHP d88fad44 (SEBI, 614 pages) on ipodhan_staging, read-only, plus extract_filing.py at the staging sha 86869ea2 run on the same PDF on the laptop (no DB). Ground truth: 164 manifest DOC fields read from the PDF, 100 printed, 64 not printed; staging recorded 6 from this document (all correct), 94 printed fields missed. Code trace (class A 42 incl. child-table fields, class C 5) found no extractor or persister path for these fields; the issuer contact block maps only to compliance_officer_* (filing-persister.ts:1997-1999), read_cover_company_name (extract_filing.py:1138) is used only as a check, and the listing-sentence reader feeds ipos.listing_exchanges but not ipo_details.exchanges. Extends F-225 (no extractor code for most RHP cover/business fields)."
+    },
+    {
+      "id": "F-247",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "scraper/scripts/extract_financials_pdf.py (statement page choice)",
+      "title": "The offer-document financial reader saves wrong revenue/PAT/total assets when it picks the wrong statement: standalone instead of consolidated (ARC) or a non-statement table (LCC)",
+      "detail": "Measured 2026-10-07 (owner local doc test, reader at test/drhp-step0-combined 7118a97b4, no DB): Asset Reconstruction Company DRHP - reader revenue FY2024 5,701.41 / FY2023 7,513.14 million (standalone statement read first); answer key and the restated CONSOLIDATED statement p399: 6,058.24 / 8,091.94 million; total assets FY2024 27,953.36 vs 36,566.89. LCC Projects DRHP - reader revenue FY2023 99.05 / FY2022 56.91; key and restated P&L p79: 12,252.67 / 7,808.96 million. Found by the OD-173 rebuild step-2 grid spike (section-located grids, 52 of 52 keyed values match, 0 wrong); the old page-scoring reader agreed with the grids on 153 of 167 values and all 14 disagreements are reader errors. Class: any DRHP/RHP printing both standalone and consolidated restated statements, or a statement-like table before the restated statements; fix = OD-173 pipeline (section locator, consolidated-first statement choice, cross-checks), not a per-layout patch."
     }
   ],
   "false_assertions": [
