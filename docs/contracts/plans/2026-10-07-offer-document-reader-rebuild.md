@@ -120,3 +120,14 @@ if the value is printed on that page and passes step 4.
 ## Owner decisions that bind this plan
 - 2026-10-03/04: local fix loop, subject = offer documents, fixes generic for all IPOs, ipodhan_test only.
 - 2026-10-07: test on many IPOs of the same type (mainboard DRHPs); OD-172 plain EBITDA; OD-173 rebuild approach.
+
+## Section 2: Capital Structure / promoters (started 2026-10-07)
+- Core proof (spike `session-2026-10-07/rebuild-cap/`): 7 keyed DRHPs, 134 keyed promoter values: new 109 found / 0 wrong
+  vs today's reader 23 / 2 (Hero "O P" cut name, Jindal two names as one). Promoter rows of all-shareholder tables are read
+  by matching the declared promoter names; non-promoter rows never saved.
+- Owner decisions: OD-174 (a caption naming promoters together with other groups is NOT saved as promoter ranges);
+  OD-175 (one-year promoter WACA from a single copy with four checks).
+- Spec-settled corrections for the build: a range end printed Nil is null (`range_end_printed_nil`, never 0); a nil WACA
+  is null (`bonus_nil`). Key errors found by the spike (keys contradict the printed page): Orient total promoter holding
+  99.99 p20; ARC per-promoter one-year table p35 - fix the keys before scoring the build.
+- Next: build into product modules (same pattern as financials), Tier A review, scores on the keys, test-DB proof.
