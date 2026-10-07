@@ -301,6 +301,22 @@ _PROMOTER_GROUP_RX = re.compile(r"\bpromoters?\b", re.I)
 _SELLING_RX = re.compile(r"\bselling\s+shareholders?\b", re.I)
 
 
+_PROMOTER_ONLY_WORDS_RX = re.compile(
+    r"\((?:also|being)\b[^)]*\)?|\bmembers?\s+of\b|\bpromoters?\b|\bgroup\b|\bour\b|\bthe\b|\bits\b|\band\b|"
+    r"\bcompany\b|\bin\b|[,&/]", re.I)
+
+
+def _caption_mixes_groups(group):
+    """OD-174: a caption naming the promoters TOGETHER with other holders (selling shareholders,
+    shareholders with special rights, investors), or no group at all ("all shares transacted" =
+    all shareholders), is not the promoters' table."""
+    if group == "all shareholders":
+        return True
+    if not _PROMOTER_GROUP_RX.search(group):
+        return False
+    return bool(re.search(r"[a-z]", _PROMOTER_ONLY_WORDS_RX.sub(" ", group), re.I))
+
+
 def read_acquisition_ranges(page_texts):
     """{"rows": {period: parsed}, "page", "group"} or {"rows": None, "reason", "page"}.
 
@@ -320,7 +336,7 @@ def read_acquisition_ranges(page_texts):
             flat.append((idx, ln))
     lines = [ln for _i, ln in flat]
     no_promoter = any(_NO_PROMOTER_RX.search(t or "") for _i, t in page_texts)
-    found, rejected = [], None
+    found, rejected, mixed = [], None, None
     for i, ln in enumerate(lines):
         if not _WACA_CAPTION_RX.search(ln):
             continue
@@ -328,7 +344,8 @@ def read_acquisition_ranges(page_texts):
         gm = re.search(r"transacted\s+(?:by\s+(.+?)\s+)?in\s+(?:the\s+)?(?:last\s+)?(?:one|three)",
                        cap, re.I)
         group = gm.group(1) if gm and gm.group(1) else "all shareholders"
-        eligible = bool(_PROMOTER_GROUP_RX.search(group)) or (
+        mixes = _caption_mixes_groups(group)
+        eligible = (bool(_PROMOTER_GROUP_RX.search(group)) and not mixes) or (
             no_promoter and bool(_SELLING_RX.search(group)))
         got, why_rows = {}, {}
         for k in range(i + 1, min(len(lines), i + 40)):
@@ -351,11 +368,17 @@ def read_acquisition_ranges(page_texts):
         if not (got or why_rows):
             continue
         if not eligible:
-            rejected = rejected or (i, group)
+            if mixes and not no_promoter:
+                mixed = mixed or (i, group)
+            else:
+                rejected = rejected or (i, group)
             continue
         found.append((i, got, why_rows, group))
         break
     if not found:
+        if mixed is not None:
+            return {"rows": None, "page": flat[mixed[0]][0],
+                    "reason": "caption_mixes_groups: %s" % mixed[1][:80]}
         if rejected is not None:
             return {"rows": None, "page": flat[rejected[0]][0],
                     "reason": "group_not_promoter: %s" % rejected[1][:80]}

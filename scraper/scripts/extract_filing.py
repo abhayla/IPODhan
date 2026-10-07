@@ -90,6 +90,7 @@ try:
     import issuer_balance_rows  # OD-165 item 46: reuses the financials module's column helpers
     import offer_doc_statements  # rows 66/69 (D10), 75, 92, 102 and rent expense, offer documents
     import offer_doc_financials  # OD-173: located sections -> grids -> one dictionary -> copies validation
+    import promoter_tables  # OD-173 section 2: capital-structure promoter tables, OD-174 / OD-175
     import statement_grid
 except BaseException as _import_exc:  # noqa: BLE001
     _emit_memory_ceiling_and_exit(_import_exc)
@@ -3057,6 +3058,47 @@ def _read_offer_doc_statements(cleaned, emit, fiscal_years, pnl_page, unit):
 
 
 _WACA_PERIOD_FIELDS = (("1Y", "1y"), ("18M", "18m"), ("3Y", "3y"))
+_PROMOTER_TABLE_FIELDS = ("promoter_rows", "promoter_shares_held", "promoter_holding_pre_pct")
+
+
+def _read_promoter_tables(page_texts, emit, grid_words_for_page, declared):
+    """Spec rows 53, 70, 110-112 and `promoters.shares_held` / `waca_last_year` (OD-173 section 2).
+
+    `promoter_rows` is one row per declared promoter: shares held, cost of acquisition held and the
+    one-year cost, each a value or null with its own reason (promoter_tables.py). The aggregate
+    `promoter_shares_held` and `promoter_holding_pre_pct` are the holding table's promoter Total row,
+    accepted only when the promoter rows add up to it and every declared promoter is among them."""
+    if not declared:
+        for n in _PROMOTER_TABLE_FIELDS:
+            emit.null(n, "no_declared_promoter")
+        return
+    if grid_words_for_page is None:
+        for n in _PROMOTER_TABLE_FIELDS:
+            emit.null(n, "no_word_positions")
+        return
+    got = promoter_tables.read_promoter_tables(page_texts, grid_words_for_page, declared)
+    rows = got["rows"]
+    if any(r[k] is not None for r in rows for k in ("shares_held", "waca", "waca_last_year")):
+        emit.put("promoter_rows", rows, (got["pages"] or [None])[0], "promoter_rows_declared_names_validated_copies",
+                 (True, "%d declared promoter(s); pages %s" % (len(rows), got["pages"])))
+    else:
+        emit.null("promoter_rows", "promoter_rows_unread: %s" % sorted(
+            {r["reasons"]["shares_held"] for r in rows}), (got["pages"] or [None])[0])
+    hold = got["holding"]
+    if hold is None:
+        emit.null("promoter_shares_held", got["holding_why"])
+        emit.null("promoter_holding_pre_pct", got["holding_why"])
+        return
+    if sorted(hold["who"]) != sorted(declared):
+        why = "promoter_total_row_covers_%d_of_%d_declared" % (len(hold["who"]), len(declared))
+        emit.null("promoter_shares_held", why, hold["page"])
+        emit.null("promoter_holding_pre_pct", why, hold["page"])
+        return
+    detail = "promoter rows of the pre-offer holding table add up to its total row (p%s)" % hold["page"]
+    emit.put("promoter_shares_held", hold["shares"], hold["page"], "promoter_rows_sum_to_total_row",
+             (hold["shares"] > 0, detail))
+    emit.put("promoter_holding_pre_pct", hold["pct"], hold["page"], "promoter_rows_sum_to_total_row",
+             (0 < hold["pct"] <= 100, detail))
 
 
 def _read_offer_doc_tables(page_texts, emit, words_for_page):
@@ -3149,9 +3191,18 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     else:
         emit.put("company_name", cover_name, None, "cover_name_above_cin", (True, cover_name))
 
-    cover_names, cover_page = read_cover_promoters(page_texts)
+    # OD-173 section 2: the declared promoters are the cover statement's, every printed copy agreeing
+    # (promoter_tables.declared_promoters). A cover with no such statement keeps the older fullest-copy
+    # reading; copies that disagree give no names (never the longest guess).
+    cover_names, cover_src, cover_page = promoter_tables.declared_promoters(page_texts)
+    if cover_names is None and cover_src == "no_cover_declaration":
+        cover_names, cover_page = read_cover_promoters(page_texts)
     stated_none_page = cover_states_no_identifiable_promoter(page_texts)
-    if not cover_names and stated_none_page is not None:
+    if cover_src == "cover_copies_disagree":
+        emit.null("promoter_name", "cover_promoter_copies_disagree", cover_page)
+        emit.null("promoter_names", "cover_promoter_copies_disagree", cover_page)
+        cover_names = None
+    elif not cover_names and stated_none_page is not None:
         # Item 46 (OD-165, OD-158): the cover STATES there is no promoter (NSE RHP
         # p0/p2) - a stated absence, never the cover-miss reason.
         emit.null("promoter_name", NO_IDENTIFIABLE_PROMOTER, stated_none_page)
@@ -3164,6 +3215,7 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     else:
         emit.null("promoter_name", "our_promoters_statement_not_on_cover")
         emit.null("promoter_names", "our_promoters_statement_not_on_cover")
+    _read_promoter_tables(page_texts, emit, grid_words_for_page, cover_names or None)
 
     # OD-173: revenue, total income, PAT, EBITDA, net worth, EPS (basic, diluted), total assets, reserves,
     # operating cash flow, rent, RoNW and total borrowing - all from the rebuilt reader.
