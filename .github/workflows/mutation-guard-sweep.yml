@@ -60,9 +60,13 @@ jobs:
           cache: 'pip'
           cache-dependency-path: scraper/scripts/requirements-test.txt
 
-      - name: Install scraper dependencies (vitest guards)
-        working-directory: ./scraper
-        run: npm ci
+      # No separate `npm ci` in ./scraper: scraper is an npm workspace member and
+      # there is ONE root package-lock.json, so the root `npm ci` above already
+      # installs scraper, web and packages/shared. A second `npm ci` run from
+      # ./scraper re-resolves from the workspace root for that member only and
+      # wipes node_modules down to scraper's tree, which removed drizzle-zod,
+      # next, clsx and tailwind-merge (hoisted from web) and made the next step
+      # fail TS2307 (runs 2026-09-27, 2026-10-04 .. 2026-10-25). T-571.
 
       - name: Compile @ipodhan/shared
         working-directory: ./packages/shared
